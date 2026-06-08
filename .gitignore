@@ -13,3 +13,5 @@ env/
 
 *.log
 .DS_Store
+
+CLAUDE.md
