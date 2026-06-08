@@ -18,6 +18,11 @@ repos:
       - id: mypy
         additional_dependencies:
           - pydantic
+          - pydantic-settings
+          - fastapi
+          - python-jose[cryptography]
+          - passlib[bcrypt]
+          - asyncpg
         args: [--config-file=pyproject.toml]
         files: ^app/
 
