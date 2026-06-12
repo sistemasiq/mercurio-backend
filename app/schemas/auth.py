@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -12,10 +13,10 @@ class RoleEnum(str, Enum):
 
 
 class LoginRequest(BaseModel):
-    sucursal_id: UUID | None = Field(default=None, alias="sucursalId")
+    sucursal_id: Annotated[UUID | None, Field(alias="sucursalId")] = None
     email: EmailStr
     password: str
-    remember_me: bool = Field(default=False, alias="rememberMe")
+    remember_me: Annotated[bool, Field(alias="rememberMe")] = False
 
     model_config = {"populate_by_name": True}
 
