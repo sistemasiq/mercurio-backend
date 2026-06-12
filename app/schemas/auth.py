@@ -23,10 +23,10 @@ class LoginRequest(BaseModel):
 
 class UserOut(BaseModel):
     id: UUID
-    nombre_completo: str
+    full_name: str
     email: str
-    rol: RoleEnum
-    sucursal_id: UUID | None
+    role: RoleEnum
+    branch_id: UUID | None
 
 
 class LoginResponse(BaseModel):
@@ -39,5 +39,5 @@ class LoginResponse(BaseModel):
 class TokenData(BaseModel):
     sub: str
     email: str
-    rol: RoleEnum
-    sucursal_id: UUID | None
+    role: RoleEnum
+    branch_id: UUID | None

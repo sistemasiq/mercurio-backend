@@ -52,8 +52,8 @@ async def login(
         payload={
             "sub": str(usuario["id"]),
             "email": usuario["email"],
-            "rol": rol.value,
-            "sucursal_id": str(sucursal_efectiva) if sucursal_efectiva else None,
+            "role": rol.value,
+            "branch_id": str(sucursal_efectiva) if sucursal_efectiva else None,
         },
         expires_delta=timedelta(minutes=expires_minutes),
     )
@@ -63,9 +63,9 @@ async def login(
         expires_in=expires_minutes * 60,
         user=UserOut(
             id=usuario["id"],
-            nombre_completo=usuario["nombre_completo"],
+            full_name=usuario["nombre_completo"],
             email=usuario["email"],
-            rol=rol,
-            sucursal_id=sucursal_efectiva,
+            role=rol,
+            branch_id=sucursal_efectiva,
         ),
     )
