@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import timedelta
 from uuid import UUID
 
@@ -18,7 +20,7 @@ class SucursalNoAsignadaError(Exception):
 
 
 async def login(
-    conn: asyncpg.Connection[object],
+    conn: asyncpg.Connection,
     email: str,
     password: str,
     sucursal_id: UUID | None,

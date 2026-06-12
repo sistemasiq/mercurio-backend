@@ -1,7 +1,7 @@
-from typing import Any
+from __future__ import annotations
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/login", response_model=LoginResponse)
 async def login_endpoint(
     body: LoginRequest,
-    conn: asyncpg.Connection[Any] = Depends(get_db),
+    conn: asyncpg.Connection = Depends(get_db),
 ) -> LoginResponse:
     try:
         return await login(
@@ -31,8 +31,8 @@ async def login_endpoint(
         ) from None
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout")
 async def logout_endpoint(
     _current_user: TokenData = Depends(get_current_user),
-) -> None:
-    pass
+) -> Response:
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

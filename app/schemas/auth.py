@@ -12,7 +12,7 @@ class RoleEnum(str, Enum):
 
 
 class LoginRequest(BaseModel):
-    sucursal_id: UUID = Field(alias="sucursalId")
+    sucursal_id: UUID | None = Field(default=None, alias="sucursalId")
     email: EmailStr
     password: str
     remember_me: bool = Field(default=False, alias="rememberMe")

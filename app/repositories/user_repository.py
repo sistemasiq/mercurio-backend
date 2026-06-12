@@ -1,4 +1,6 @@
-from typing import Any, TypedDict
+from __future__ import annotations
+
+from typing import TypedDict
 from uuid import UUID
 
 import asyncpg
@@ -14,7 +16,7 @@ class UsuarioRecord(TypedDict):
     activo: bool
 
 
-async def get_usuario_by_email(conn: asyncpg.Connection[Any], email: str) -> UsuarioRecord | None:
+async def get_usuario_by_email(conn: asyncpg.Connection, email: str) -> UsuarioRecord | None:
     """Devuelve el usuario activo con sus sucursales accesibles para el login."""
     row = await conn.fetchrow(
         """

@@ -1,11 +1,10 @@
 from collections.abc import AsyncGenerator
-from typing import Any
 
 import asyncpg
 
 from app.core.config import settings
 
-_pool: asyncpg.Pool[asyncpg.Record] | None = None
+_pool: asyncpg.Pool | None = None
 
 
 async def create_pool() -> None:
@@ -18,7 +17,7 @@ async def close_pool() -> None:
         await _pool.close()
 
 
-async def get_db() -> AsyncGenerator[asyncpg.Connection[Any], None]:
+async def get_db() -> AsyncGenerator[asyncpg.Connection, None]:
     if _pool is None:
         raise RuntimeError("El pool de base de datos no está inicializado")
     async with _pool.acquire() as conn:
