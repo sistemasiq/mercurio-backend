@@ -1,12 +1,16 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth
+from app.api.routers import auth, users
 from app.core.config import settings
 from app.core.database import close_pool, create_pool
+
+logger = logging.getLogger("mercury.debug")
+logging.basicConfig(level=logging.DEBUG)
 
 
 @asynccontextmanager
@@ -26,4 +30,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
+    body = await request.body()
+    logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body.decode())
+    response = await call_next(request)
+    logger.debug("<<< %s", response.status_code)
+    return response
+
+
 app.include_router(auth.router)
+app.include_router(users.router)
