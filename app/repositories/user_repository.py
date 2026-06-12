@@ -102,6 +102,78 @@ async def create_usuario(
     return UUID(str(row["id"]))
 
 
+async def update_usuario(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    email: str,
+    nombre_completo: str,
+    rol: str,
+    password_hash: str | None,
+    modificado_por: UUID,
+) -> bool:
+    result = await conn.execute(
+        """
+        UPDATE public.usuarios
+        SET email          = $1,
+            nombre_completo = $2,
+            rol             = $3,
+            password_hash   = COALESCE($4, password_hash),
+            modificado      = NOW(),
+            modificado_por  = $5
+        WHERE id = $6 AND activo = TRUE
+        """,
+        email,
+        nombre_completo,
+        rol,
+        password_hash,
+        modificado_por,
+        user_id,
+    )
+    return str(result) == "UPDATE 1"
+
+
+async def update_usuario_branch(
+    conn: asyncpg.Connection,
+    usuario_id: UUID,
+    sucursal_id: UUID | None,
+    modificado_por: UUID,
+) -> None:
+    await conn.execute(
+        """
+        UPDATE public.usuarios_sucursal
+        SET activo = FALSE, modificado = NOW(), modificado_por = $1
+        WHERE usuario_id = $2 AND activo = TRUE
+        """,
+        modificado_por,
+        usuario_id,
+    )
+    if sucursal_id is not None:
+        await conn.execute(
+            """
+            INSERT INTO public.usuarios_sucursal (usuario_id, sucursal_id, creado_por)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (usuario_id, sucursal_id)
+            DO UPDATE SET activo = TRUE, modificado = NOW(), modificado_por = EXCLUDED.creado_por
+            """,
+            usuario_id,
+            sucursal_id,
+            modificado_por,
+        )
+
+
+async def delete_usuario(conn: asyncpg.Connection, user_id: UUID, modificado_por: UUID) -> bool:
+    result = await conn.execute(
+        """
+        UPDATE public.usuarios
+        SET activo = FALSE, modificado = NOW(), modificado_por = $1
+        WHERE id = $2 AND activo = TRUE
+        """,
+        modificado_por,
+        user_id,
+    )
+    return str(result) == "UPDATE 1"
+
+
 async def assign_usuario_to_branch(
     conn: asyncpg.Connection,
     usuario_id: UUID,

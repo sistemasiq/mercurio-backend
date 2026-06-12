@@ -11,6 +11,12 @@ class BranchCreateRequest(BaseModel):
     telefono: str | None = None
 
 
+class BranchUpdateRequest(BaseModel):
+    nombre: str
+    direccion: str | None = None
+    telefono: str | None = None
+
+
 class BranchResponse(BaseModel):
     id: UUID
     nombre: str

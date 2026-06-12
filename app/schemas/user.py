@@ -15,6 +15,14 @@ class UserCreateRequest(BaseModel):
     branch_id: UUID | None = None
 
 
+class UserUpdateRequest(BaseModel):
+    email: EmailStr
+    full_name: str
+    role: RoleEnum
+    branch_id: UUID | None = None
+    password: str | None = None  # None = no cambiar
+
+
 class UserResponse(BaseModel):
     id: UUID
     full_name: str
