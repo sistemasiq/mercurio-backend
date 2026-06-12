@@ -1,38 +1,48 @@
 from typing import Any, TypedDict
+from uuid import UUID
 
 import asyncpg
 
 
-class UserRecord(TypedDict):
-    id: int
+class UsuarioRecord(TypedDict):
+    id: UUID
     email: str
     password_hash: str
-    full_name: str
-    role: str
-    branch_id: int
-    is_active: bool
+    nombre_completo: str
+    rol: str
+    sucursal_id: UUID | None
+    activo: bool
 
 
-# TODO: conectar cuando el esquema esté definido.
-# Tabla esperada:
-#   users(id, email, password_hash, full_name, role, branch_id, is_active, created_at)
-async def get_user_by_email(conn: asyncpg.Connection[Any], email: str) -> UserRecord | None:
+async def get_usuario_by_email(conn: asyncpg.Connection[Any], email: str) -> UsuarioRecord | None:
+    """Devuelve el usuario activo con sus sucursales accesibles para el login."""
     row = await conn.fetchrow(
         """
-        SELECT id, email, password_hash, full_name, role, branch_id, is_active
-        FROM users
-        WHERE email = $1 AND is_active = true
+        SELECT
+            u.id,
+            u.email,
+            u.password_hash,
+            u.nombre_completo,
+            u.rol,
+            us.sucursal_id,
+            u.activo
+        FROM public.usuarios u
+        LEFT JOIN public.usuarios_sucursal us
+               ON us.usuario_id = u.id AND us.activo = TRUE
+        WHERE u.email = $1
+          AND u.activo = TRUE
+        LIMIT 1
         """,
         email,
     )
     if row is None:
         return None
-    return UserRecord(
+    return UsuarioRecord(
         id=row["id"],
         email=row["email"],
         password_hash=row["password_hash"],
-        full_name=row["full_name"],
-        role=row["role"],
-        branch_id=row["branch_id"],
-        is_active=row["is_active"],
+        nombre_completo=row["nombre_completo"],
+        rol=row["rol"],
+        sucursal_id=row["sucursal_id"],
+        activo=row["activo"],
     )

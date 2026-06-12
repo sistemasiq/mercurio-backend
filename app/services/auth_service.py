@@ -1,10 +1,11 @@
 from datetime import timedelta
+from uuid import UUID
 
 import asyncpg
 
 from app.core.config import settings
 from app.core.security import create_access_token, verify_password
-from app.repositories.user_repository import get_user_by_email
+from app.repositories.user_repository import get_usuario_by_email
 from app.schemas.auth import LoginResponse, RoleEnum, UserOut
 
 
@@ -12,17 +13,32 @@ class InvalidCredentialsError(Exception):
     pass
 
 
+class SucursalNoAsignadaError(Exception):
+    pass
+
+
 async def login(
     conn: asyncpg.Connection[object],
     email: str,
     password: str,
-    branch_id: int,
+    sucursal_id: UUID | None,
     remember_me: bool,
 ) -> LoginResponse:
-    user = await get_user_by_email(conn, email)
+    usuario = await get_usuario_by_email(conn, email)
 
-    if user is None or not verify_password(password, user["password_hash"]):
+    if usuario is None or not verify_password(password, usuario["password_hash"]):
         raise InvalidCredentialsError
+
+    rol = RoleEnum(usuario["rol"])
+
+    # AdministradorSistema no requiere sucursal; los demás roles sí.
+    if rol != RoleEnum.administrador_sistema:
+        if sucursal_id is None:
+            raise SucursalNoAsignadaError
+        if usuario["sucursal_id"] != sucursal_id:
+            raise SucursalNoAsignadaError
+
+    sucursal_efectiva = None if rol == RoleEnum.administrador_sistema else sucursal_id
 
     expires_minutes = (
         settings.access_token_remember_me_minutes
@@ -32,10 +48,10 @@ async def login(
 
     token = create_access_token(
         payload={
-            "sub": str(user["id"]),
-            "email": user["email"],
-            "role": user["role"],
-            "branch_id": branch_id,
+            "sub": str(usuario["id"]),
+            "email": usuario["email"],
+            "rol": rol.value,
+            "sucursal_id": str(sucursal_efectiva) if sucursal_efectiva else None,
         },
         expires_delta=timedelta(minutes=expires_minutes),
     )
@@ -44,10 +60,10 @@ async def login(
         token=token,
         expires_in=expires_minutes * 60,
         user=UserOut(
-            id=user["id"],
-            full_name=user["full_name"],
-            email=user["email"],
-            role=RoleEnum(user["role"]),
-            branch_id=branch_id,
+            id=usuario["id"],
+            nombre_completo=usuario["nombre_completo"],
+            email=usuario["email"],
+            rol=rol,
+            sucursal_id=sucursal_efectiva,
         ),
     )

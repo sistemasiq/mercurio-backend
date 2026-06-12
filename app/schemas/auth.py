@@ -1,16 +1,18 @@
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
 
 class RoleEnum(str, Enum):
+    administrador_sistema = "AdministradorSistema"
     administrador = "Administrador"
     cajero = "Cajero"
     cocina = "Cocina"
 
 
 class LoginRequest(BaseModel):
-    branch_id: int = Field(alias="branchId")
+    sucursal_id: UUID = Field(alias="sucursalId")
     email: EmailStr
     password: str
     remember_me: bool = Field(default=False, alias="rememberMe")
@@ -19,11 +21,11 @@ class LoginRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: int
-    full_name: str
+    id: UUID
+    nombre_completo: str
     email: str
-    role: RoleEnum
-    branch_id: int
+    rol: RoleEnum
+    sucursal_id: UUID | None
 
 
 class LoginResponse(BaseModel):
@@ -36,5 +38,5 @@ class LoginResponse(BaseModel):
 class TokenData(BaseModel):
     sub: str
     email: str
-    role: RoleEnum
-    branch_id: int
+    rol: RoleEnum
+    sucursal_id: UUID | None

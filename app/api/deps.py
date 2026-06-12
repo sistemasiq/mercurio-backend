@@ -23,19 +23,15 @@ async def get_current_user(
         payload = decode_access_token(credentials.credentials)
         sub = payload.get("sub")
         email = payload.get("email")
-        role = payload.get("role")
-        branch_id = payload.get("branch_id")
-        if (
-            not isinstance(sub, str)
-            or not isinstance(email, str)
-            or not isinstance(branch_id, int | float)
-        ):
+        rol = payload.get("rol")
+        sucursal_id = payload.get("sucursal_id")
+        if not isinstance(sub, str) or not isinstance(email, str):
             raise credentials_exception from None
         return TokenData(
             sub=sub,
             email=email,
-            role=RoleEnum(role),
-            branch_id=int(branch_id),
+            rol=RoleEnum(rol),
+            sucursal_id=sucursal_id,
         )
     except (JWTError, ValueError, KeyError):
         raise credentials_exception from None
@@ -49,7 +45,7 @@ def require_role(
     async def dependency(
         current_user: TokenData = Depends(get_current_user),
     ) -> TokenData:
-        if current_user.role not in allowed_roles:
+        if current_user.rol not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
