@@ -1,19 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_context.verify(plain, hashed)  # type: ignore[no-any-return]
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def hash_password(plain: str) -> str:
-    return _pwd_context.hash(plain)  # type: ignore[no-any-return]
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
 def create_access_token(payload: dict[str, object], expires_delta: timedelta) -> str:
