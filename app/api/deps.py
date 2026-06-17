@@ -1,11 +1,16 @@
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
+import asyncpg
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 
+from app.core.database import get_db
 from app.core.security import decode_access_token
+from app.repositories.token_repository import is_token_revoked
 from app.schemas.auth import RoleEnum, TokenData
 
 _bearer = HTTPBearer()
@@ -13,6 +18,7 @@ _bearer = HTTPBearer()
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    conn: asyncpg.Connection = Depends(get_db),
 ) -> TokenData:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -25,13 +31,24 @@ async def get_current_user(
         email = payload.get("email")
         role = payload.get("role")
         branch_id = payload.get("branch_id")
-        if not isinstance(sub, str) or not isinstance(email, str):
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+
+        if not isinstance(sub, str) or not isinstance(email, str) or not isinstance(jti, str):
             raise credentials_exception from None
+
+        if await is_token_revoked(conn, jti):
+            raise credentials_exception from None
+
+        exp_dt = datetime.fromtimestamp(float(exp), tz=UTC) if exp is not None else None  # type: ignore[arg-type]
+
         return TokenData(
             sub=sub,
             email=email,
             role=RoleEnum(role),
-            branch_id=branch_id,
+            branch_id=UUID(branch_id) if isinstance(branch_id, str) else None,
+            jti=jti,
+            exp=exp_dt or datetime.now(tz=UTC),
         )
     except (JWTError, ValueError, KeyError):
         raise credentials_exception from None

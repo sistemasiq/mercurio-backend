@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Annotated
 from uuid import UUID
@@ -21,6 +22,12 @@ class LoginRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: Annotated[str, Field(alias="refreshToken")]
+
+    model_config = {"populate_by_name": True}
+
+
 class UserOut(BaseModel):
     id: UUID
     full_name: str
@@ -33,6 +40,8 @@ class LoginResponse(BaseModel):
     token: str
     token_type: str = "Bearer"
     expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
     user: UserOut
 
 
@@ -41,3 +50,5 @@ class TokenData(BaseModel):
     email: str
     role: RoleEnum
     branch_id: UUID | None
+    jti: str
+    exp: datetime
