@@ -47,9 +47,6 @@ async def login(
 
     rol = RoleEnum(usuario["rol"])
 
-    # AdministradorSistema: sin sucursal.
-    # Otros roles: usar la sucursal del request si se envía, o la asignada en BD.
-    # Si se envía y no coincide con la asignada → acceso denegado.
     sucursal_efectiva: UUID | None = None
     if rol != RoleEnum.administrador_sistema:
         sucursal_en_bd = usuario["sucursal_id"]

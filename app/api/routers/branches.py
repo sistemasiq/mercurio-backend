@@ -5,9 +5,9 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.deps import require_role
+from app.api.deps import require_permission
 from app.core.database import get_db
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.services.branch_service import (
     BranchNotFoundError,
@@ -21,9 +21,6 @@ from app.services.branch_service import (
 )
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
-
-_sistema_only = require_role(RoleEnum.administrador_sistema)
-_admin_roles = require_role(RoleEnum.administrador_sistema, RoleEnum.administrador)
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -41,7 +38,7 @@ _CONFLICT = HTTPException(
 
 @router.get("", response_model=list[BranchResponse])
 async def get_branches(
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("sucursales:listar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[BranchResponse]:
     return await list_branches(conn, current_user)
@@ -50,7 +47,7 @@ async def get_branches(
 @router.post("", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
 async def post_branch(
     body: BranchCreateRequest,
-    current_user: TokenData = Depends(_sistema_only),
+    current_user: TokenData = Depends(require_permission("sucursales:crear")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
@@ -62,7 +59,7 @@ async def post_branch(
 @router.get("/{branch_id}", response_model=BranchResponse)
 async def get_branch_endpoint(
     branch_id: UUID,
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
@@ -77,7 +74,7 @@ async def get_branch_endpoint(
 async def put_branch(
     branch_id: UUID,
     body: BranchUpdateRequest,
-    current_user: TokenData = Depends(_sistema_only),
+    current_user: TokenData = Depends(require_permission("sucursales:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
@@ -91,7 +88,7 @@ async def put_branch(
 @router.delete("/{branch_id}")
 async def delete_branch_endpoint(
     branch_id: UUID,
-    current_user: TokenData = Depends(_sistema_only),
+    current_user: TokenData = Depends(require_permission("sucursales:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:

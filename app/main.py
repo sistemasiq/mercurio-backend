@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, branches, users
+from app.api.routers import auth, branches, permissions, users
 from app.core.config import settings
-from app.core.database import close_pool, create_pool
+from app.core.database import close_pool, create_pool, get_pool
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.DEBUG)
@@ -16,6 +16,10 @@ logging.basicConfig(level=logging.DEBUG)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await create_pool()
+    async with get_pool().acquire() as conn:
+        from app.services.permission_service import load_cache
+
+        await load_cache(conn)
     yield
     await close_pool()
 
@@ -43,3 +47,4 @@ async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(branches.router)
+app.include_router(permissions.router)

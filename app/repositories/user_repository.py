@@ -34,10 +34,11 @@ _SELECT = """
         u.email,
         u.password_hash,
         u.nombre_completo,
-        u.rol,
+        r.nombre AS rol,
         us.sucursal_id,
         u.activo
     FROM public.usuarios u
+    JOIN public.roles r ON r.id = u.rol
     LEFT JOIN public.usuarios_sucursal us
            ON us.usuario_id = u.id AND us.activo = TRUE
 """
@@ -90,7 +91,7 @@ async def create_usuario(
         """
         INSERT INTO public.usuarios
             (email, password_hash, nombre_completo, rol, creado_por)
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, (SELECT id FROM public.roles WHERE nombre = $4), $5)
         RETURNING id
         """,
         email,
@@ -114,9 +115,9 @@ async def update_usuario(
     result = await conn.execute(
         """
         UPDATE public.usuarios
-        SET email          = $1,
+        SET email           = $1,
             nombre_completo = $2,
-            rol             = $3,
+            rol             = (SELECT id FROM public.roles WHERE nombre = $3),
             password_hash   = COALESCE($4, password_hash),
             modificado      = NOW(),
             modificado_por  = $5

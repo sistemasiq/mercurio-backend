@@ -17,6 +17,12 @@ async def close_pool() -> None:
         await _pool.close()
 
 
+def get_pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("El pool de base de datos no está inicializado")
+    return _pool
+
+
 async def get_db() -> AsyncGenerator[asyncpg.Connection, None]:
     if _pool is None:
         raise RuntimeError("El pool de base de datos no está inicializado")

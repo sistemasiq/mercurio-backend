@@ -15,6 +15,11 @@ from app.schemas.auth import RoleEnum, TokenData
 
 _bearer = HTTPBearer()
 
+_FORBIDDEN = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={"code": "FORBIDDEN", "message": "No tienes permiso para realizar esta acción."},
+)
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
@@ -57,19 +62,29 @@ async def get_current_user(
 def require_role(
     *allowed_roles: RoleEnum,
 ) -> Callable[..., Coroutine[Any, Any, TokenData]]:
-    """Dependencia de FastAPI que restringe el acceso a los roles indicados."""
+    """Restringe el acceso a los roles indicados (comprobación por nombre de rol)."""
 
     async def dependency(
         current_user: TokenData = Depends(get_current_user),
     ) -> TokenData:
         if current_user.role not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "FORBIDDEN",
-                    "message": "No tienes permiso para realizar esta acción.",
-                },
-            )
+            raise _FORBIDDEN
+        return current_user
+
+    return dependency
+
+
+def require_permission(
+    *codes: str,
+) -> Callable[..., Coroutine[Any, Any, TokenData]]:
+    """Restringe el acceso a usuarios cuyo rol tenga TODOS los permisos indicados."""
+    from app.services.permission_service import has_permission
+
+    async def dependency(
+        current_user: TokenData = Depends(get_current_user),
+    ) -> TokenData:
+        if not all(has_permission(current_user.role.value, code) for code in codes):
+            raise _FORBIDDEN
         return current_user
 
     return dependency

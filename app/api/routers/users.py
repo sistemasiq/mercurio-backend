@@ -5,9 +5,9 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.deps import require_role
+from app.api.deps import require_permission
 from app.core.database import get_db
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.user import UserCreateRequest, UserResponse, UserUpdateRequest
 from app.services.user_service import (
     BranchRequiredError,
@@ -22,8 +22,6 @@ from app.services.user_service import (
 )
 
 router = APIRouter(prefix="/api/users", tags=["users"])
-
-_admin_roles = require_role(RoleEnum.administrador_sistema, RoleEnum.administrador)
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -55,7 +53,7 @@ def _handle_write_errors(exc: Exception) -> None:
 
 @router.get("", response_model=list[UserResponse])
 async def get_users(
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("usuarios:listar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[UserResponse]:
     return await list_users(conn, current_user)
@@ -64,7 +62,7 @@ async def get_users(
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def post_user(
     body: UserCreateRequest,
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("usuarios:crear")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserResponse:
     try:
@@ -77,7 +75,7 @@ async def post_user(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user_endpoint(
     user_id: UUID,
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("usuarios:ver")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserResponse:
     try:
@@ -92,7 +90,7 @@ async def get_user_endpoint(
 async def put_user(
     user_id: UUID,
     body: UserUpdateRequest,
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("usuarios:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserResponse:
     try:
@@ -107,7 +105,7 @@ async def put_user(
 @router.delete("/{user_id}")
 async def delete_user_endpoint(
     user_id: UUID,
-    current_user: TokenData = Depends(_admin_roles),
+    current_user: TokenData = Depends(require_permission("usuarios:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
