@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.controllers.auth import router as auth_router
+from app.core.config import settings
+from app.routes.auth import router as auth_router
 
 app = FastAPI(title=settings.APP_TITLE, version=settings.APP_VERSION)
 

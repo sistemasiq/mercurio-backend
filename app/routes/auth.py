@@ -3,13 +3,13 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, status
 from jose import jwt
 
-from app.config import settings
-from app.views.auth import LoginRequest, LoginResponse, UserOut
+from app.core.config import settings
+from app.schemas.auth import LoginRequest, LoginResponse, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # usuarios de prueba — reemplazar con consulta a DB
-USERS = {
+_USERS = {
     "oscarmajai": {
         "id": 1,
         "name": "Oscar Magana Jaime",
@@ -22,7 +22,7 @@ USERS = {
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest):
-    user = USERS.get(body.email.lower())
+    user = _USERS.get(body.email.lower())
 
     if not user or user["password"] != body.password:
         raise HTTPException(
