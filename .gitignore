@@ -2,14 +2,39 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pdb
 *.egg-info/
+*.egg
 dist/
 build/
+.eggs/
+site/
 
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 env/
 
 *.log
 .DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node (no pertenece a este proyecto)
+node_modules/
+package-lock.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
