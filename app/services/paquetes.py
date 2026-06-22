@@ -25,7 +25,7 @@ async def obtener(session: AsyncSession, paquete_id: UUID) -> PaqueteModel:
 
 
 async def crear(session: AsyncSession, body: PaquetesCreate) -> PaqueteModel:
-    paquete = PaqueteModel(**body.model_dump(), creado=datetime.now(timezone.utc).isoformat())
+    paquete = PaqueteModel(**body.model_dump())
     session.add(paquete)
     await session.commit()
     await session.refresh(paquete)
@@ -36,7 +36,7 @@ async def actualizar(session: AsyncSession, paquete_id: UUID, body: PaquetesUpda
     row = await obtener(session, paquete_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -45,5 +45,5 @@ async def actualizar(session: AsyncSession, paquete_id: UUID, body: PaquetesUpda
 async def eliminar(session: AsyncSession, paquete_id: UUID) -> None:
     row = await obtener(session, paquete_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

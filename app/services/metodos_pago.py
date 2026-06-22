@@ -24,7 +24,7 @@ async def obtener(session: AsyncSession, metodo_pago_id: UUID) -> MetodosPagoMod
 
 
 async def crear(session: AsyncSession, body: MetodosPagoCreate) -> MetodosPagoModel:
-    metodo = MetodosPagoModel(**body.model_dump(), creado=datetime.now(timezone.utc).isoformat())
+    metodo = MetodosPagoModel(**body.model_dump())
     session.add(metodo)
     await session.commit()
     await session.refresh(metodo)
@@ -35,7 +35,7 @@ async def actualizar(session: AsyncSession, metodo_pago_id: UUID, body: MetodosP
     row = await obtener(session, metodo_pago_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -44,5 +44,5 @@ async def actualizar(session: AsyncSession, metodo_pago_id: UUID, body: MetodosP
 async def eliminar(session: AsyncSession, metodo_pago_id: UUID) -> None:
     row = await obtener(session, metodo_pago_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

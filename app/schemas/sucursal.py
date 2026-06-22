@@ -22,6 +22,7 @@ class SucursalUpdate(BaseModel):
 
 class SucursalOut(SucursalBase):
     id: UUID
+    telefono: str | None = None  # sin patrón — datos existentes en DB pueden no cumplirlo
     activo: bool
     creado: datetime
     creado_por: UUID | None

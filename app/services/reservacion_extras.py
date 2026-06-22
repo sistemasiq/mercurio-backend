@@ -24,9 +24,7 @@ async def obtener(session: AsyncSession, reservacion_extra_id: UUID) -> Reservac
 
 
 async def crear(session: AsyncSession, body: ReservacionExtrasCreate) -> ReservacionExtrasModel:
-    datos = body.model_dump()
-    datos["subtotal"] = datos["cantidad"] * datos["precio_unitario"]
-    extra = ReservacionExtrasModel(**datos, creado=datetime.now(timezone.utc).isoformat())
+    extra = ReservacionExtrasModel(**body.model_dump())
     session.add(extra)
     await session.commit()
     await session.refresh(extra)
@@ -37,7 +35,6 @@ async def actualizar(session: AsyncSession, reservacion_extra_id: UUID, body: Re
     row = await obtener(session, reservacion_extra_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.subtotal = row.cantidad * row.precio_unitario
     await session.commit()
     await session.refresh(row)
     return row

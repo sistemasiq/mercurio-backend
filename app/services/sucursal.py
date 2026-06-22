@@ -24,7 +24,7 @@ async def obtener(session: AsyncSession, sucursal_id: UUID) -> SucursalModel:
 
 
 async def crear(session: AsyncSession, body: SucursalCreate) -> SucursalModel:
-    sucursal = SucursalModel(**body.model_dump(), creado=datetime.now(timezone.utc).isoformat())
+    sucursal = SucursalModel(**body.model_dump())
     session.add(sucursal)
     await session.commit()
     await session.refresh(sucursal)
@@ -35,7 +35,7 @@ async def actualizar(session: AsyncSession, sucursal_id: UUID, body: SucursalUpd
     row = await obtener(session, sucursal_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -44,5 +44,5 @@ async def actualizar(session: AsyncSession, sucursal_id: UUID, body: SucursalUpd
 async def eliminar(session: AsyncSession, sucursal_id: UUID) -> None:
     row = await obtener(session, sucursal_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

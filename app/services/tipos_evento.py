@@ -24,7 +24,7 @@ async def obtener(session: AsyncSession, tipo_evento_id: UUID) -> TipoEventoMode
 
 
 async def crear(session: AsyncSession, body: TiposEventoCreate) -> TipoEventoModel:
-    tipo = TipoEventoModel(**body.model_dump(), creado=datetime.now(timezone.utc).isoformat())
+    tipo = TipoEventoModel(**body.model_dump())
     session.add(tipo)
     await session.commit()
     await session.refresh(tipo)
@@ -35,7 +35,7 @@ async def actualizar(session: AsyncSession, tipo_evento_id: UUID, body: TiposEve
     row = await obtener(session, tipo_evento_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -44,5 +44,5 @@ async def actualizar(session: AsyncSession, tipo_evento_id: UUID, body: TiposEve
 async def eliminar(session: AsyncSession, tipo_evento_id: UUID) -> None:
     row = await obtener(session, tipo_evento_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

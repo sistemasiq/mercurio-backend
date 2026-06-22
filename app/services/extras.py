@@ -28,7 +28,7 @@ async def obtener(session: AsyncSession, extra_id: UUID) -> ExtrasModel:
 
 
 async def crear(session: AsyncSession, body: ExtrasCrear) -> ExtrasModel:
-    extra = ExtrasModel(**body.model_dump(), creado=datetime.now(timezone.utc).isoformat())
+    extra = ExtrasModel(**body.model_dump())
     session.add(extra)
     await session.commit()
     await session.refresh(extra)
@@ -39,7 +39,7 @@ async def actualizar(session: AsyncSession, extra_id: UUID, body: ExtrasUpdate) 
     row = await obtener(session, extra_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -48,5 +48,5 @@ async def actualizar(session: AsyncSession, extra_id: UUID, body: ExtrasUpdate) 
 async def eliminar(session: AsyncSession, extra_id: UUID) -> None:
     row = await obtener(session, extra_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

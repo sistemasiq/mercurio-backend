@@ -25,10 +25,7 @@ async def obtener(session: AsyncSession, reservacion_id: UUID) -> ReservacionMod
 
 
 async def crear(session: AsyncSession, body: ReservacionesCrear) -> ReservacionModel:
-    datos = body.model_dump()
-    # saldo inicial = total menos anticipo
-    datos["saldo_pendiente"] = datos["precio_total"] - datos["anticipo"]
-    reservacion = ReservacionModel(**datos, creado=datetime.now(timezone.utc).isoformat())
+    reservacion = ReservacionModel(**body.model_dump())
     session.add(reservacion)
     await session.commit()
     await session.refresh(reservacion)
@@ -39,9 +36,7 @@ async def actualizar(session: AsyncSession, reservacion_id: UUID, body: Reservac
     row = await obtener(session, reservacion_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
-    # recalcula saldo si cambiaron precio_total o anticipo
-    row.saldo_pendiente = row.precio_total - row.anticipo
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(row)
     return row
@@ -50,5 +45,5 @@ async def actualizar(session: AsyncSession, reservacion_id: UUID, body: Reservac
 async def eliminar(session: AsyncSession, reservacion_id: UUID) -> None:
     row = await obtener(session, reservacion_id)
     row.activo = False
-    row.modificado = datetime.now(timezone.utc).isoformat()
+    row.modificado = datetime.now(timezone.utc)
     await session.commit()

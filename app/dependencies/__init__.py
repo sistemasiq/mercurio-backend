@@ -7,7 +7,7 @@ from app.exceptions import CredencialesInvalidas
 
 def get_current_user(authorization: str = Header(...)) -> str:
     try:
-        token = authorization.removeprefix("Bearer")
+        token = authorization.removeprefix("Bearer").strip()
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload["sub"]
     except JWTError:

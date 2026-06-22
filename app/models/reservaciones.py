@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, Date, Integer, Numeric, String, Text, Time
+from sqlalchemy import text, Boolean, Column, Computed, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Time
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
 
@@ -13,9 +13,9 @@ class ReservacionModel(Base):
     __tablename__ = "reservaciones"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    sucursal_id = Column(PGUUID(as_uuid=True), nullable=False)
-    tipo_evento_id = Column(PGUUID(as_uuid=True), nullable=False)
-    paquete_id = Column(PGUUID(as_uuid=True), nullable=False)
+    sucursal_id = Column(PGUUID(as_uuid=True), ForeignKey("sucursales.id"), nullable=False)
+    tipo_evento_id = Column(PGUUID(as_uuid=True), ForeignKey("tipos_evento.id"), nullable=False)
+    paquete_id = Column(PGUUID(as_uuid=True), ForeignKey("paquetes.id"), nullable=False)
 
     # Datos del cliente
     nombre_cliente = Column(String(150), nullable=False)
@@ -41,7 +41,7 @@ class ReservacionModel(Base):
     descuento = Column(Numeric(10, 2), nullable=False, default=0)
     precio_total = Column(Numeric(10, 2), nullable=False)
     anticipo = Column(Numeric(10, 2), nullable=False, default=0)
-    saldo_pendiente = Column(Numeric(10, 2), nullable=False, default=0)
+    saldo_pendiente = Column(Numeric(10, 2), Computed("precio_total - anticipo", persisted=True))
 
     # Estado y notas
     estado = Column(String(20), nullable=False, default="pendiente")
@@ -49,9 +49,9 @@ class ReservacionModel(Base):
 
     # Auditoría
     activo = Column(Boolean, nullable=False, default=True)
-    creado = Column(String, nullable=False)
+    creado = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     creado_por = Column(PGUUID(as_uuid=True), nullable=True)
-    modificado = Column(String, nullable=True)
+    modificado = Column(DateTime(timezone=True), nullable=True, server_default=text("now()"))
     modificado_por = Column(PGUUID(as_uuid=True), nullable=True)
 
     sucursal = relationship("SucursalModel", back_populates="reservaciones")
