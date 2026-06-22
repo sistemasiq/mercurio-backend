@@ -1,25 +1,31 @@
 from uuid import uuid4
-from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import relationship
-from app.database import Base
 
-class PaqquetesBase(Base):
+from sqlalchemy import Boolean, Column, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import relationship
+
+from app.db.database import Base
+
+
+class PaqueteModel(Base):
+    """Paquete de servicio ofrecido por una sucursal para un evento."""
+
     __tablename__ = "paquetes"
 
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    sucursal_id = Column(PG_UUID(as_uuid=True), ForeignKey("sucursales.id"), nullable=False)
-    nombre = Column(String(255), nullable=False)
-    descripcion = Column(String(500), nullable=True)
-    duracion_minutos = Column(Float, nullable=False)
-    personas_incluidas = Column(Float, nullable=False)
-    precio_base = Column(Float, nullable=False)
-    precio_persona_extra = Column(Float, nullable=False)
-    activo = Column(Boolean, default=True)
-    creado = Column(DateTime, default=datetime.utcnow)
-    creado_por = Column(String(255), nullable=False)
-    modificado = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    modificado_por = Column(String(255), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    sucursal_id = Column(PGUUID(as_uuid=True), nullable=False)
+    nombre = Column(String(150), nullable=False)
+    descripcion = Column(Text, nullable=True)
+    duracion_minutos = Column(Integer, nullable=False, default=120)
+    personas_incluidas = Column(Integer, nullable=False, default=10)
+    precio_base = Column(Numeric(10, 2), nullable=False)
+    precio_persona_extra = Column(Numeric(10, 2), nullable=False, default=0)
+    activo = Column(Boolean, nullable=False, default=True)
+    creado = Column(String, nullable=False)
+    creado_por = Column(PGUUID(as_uuid=True), nullable=True)
+    modificado = Column(String, nullable=True)
+    modificado_por = Column(PGUUID(as_uuid=True), nullable=True)
 
-    sucursal = relationship("Sucursal", back_populates="paquetes")
-    paquete_tipos_evento = relationship("PaqueteTiposEvento", back_populates="paquete")
+    sucursal = relationship("SucursalModel", back_populates="paquetes")
+    paquete_tipos_evento = relationship("PaqueteTipoEventoModel", back_populates="paquete")
+    reservaciones = relationship("ReservacionModel", back_populates="paquete")

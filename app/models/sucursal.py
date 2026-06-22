@@ -8,6 +8,8 @@ from app.db.database import Base
 
 
 class SucursalModel(Base):
+    """Sucursal o sede donde se realizan los eventos."""
+
     __tablename__ = "sucursales"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)

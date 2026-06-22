@@ -8,6 +8,8 @@ from app.db.database import Base
 
 
 class TipoEventoModel(Base):
+    """Catálogo de tipos de evento (cumpleaños, boda, graduación, etc.)."""
+
     __tablename__ = "tipos_evento"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
