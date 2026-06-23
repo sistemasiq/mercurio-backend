@@ -9,12 +9,20 @@ class BranchCreateRequest(BaseModel):
     nombre: str
     direccion: str | None = None
     telefono: str | None = None
+    correo: str | None = None
+    administrador_id: UUID | None = None
+    administrador_name: str | None = None
+    clave: str | None = None
 
 
 class BranchUpdateRequest(BaseModel):
     nombre: str
     direccion: str | None = None
     telefono: str | None = None
+    correo: str | None = None
+    administrador_id: UUID | None = None
+    administrador_name: str | None = None
+    clave: str | None = None
 
 
 class BranchResponse(BaseModel):
@@ -22,4 +30,8 @@ class BranchResponse(BaseModel):
     nombre: str
     direccion: str | None
     telefono: str | None
+    correo: str | None
+    administrador_id: UUID | None
+    administrador_name: str | None
+    clave: str | None
     is_active: bool
