@@ -40,6 +40,7 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
         administrador_name=record["administrador_name"],
         clave=record["clave"],
         is_active=record["activo"],
+        creado=record["creado"],
     )
 
 

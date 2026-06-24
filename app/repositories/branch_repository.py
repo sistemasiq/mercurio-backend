@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TypedDict
 from uuid import UUID
 
@@ -16,6 +17,7 @@ class SucursalRecord(TypedDict):
     administrador_name: str | None
     clave: str | None
     activo: bool
+    creado: datetime | None
 
 
 def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
@@ -29,18 +31,19 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
         administrador_name=row["administrador_name"],
         clave=row["clave"],
         activo=row["activo"],
+        creado=row["creado"],
     )
 
 
 _SELECT = """
     SELECT id, nombre, direccion, telefono, correo,
-           administrador_id, administrador_name, clave, activo
+           administrador_id, administrador_name, clave, activo, creado
     FROM public.sucursales
 """
 
 
 async def get_all_sucursales(conn: asyncpg.Connection) -> list[SucursalRecord]:
-    rows = await conn.fetch(_SELECT + "WHERE activo = TRUE ORDER BY nombre")
+    rows = await conn.fetch(_SELECT + "ORDER BY nombre")
     return [_row_to_record(r) for r in rows]
 
 

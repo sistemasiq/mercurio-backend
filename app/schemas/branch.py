@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -34,3 +35,4 @@ class BranchResponse(BaseModel):
     administrador_name: str | None
     clave: str | None
     is_active: bool
+    creado: datetime | None = None
