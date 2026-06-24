@@ -22,7 +22,6 @@ class BranchUpdateRequest(BaseModel):
     correo: str | None = None
     administrador_id: UUID | None = None
     administrador_name: str | None = None
-    clave: str | None = None
 
 
 class BranchResponse(BaseModel):

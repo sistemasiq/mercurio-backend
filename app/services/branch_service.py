@@ -108,7 +108,6 @@ async def update_branch(
         correo=data.correo,
         administrador_id=data.administrador_id,
         administrador_name=data.administrador_name,
-        clave=data.clave,
         modificado_por=UUID(current_user.sub),
     )
     if not updated:

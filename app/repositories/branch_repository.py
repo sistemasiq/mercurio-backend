@@ -93,7 +93,6 @@ async def update_sucursal(
     correo: str | None,
     administrador_id: UUID | None,
     administrador_name: str | None,
-    clave: str | None,
     modificado_por: UUID,
 ) -> bool:
     result = await conn.execute(
