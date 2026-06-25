@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import NoEncontrado
+from sqlalchemy.exc import IntegrityError
+
+from app.exceptions import Conflicto, NoEncontrado
 from app.models.metodos_pago import MetodosPagoModel
 from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoUpdate
 
@@ -26,7 +28,11 @@ async def obtener(session: AsyncSession, metodo_pago_id: UUID) -> MetodosPagoMod
 async def crear(session: AsyncSession, body: MetodosPagoCreate) -> MetodosPagoModel:
     metodo = MetodosPagoModel(**body.model_dump())
     session.add(metodo)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise Conflicto(f"Ya existe un método de pago con el nombre '{body.nombre}'.")
     await session.refresh(metodo)
     return metodo
 
