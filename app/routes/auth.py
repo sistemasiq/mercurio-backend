@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # usuarios de prueba — reemplazar con consulta a DB
 _USERS = {
-    "oscarmajai": {
+    "admin@oscarmajai.dev": {
         "id": 1,
         "name": "Oscar Magana Jaime",
         "email": "admin@oscarmajai.dev",
