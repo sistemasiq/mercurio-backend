@@ -1,6 +1,4 @@
-from sqlalchemy.testing.pickleable import User
-
-from fastapi import Depends, Header
+from fastapi import Header
 from jose import JWTError, jwt
 from app.core.config import settings
 from app.exceptions import CredencialesInvalidas
