@@ -1,3 +1,5 @@
+import app.models  # noqa: F401 — registra todos los modelos SQLAlchemy al arrancar
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
