@@ -18,6 +18,7 @@ from app.services.branch_service import (
     get_branch,
     list_branches,
     update_branch,
+    reactivate_branch,
 )
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
@@ -93,6 +94,18 @@ async def deactivate_branch_endpoint(
 ) -> Response:
     try:
         await deactivate_branch(conn, branch_id, current_user)
+        return Response(status_code=status.HTTP_200_OK)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+
+@router.patch("/{branch_id}/reactivate", status_code=status.HTTP_200_OK)
+async def reactivate_branch_endpoint(
+    branch_id: UUID,
+    current_user: TokenData = Depends(require_permission("sucursales:editar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Response:
+    try:
+        await reactivate_branch(conn, branch_id, current_user)
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None

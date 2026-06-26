@@ -12,6 +12,7 @@ from app.repositories.branch_repository import (
     get_sucursal_by_id,
     nombre_exists,
     update_sucursal,
+    reactivate_sucursal,
 )
 from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
@@ -122,4 +123,9 @@ async def update_branch(
 async def deactivate_branch(conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData) -> None:
     deactivated = await deactivate_sucursal(conn, branch_id, UUID(current_user.sub))
     if not deactivated:
+        raise BranchNotFoundError
+
+async def reactivate_branch(conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData) -> None:
+    reactivated = await reactivate_sucursal(conn, branch_id, UUID(current_user.sub))
+    if not reactivated:
         raise BranchNotFoundError

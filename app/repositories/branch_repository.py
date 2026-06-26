@@ -89,7 +89,7 @@ async def create_sucursal(
 
 async def update_sucursal(
     conn: asyncpg.Connection,
-    sucursal_id: UUID,
+    clave: UUID,
     nombre: str,
     direccion: str | None,
     telefono: str | None,
@@ -126,6 +126,20 @@ async def deactivate_sucursal(
         UPDATE public.sucursales
         SET activo = FALSE, modificado = NOW(), modificado_por = $1
         WHERE id = $2 AND activo = TRUE
+        """,
+        modificado_por,
+        sucursal_id,
+    )
+    return str(result) == "UPDATE 1"
+
+async def reactivate_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID, modificado_por: UUID
+) -> bool:
+    result = await conn.execute(
+        """
+        UPDATE public.sucursales
+        SET activo = TRUE, modificado = NOW(), modificado_por = $1
+        WHERE id = $2 AND activo = FALSE
         """,
         modificado_por,
         sucursal_id,
