@@ -5,9 +5,8 @@ from jose import jwt
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import os
-from fastapi import Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from app.api.routers import comandas, productos
+
 
 load_dotenv()
 
@@ -16,12 +15,19 @@ ALGORITHM = "HS256"
 
 app = FastAPI(title="TEC-FS Auth API")
 
+app.include_router(productos.router, prefix="/productos", tags=["productos"])
+
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","),
-    allow_methods=["POST", "OPTIONS"],
+CORSMiddleware,
+    # Permite explícitamente el origen de tu frontend
+    allow_origins=["http://localhost:5173"], 
+    allow_credentials=True,
+    # Permite todos los métodos (GET, POST, OPTIONS, etc.)
+    allow_methods=["*"],
+    # Permite todas las cabeceras (indispensable para Axios)
     allow_headers=["*"],
 )
+
 
 # ── Usuarios de prueba ──────────────────────────────────────
 USERS = {
@@ -54,6 +60,13 @@ class LoginResponse(BaseModel):
     user: UserOut
 
 # ── Endpoints ───────────────────────────────────────────────
+app.include_router(comandas.router, prefix="/comandas", tags=["comandas"])
+
+@app.get("/")
+def health_check():
+    return {"status": "online", "message": "Mercurio Backend corriendo correctamente"}
+
+
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(body: LoginRequest):
     user = USERS.get(body.email.lower())
@@ -82,12 +95,3 @@ def login(body: LoginRequest):
 @app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout():
     pass
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print(f"--- ERROR DE VALIDACIÓN DE PYDANTIC ---")
-    print(exc.errors()) # ¡Aquí verás exactamente qué campo falla!
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors()},
-    )
