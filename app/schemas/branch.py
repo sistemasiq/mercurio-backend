@@ -23,6 +23,7 @@ class BranchUpdateRequest(BaseModel):
     correo: str | None = None
     administrador_id: UUID | None = None
     administrador_name: str | None = None
+    clave: str | None = None
 
 
 class BranchResponse(BaseModel):
@@ -36,3 +37,8 @@ class BranchResponse(BaseModel):
     clave: str | None
     is_active: bool
     creado: datetime | None = None
+    creado_por: UUID | None = None
+    creador_name: str | None = None
+    modificado: datetime | None = None
+    modificado_por: UUID | None = None
+    modificador_name: str | None = None

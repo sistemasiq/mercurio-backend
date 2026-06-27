@@ -42,6 +42,11 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
         clave=record["clave"],
         is_active=record["activo"],
         creado=record["creado"],
+        creado_por=record["creado_por"],
+        creador_name=record["creador_name"],
+        modificado=record["modificado"],
+        modificado_por=record["modificado_por"],
+        modificador_name=record["modificador_name"],
     )
 
 
@@ -104,6 +109,7 @@ async def update_branch(
     updated = await update_sucursal(
         conn,
         sucursal_id=branch_id,
+        clave=data.clave,
         nombre=data.nombre,
         direccion=data.direccion,
         telefono=data.telefono,

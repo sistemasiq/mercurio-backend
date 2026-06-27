@@ -18,7 +18,11 @@ class SucursalRecord(TypedDict):
     clave: str | None
     activo: bool
     creado: datetime | None
-
+    creado_por: UUID | None
+    creador_name: str | None
+    modificado: datetime | None
+    modificado_por: UUID | None
+    modificador_name: str | None
 
 def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
     return SucursalRecord(
@@ -32,23 +36,33 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
         clave=row["clave"],
         activo=row["activo"],
         creado=row["creado"],
+        creado_por=row["creado_por"],
+        creador_name=row["creador_name"],
+        modificado=row.get("modificado"),
+        modificado_por=row.get("modificado_por"),
+        modificador_name=row.get("modificador_name"),
     )
 
 
+# Usamos 'uc' para usuario_creador y 'um' para usuario_modificador
 _SELECT = """
-    SELECT id, nombre, direccion, telefono, correo,
-           administrador_id, administrador_name, clave, activo, creado
-    FROM public.sucursales
+    SELECT s.id, s.nombre, s.direccion, s.telefono, s.correo,
+           s.administrador_id, s.administrador_name, s.clave, s.activo, 
+           s.creado, s.creado_por, uc.nombre_completo AS creador_name,
+           s.modificado, s.modificado_por, um.nombre_completo AS modificador_name
+    FROM public.sucursales s
+    LEFT JOIN public.usuarios uc ON s.creado_por = uc.id
+    LEFT JOIN public.usuarios um ON s.modificado_por = um.id
 """
 
 
 async def get_all_sucursales(conn: asyncpg.Connection) -> list[SucursalRecord]:
-    rows = await conn.fetch(_SELECT + "ORDER BY nombre")
+    rows = await conn.fetch(_SELECT + " ORDER BY s.nombre")
     return [_row_to_record(r) for r in rows]
 
 
 async def get_sucursal_by_id(conn: asyncpg.Connection, sucursal_id: UUID) -> SucursalRecord | None:
-    row = await conn.fetchrow(_SELECT + "WHERE id = $1", sucursal_id)
+    row = await conn.fetchrow(_SELECT + " WHERE s.id = $1", sucursal_id)
     return _row_to_record(row) if row else None
 
 
@@ -89,7 +103,8 @@ async def create_sucursal(
 
 async def update_sucursal(
     conn: asyncpg.Connection,
-    clave: UUID,
+    sucursal_id: UUID,
+    clave: str | None,
     nombre: str,
     direccion: str | None,
     telefono: str | None,
@@ -103,16 +118,18 @@ async def update_sucursal(
         UPDATE public.sucursales
         SET nombre = $1, direccion = $2, telefono = $3, correo = $4,
             administrador_id = $5::uuid, administrador_name = $6,
-            modificado = NOW(), modificado_por = $7::uuid
-        WHERE id = $8::uuid AND activo = TRUE
+            clave = $7,
+            modificado = NOW(), modificado_por = $8::uuid
+        WHERE id = $9::uuid AND activo = TRUE
         """,
-        nombre,
-        direccion,
-        telefono,
-        correo,
-        administrador_id,
-        administrador_name,
-        modificado_por,
+        nombre,             # $1
+        direccion,          # $2
+        telefono,           # $3
+        correo,             # $4
+        administrador_id,   # $5
+        administrador_name, # $6
+        clave,              # $7
+        modificado_por,     # $8
         sucursal_id,
     )
     return str(result) == "UPDATE 1"
