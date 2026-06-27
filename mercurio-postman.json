@@ -1,0 +1,722 @@
+{
+  "info": {
+    "name": "Mercurio API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" },
+    { "key": "sucursal_id", "value": "" },
+    { "key": "tipo_evento_id", "value": "" },
+    { "key": "metodo_pago_id", "value": "" },
+    { "key": "extra_id", "value": "" },
+    { "key": "paquete_id", "value": "" },
+    { "key": "reservacion_id", "value": "" },
+    { "key": "reservacion_extra_id", "value": "" },
+    { "key": "pago_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "    pm.collectionVariables.set('token', res.token);",
+                  "    console.log('Token guardado');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"email\": \"admin@oscarmajai.dev\",\n  \"password\": \"123456\",\n  \"rememberMe\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sucursales",
+      "item": [
+        {
+          "name": "Listar sucursales",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sucursales",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sucursales"]
+            }
+          }
+        },
+        {
+          "name": "Obtener sucursal",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sucursales/{{sucursal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sucursales", "{{sucursal_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear sucursal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Sucursal Centro\",\n  \"direccion\": \"Calle Principal 123\",\n  \"telefono\": \"3311223344\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sucursales",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sucursales"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar sucursal",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Sucursal Centro Actualizada\",\n  \"activo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sucursales/{{sucursal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sucursales", "{{sucursal_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar sucursal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sucursales/{{sucursal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sucursales", "{{sucursal_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tipos de Evento",
+      "item": [
+        {
+          "name": "Listar tipos de evento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/tipos-evento",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tipos-evento"]
+            }
+          }
+        },
+        {
+          "name": "Obtener tipo de evento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/tipos-evento/{{tipo_evento_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tipos-evento", "{{tipo_evento_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear tipo de evento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Cumpleanos\",\n  \"descripcion\": \"Celebracion de cumpleanos\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/tipos-evento",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tipos-evento"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar tipo de evento",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Cumpleanos Actualizado\",\n  \"activo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/tipos-evento/{{tipo_evento_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tipos-evento", "{{tipo_evento_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar tipo de evento",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/tipos-evento/{{tipo_evento_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "tipos-evento", "{{tipo_evento_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metodos de Pago",
+      "item": [
+        {
+          "name": "Listar metodos de pago",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/metodos-pago",
+              "host": ["{{base_url}}"],
+              "path": ["api", "metodos-pago"]
+            }
+          }
+        },
+        {
+          "name": "Obtener metodo de pago",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/metodos-pago/{{metodo_pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "metodos-pago", "{{metodo_pago_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear metodo de pago",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Efectivo\",\n  \"descripcion\": \"Pago en efectivo\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/metodos-pago",
+              "host": ["{{base_url}}"],
+              "path": ["api", "metodos-pago"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar metodo de pago",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Efectivo\",\n  \"activo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/metodos-pago/{{metodo_pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "metodos-pago", "{{metodo_pago_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar metodo de pago",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/metodos-pago/{{metodo_pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "metodos-pago", "{{metodo_pago_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Extras",
+      "item": [
+        {
+          "name": "Listar extras",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/extras",
+              "host": ["{{base_url}}"],
+              "path": ["api", "extras"],
+              "query": [{ "key": "sucursal_id", "value": "", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Obtener extra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/extras/{{extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "extras", "{{extra_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear extra",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"nombre\": \"Pinata\",\n  \"descripcion\": \"Pinata decorada\",\n  \"precio\": \"250.00\",\n  \"unidad\": \"evento\",\n  \"sucursal_id\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/extras",
+              "host": ["{{base_url}}"],
+              "path": ["api", "extras"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar extra",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"precio\": \"300.00\",\n  \"activo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/extras/{{extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "extras", "{{extra_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar extra",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/extras/{{extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "extras", "{{extra_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Paquetes",
+      "item": [
+        {
+          "name": "Listar paquetes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/paquetes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquetes"],
+              "query": [{ "key": "sucursal_id", "value": "", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Obtener paquete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/paquetes/{{paquete_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquetes", "{{paquete_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear paquete",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"sucursal_id\": \"{{sucursal_id}}\",\n  \"nombre\": \"Paquete Basico\",\n  \"descripcion\": \"Paquete con decoracion basica\",\n  \"duracion_minutos\": 120,\n  \"personas_incluidas\": 20,\n  \"precio_base\": \"3500.00\",\n  \"precio_persona_extra\": \"150.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/paquetes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquetes"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar paquete",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"precio_base\": \"4000.00\",\n  \"activo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/paquetes/{{paquete_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquetes", "{{paquete_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar paquete",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/paquetes/{{paquete_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquetes", "{{paquete_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Paquete Tipos de Evento",
+      "item": [
+        {
+          "name": "Listar tipos por paquete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/paquete-tipos-evento/{{paquete_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquete-tipos-evento", "{{paquete_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Agregar tipo de evento a paquete",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"paquete_id\": \"{{paquete_id}}\",\n  \"tipo_evento_id\": \"{{tipo_evento_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/paquete-tipos-evento",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquete-tipos-evento"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar tipo de evento de paquete",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/paquete-tipos-evento/{{paquete_id}}/{{tipo_evento_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "paquete-tipos-evento", "{{paquete_id}}", "{{tipo_evento_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservaciones",
+      "item": [
+        {
+          "name": "Listar reservaciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservaciones",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservaciones"]
+            }
+          }
+        },
+        {
+          "name": "Obtener reservacion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservaciones/{{reservacion_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservaciones", "{{reservacion_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear reservacion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"sucursal_id\": \"{{sucursal_id}}\",\n  \"tipo_evento_id\": \"{{tipo_evento_id}}\",\n  \"paquete_id\": \"{{paquete_id}}\",\n  \"nombre_cliente\": \"Juan\",\n  \"apellidos_cliente\": \"Perez Garcia\",\n  \"telefono_cliente\": \"3312345678\",\n  \"email_cliente\": \"juan@example.com\",\n  \"notas_cliente\": null,\n  \"nombre_festejado\": \"Sofia\",\n  \"edad_festejado\": 5,\n  \"fecha_evento\": \"2026-07-15\",\n  \"hora_inicio\": \"14:00:00\",\n  \"hora_fin\": \"16:00:00\",\n  \"numero_personas\": 25,\n  \"precio_base\": \"3500.00\",\n  \"precio_personas_extra\": \"750.00\",\n  \"precio_extras\": \"0.00\",\n  \"descuento\": \"0.00\",\n  \"precio_total\": \"4250.00\",\n  \"anticipo\": \"1000.00\",\n  \"estado\": \"pendiente\",\n  \"notas\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/reservaciones",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservaciones"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar reservacion",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"estado\": \"confirmada\",\n  \"notas\": \"Cliente confirmo por telefono\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/reservaciones/{{reservacion_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservaciones", "{{reservacion_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar reservacion",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservaciones/{{reservacion_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservaciones", "{{reservacion_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservacion Extras",
+      "item": [
+        {
+          "name": "Listar extras por reservacion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservacion-extras/reservacion/{{reservacion_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservacion-extras", "reservacion", "{{reservacion_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Obtener reservacion extra",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservacion-extras/{{reservacion_extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservacion-extras", "{{reservacion_extra_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Agregar extra a reservacion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"reservacion_id\": \"{{reservacion_id}}\",\n  \"extra_id\": \"{{extra_id}}\",\n  \"cantidad\": 1,\n  \"precio_unitario\": \"250.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/reservacion-extras",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservacion-extras"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar reservacion extra",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"cantidad\": 2,\n  \"precio_unitario\": \"250.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/reservacion-extras/{{reservacion_extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservacion-extras", "{{reservacion_extra_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar reservacion extra",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reservacion-extras/{{reservacion_extra_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reservacion-extras", "{{reservacion_extra_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pagos de Reservacion",
+      "item": [
+        {
+          "name": "Listar pagos por reservacion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/pagos-reservacion/reservacion/{{reservacion_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pagos-reservacion", "reservacion", "{{reservacion_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Obtener pago",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/pagos-reservacion/{{pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pagos-reservacion", "{{pago_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Crear pago",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"reservacion_id\": \"{{reservacion_id}}\",\n  \"metodo_pago_id\": \"{{metodo_pago_id}}\",\n  \"monto\": \"1000.00\",\n  \"notas\": \"Anticipo inicial\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pagos-reservacion",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pagos-reservacion"]
+            }
+          }
+        },
+        {
+          "name": "Actualizar pago",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"monto\": \"1500.00\",\n  \"notas\": \"Monto corregido\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pagos-reservacion/{{pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pagos-reservacion", "{{pago_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar pago",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/pagos-reservacion/{{pago_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "pagos-reservacion", "{{pago_id}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

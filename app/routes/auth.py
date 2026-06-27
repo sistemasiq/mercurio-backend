@@ -15,7 +15,7 @@ _USERS = {
         "name": "Oscar Magana Jaime",
         "email": "admin@oscarmajai.dev",
         "password": "123456",
-        "roles": ["admin"],
+        "roles": ["Administrador"],
     }
 }
 

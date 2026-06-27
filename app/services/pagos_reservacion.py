@@ -9,6 +9,11 @@ from app.models.pagos_reservacion import PagosReservacionModel
 from app.schemas.pagos_reservacion import PagosReservacionCreate, PagosReservacionUpdate
 
 
+async def listar(session: AsyncSession) -> list[PagosReservacionModel]:
+    result = await session.execute(select(PagosReservacionModel))
+    return result.scalars().all()
+
+
 async def listar_por_reservacion(session: AsyncSession, reservacion_id: UUID) -> list[PagosReservacionModel]:
     result = await session.execute(
         select(PagosReservacionModel).where(PagosReservacionModel.reservacion_id == reservacion_id)
