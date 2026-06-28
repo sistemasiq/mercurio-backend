@@ -11,5 +11,12 @@ build/
 venv/
 env/
 
+
 *.log
 .DS_Store
+
+# Archivos para almacenar fotos
+uploads/identificaciones/*
+!uploads/identificaciones/.gitignore
+uploads/llegadas/*
+!uploads/llegadas/.gitignore
