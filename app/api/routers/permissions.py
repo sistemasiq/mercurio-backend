@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import require_permission
 from app.core.database import get_db
@@ -79,7 +79,8 @@ async def get_permisos(
 async def reload_cache_endpoint(
     _: TokenData = Depends(require_permission("permisos:editar")),
     conn: asyncpg.Connection = Depends(get_db),
-) -> None:
+) -> Response:
     from app.services.permission_service import load_cache
 
     await load_cache(conn)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
