@@ -11,9 +11,16 @@ build/
 venv/
 env/
 
+
 *.log
 .DS_Store
 
 CLAUDE.md
 
 .idea
+
+# Archivos para almacenar fotos
+uploads/identificaciones/*
+!uploads/identificaciones/.gitignore
+uploads/llegadas/*
+!uploads/llegadas/.gitignore
