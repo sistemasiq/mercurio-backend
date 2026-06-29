@@ -1,0 +1,57 @@
+[project]
+name = "mercury-backend"
+version = "0.1.0"
+description = "API del sistema todo-en-uno para franquicias de restaurantes"
+requires-python = ">=3.11"
+
+# ----------------------------------------------------------------------
+# Ruff — linter + formatter (reemplaza flake8, black, isort)
+# ----------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear,
+# UP: pyupgrade, N: naming, ASYNC: reglas async, RUF: reglas ruff
+select = ["E", "W", "F", "I", "B", "UP", "N", "ASYNC", "RUF"]
+ignore = [
+    "B008",  # FastAPI usa llamadas en defaults (Depends()) — es correcto aquí
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802"]  # nombres de tests pueden no seguir convención estricta
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ----------------------------------------------------------------------
+# mypy — type checking
+# ----------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+show_error_codes = true
+# FastAPI/pydantic plugins
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Librerías sin stubs completos
+module = ["asyncpg.*", "passlib.*", "jose.*"]
+ignore_missing_imports = true
+
+# ----------------------------------------------------------------------
+# pytest
+# ----------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = "-ra -q"
