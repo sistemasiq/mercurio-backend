@@ -14,10 +14,11 @@ from app.services.branch_service import (
     InsufficientPermissionsError,
     NombreAlreadyExistsError,
     create_branch,
-    delete_branch,
+    deactivate_branch,
     get_branch,
     list_branches,
     update_branch,
+    reactivate_branch,
 )
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
@@ -85,14 +86,26 @@ async def put_branch(
         raise _CONFLICT from None
 
 
-@router.delete("/{branch_id}")
-async def delete_branch_endpoint(
+@router.patch("/{branch_id}/deactivate", status_code=status.HTTP_200_OK)
+async def deactivate_branch_endpoint(
     branch_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await delete_branch(conn, branch_id, current_user)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        await deactivate_branch(conn, branch_id, current_user)
+        return Response(status_code=status.HTTP_200_OK)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+
+@router.patch("/{branch_id}/reactivate", status_code=status.HTTP_200_OK)
+async def reactivate_branch_endpoint(
+    branch_id: UUID,
+    current_user: TokenData = Depends(require_permission("sucursales:editar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Response:
+    try:
+        await reactivate_branch(conn, branch_id, current_user)
+        return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None

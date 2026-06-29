@@ -7,11 +7,12 @@ import asyncpg
 from app.repositories.branch_repository import (
     SucursalRecord,
     create_sucursal,
-    delete_sucursal,
+    deactivate_sucursal,
     get_all_sucursales,
     get_sucursal_by_id,
     nombre_exists,
     update_sucursal,
+    reactivate_sucursal,
 )
 from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
@@ -35,7 +36,17 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
         nombre=record["nombre"],
         direccion=record["direccion"],
         telefono=record["telefono"],
+        correo=record["correo"],
+        administrador_id=record["administrador_id"],
+        administrador_name=record["administrador_name"],
+        clave=record["clave"],
         is_active=record["activo"],
+        creado=record["creado"],
+        creado_por=record["creado_por"],
+        creador_name=record["creador_name"],
+        modificado=record["modificado"],
+        modificado_por=record["modificado_por"],
+        modificador_name=record["modificador_name"],
     )
 
 
@@ -72,6 +83,10 @@ async def create_branch(
         nombre=data.nombre,
         direccion=data.direccion,
         telefono=data.telefono,
+        correo=data.correo,
+        administrador_id=data.administrador_id,
+        administrador_name=data.administrador_name,
+        clave=data.clave,
         creado_por=UUID(current_user.sub),
     )
     record = await get_sucursal_by_id(conn, sucursal_id)
@@ -94,9 +109,13 @@ async def update_branch(
     updated = await update_sucursal(
         conn,
         sucursal_id=branch_id,
+        clave=data.clave,
         nombre=data.nombre,
         direccion=data.direccion,
         telefono=data.telefono,
+        correo=data.correo,
+        administrador_id=data.administrador_id,
+        administrador_name=data.administrador_name,
         modificado_por=UUID(current_user.sub),
     )
     if not updated:
@@ -107,7 +126,12 @@ async def update_branch(
     return _to_response(record)
 
 
-async def delete_branch(conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData) -> None:
-    deleted = await delete_sucursal(conn, branch_id, UUID(current_user.sub))
-    if not deleted:
+async def deactivate_branch(conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData) -> None:
+    deactivated = await deactivate_sucursal(conn, branch_id, UUID(current_user.sub))
+    if not deactivated:
+        raise BranchNotFoundError
+
+async def reactivate_branch(conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData) -> None:
+    reactivated = await reactivate_sucursal(conn, branch_id, UUID(current_user.sub))
+    if not reactivated:
         raise BranchNotFoundError
