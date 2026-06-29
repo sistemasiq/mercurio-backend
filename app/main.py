@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, branches, permissions, users
+from app.api.routers import auth, branches, comandas, permissions, productos, users
 from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
 
@@ -48,3 +48,6 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(branches.router)
 app.include_router(permissions.router)
+# TODO: comandas y productos usan SQLAlchemy — deben migrarse a asyncpg antes de producción
+app.include_router(comandas.router, prefix="/comandas", tags=["comandas"])
+app.include_router(productos.router, prefix="/productos", tags=["productos"])
