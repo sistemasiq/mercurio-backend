@@ -1,48 +1,54 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.sucursal import SucursalModel
-from app.schemas.sucursal import SucursalCreate, SucursalUpdate
+from app.repositories import sucursal as repo
+from app.schemas.sucursal import SucursalCreate, SucursalOut, SucursalUpdate
 
 
-async def listar(session: AsyncSession) -> list[SucursalModel]:
-    result = await session.execute(
-        select(SucursalModel).where(SucursalModel.activo == True)
-    )
-    return result.scalars().all()
+async def listar(conn: asyncpg.Connection) -> list[SucursalOut]:
+    rows = await repo.listar(conn)
+    return [SucursalOut.model_validate(dict(r)) for r in rows]
 
 
-async def obtener(session: AsyncSession, sucursal_id: UUID) -> SucursalModel:
-    row = await session.get(SucursalModel, sucursal_id)
-    if not row or not row.activo:
+async def obtener(conn: asyncpg.Connection, sucursal_id: UUID) -> SucursalOut:
+    row = await repo.obtener_por_id(conn, sucursal_id)
+    if not row or not row["activo"]:
         raise NoEncontrado("Sucursal")
-    return row
+    return SucursalOut.model_validate(dict(row))
 
 
-async def crear(session: AsyncSession, body: SucursalCreate) -> SucursalModel:
-    sucursal = SucursalModel(**body.model_dump())
-    session.add(sucursal)
-    await session.commit()
-    await session.refresh(sucursal)
-    return sucursal
+async def crear(
+    conn: asyncpg.Connection, body: SucursalCreate, actor_id: UUID | None = None
+) -> SucursalOut:
+    row = await repo.crear(
+        conn,
+        nombre=body.nombre,
+        direccion=body.direccion,
+        telefono=body.telefono,
+        creado_por=actor_id,
+    )
+    return SucursalOut.model_validate(dict(row))
 
 
-async def actualizar(session: AsyncSession, sucursal_id: UUID, body: SucursalUpdate) -> SucursalModel:
-    row = await obtener(session, sucursal_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    body: SucursalUpdate,
+    actor_id: UUID | None = None,
+) -> SucursalOut:
+    actual = await obtener(conn, sucursal_id)
+    cambios = body.model_dump(exclude_unset=True)
+    if not cambios:
+        return actual
+    row = await repo.actualizar(conn, sucursal_id, cambios, modificado_por=actor_id)
+    assert row is not None  # garantizado por obtener() previo
+    return SucursalOut.model_validate(dict(row))
 
 
-async def eliminar(session: AsyncSession, sucursal_id: UUID) -> None:
-    row = await obtener(session, sucursal_id)
-    row.activo = False
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
+async def eliminar(
+    conn: asyncpg.Connection, sucursal_id: UUID, actor_id: UUID | None = None
+) -> None:
+    await obtener(conn, sucursal_id)
+    await repo.desactivar(conn, sucursal_id, modificado_por=actor_id)

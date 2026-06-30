@@ -1,6 +1,6 @@
-from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,8 @@ class ReservacionExtrasBase(BaseModel):
     precio_unitario: Decimal = Field(..., ge=0)
 
 
-class ReservacionExtrasCreate(ReservacionExtrasBase): pass
+class ReservacionExtrasCreate(ReservacionExtrasBase):
+    pass
 
 
 class ReservacionExtrasUpdate(BaseModel):
@@ -26,4 +27,4 @@ class ReservacionExtrasOut(ReservacionExtrasBase):
     creado: datetime
     creado_por: UUID | None
 
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}

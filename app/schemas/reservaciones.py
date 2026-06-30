@@ -1,7 +1,7 @@
-from uuid import UUID
-from datetime import date, time, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ class ReservacionesBase(BaseModel):
     paquete_id: UUID
     nombre_cliente: str = Field(..., max_length=150)
     apellidos_cliente: str | None = Field(None, max_length=150)
-    telefono_cliente: str = Field(..., max_length=10, pattern=r'^\d{10}$')
+    telefono_cliente: str = Field(..., max_length=10, pattern=r"^\d{10}$")
     email_cliente: str | None = Field(None, max_length=150)
     notas_cliente: str | None = None
     nombre_festejado: str | None = Field(None, max_length=150)
@@ -22,22 +22,23 @@ class ReservacionesBase(BaseModel):
     hora_fin: time
     numero_personas: int = Field(..., gt=0)
     precio_base: Decimal
-    precio_personas_extra: Decimal = Field(0, ge=0)
-    precio_extras: Decimal = Field(0, ge=0)
-    descuento: Decimal = Field(0, ge=0)
+    precio_personas_extra: Decimal = Field(Decimal("0"), ge=0)
+    precio_extras: Decimal = Field(Decimal("0"), ge=0)
+    descuento: Decimal = Field(Decimal("0"), ge=0)
     precio_total: Decimal
-    anticipo: Decimal = Field(0, ge=0)
-    estado: Literal['pendiente', 'confirmada', 'en_curso', 'completada', 'cancelada'] = 'pendiente'
+    anticipo: Decimal = Field(Decimal("0"), ge=0)
+    estado: Literal["pendiente", "confirmada", "en_curso", "completada", "cancelada"] = "pendiente"
     notas: str | None = None
 
 
-class ReservacionesCrear(ReservacionesBase): pass
+class ReservacionesCrear(ReservacionesBase):
+    pass
 
 
 class ReservacionesUpdate(BaseModel):
     nombre_cliente: str | None = Field(None, max_length=150)
     apellidos_cliente: str | None = Field(None, max_length=150)
-    telefono_cliente: str | None = Field(None, max_length=10, pattern=r'^\d{10}$')
+    telefono_cliente: str | None = Field(None, max_length=10, pattern=r"^\d{10}$")
     email_cliente: str | None = None
     notas_cliente: str | None = None
     nombre_festejado: str | None = None
@@ -52,7 +53,7 @@ class ReservacionesUpdate(BaseModel):
     descuento: Decimal | None = None
     precio_total: Decimal | None = None
     anticipo: Decimal | None = None
-    estado: Literal['pendiente', 'confirmada', 'en_curso', 'completada', 'cancelada'] | None = None
+    estado: Literal["pendiente", "confirmada", "en_curso", "completada", "cancelada"] | None = None
     notas: str | None = None
     activo: bool | None = None
 
@@ -66,4 +67,4 @@ class ReservacionesOut(ReservacionesBase):
     modificado: datetime | None
     modificado_por: UUID | None
 
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}

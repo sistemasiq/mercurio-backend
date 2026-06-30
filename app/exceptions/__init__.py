@@ -9,6 +9,14 @@ class CredencialesInvalidas(HTTPException):
         )
 
 
+class SinPermiso(HTTPException):
+    def __init__(self, mensaje: str = "No tienes permiso para realizar esta acción."):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": mensaje},
+        )
+
+
 class NoEncontrado(HTTPException):
     def __init__(self, recurso: str = "Recurso"):
         super().__init__(

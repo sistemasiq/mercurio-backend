@@ -8,8 +8,9 @@ class PaqueteTiposEventoBase(BaseModel):
     tipo_evento_id: UUID
 
 
-class PaqueteTiposEventoCreate(PaqueteTiposEventoBase): pass
+class PaqueteTiposEventoCreate(PaqueteTiposEventoBase):
+    pass
 
 
 class PaqueteTiposEventoOut(PaqueteTiposEventoBase):
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}

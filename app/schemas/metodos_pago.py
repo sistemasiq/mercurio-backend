@@ -1,5 +1,5 @@
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +9,8 @@ class MetodosPagoBase(BaseModel):
     descripcion: str | None = None
 
 
-class MetodosPagoCreate(MetodosPagoBase): pass
+class MetodosPagoCreate(MetodosPagoBase):
+    pass
 
 
 class MetodosPagoUpdate(BaseModel):
@@ -26,4 +27,4 @@ class MetodosPagoOut(MetodosPagoBase):
     modificado: datetime | None
     modificado_por: UUID | None
 
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}
