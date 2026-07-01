@@ -1,6 +1,6 @@
-from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,8 @@ class PagosReservacionBase(BaseModel):
     notas: str | None = None
 
 
-class PagosReservacionCreate(PagosReservacionBase): pass
+class PagosReservacionCreate(PagosReservacionBase):
+    pass
 
 
 class PagosReservacionUpdate(BaseModel):
@@ -26,4 +27,4 @@ class PagosReservacionOut(PagosReservacionBase):
     fecha_pago: datetime
     creado_por: UUID | None = None
 
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}

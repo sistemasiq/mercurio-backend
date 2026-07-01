@@ -37,4 +37,4 @@ class PaquetesOut(PaquetesBase):
     modificado: datetime | None
     modificado_por: UUID | None
 
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}

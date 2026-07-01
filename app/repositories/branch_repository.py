@@ -24,6 +24,7 @@ class SucursalRecord(TypedDict):
     modificado_por: UUID | None
     modificador_name: str | None
 
+
 def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
     return SucursalRecord(
         id=row["id"],
@@ -47,7 +48,7 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
 # Usamos 'uc' para usuario_creador y 'um' para usuario_modificador
 _SELECT = """
     SELECT s.id, s.nombre, s.direccion, s.telefono, s.correo,
-           s.administrador_id, s.administrador_name, s.clave, s.activo, 
+           s.administrador_id, s.administrador_name, s.clave, s.activo,
            s.creado, s.creado_por, uc.nombre_completo AS creador_name,
            s.modificado, s.modificado_por, um.nombre_completo AS modificador_name
     FROM public.sucursales s
@@ -85,7 +86,8 @@ async def create_sucursal(
     row = await conn.fetchrow(
         """
         INSERT INTO public.sucursales
-            (nombre, direccion, telefono, correo, administrador_id, administrador_name, clave, creado_por)
+            (nombre, direccion, telefono, correo, administrador_id, administrador_name,
+             clave, creado_por)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         """,
@@ -122,14 +124,14 @@ async def update_sucursal(
             modificado = NOW(), modificado_por = $8::uuid
         WHERE id = $9::uuid AND activo = TRUE
         """,
-        nombre,             # $1
-        direccion,          # $2
-        telefono,           # $3
-        correo,             # $4
-        administrador_id,   # $5
-        administrador_name, # $6
-        clave,              # $7
-        modificado_por,     # $8
+        nombre,  # $1
+        direccion,  # $2
+        telefono,  # $3
+        correo,  # $4
+        administrador_id,  # $5
+        administrador_name,  # $6
+        clave,  # $7
+        modificado_por,  # $8
         sucursal_id,
     )
     return str(result) == "UPDATE 1"
@@ -148,6 +150,7 @@ async def deactivate_sucursal(
         sucursal_id,
     )
     return str(result) == "UPDATE 1"
+
 
 async def reactivate_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID, modificado_por: UUID

@@ -74,7 +74,7 @@ async def get_permisos(
 
 
 # Endpoint de uso interno: fuerza recarga del caché (útil en multi-instancia)
-#@router.post("/cache/reload", status_code=status.HTTP_204_NO_CONTENT)
+# @router.post("/cache/reload", status_code=status.HTTP_204_NO_CONTENT)
 @router.post("/cache/reload", status_code=status.HTTP_200_OK)
 async def reload_cache_endpoint(
     _: TokenData = Depends(require_permission("permisos:editar")),

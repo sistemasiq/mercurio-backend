@@ -1,8 +1,8 @@
+from app.core.config import settings  # Importamos la configuración que ya hiciste
 from sqlalchemy import create_engine, text
-from app.core.config import settings # Importamos la configuración que ya hiciste
 
 # Usamos la URL que Pydantic leyó del .env
-DATABASE_URL = settings.database_url 
+DATABASE_URL = settings.database_url
 
 try:
     print(f"Intentando conectar a: {DATABASE_URL}")
