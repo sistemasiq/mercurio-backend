@@ -1,0 +1,23 @@
+from typing import Any
+from uuid import UUID
+
+import asyncpg
+from fastapi import APIRouter, Depends
+
+from app.core.database import get_db
+from app.schemas.pulseras import PulseraResponse
+from app.services.pulseras import get_pulseras_by_sucursal_id
+
+router = APIRouter(prefix="/api/pulseras", tags=["Pulseras"])
+
+
+@router.get(
+    "/{sucursal_id}",
+    response_model=list[PulseraResponse],
+    summary="Listar pulseras disponibles",
+    description="Obtiene pulseras activas que no están siendo utilizadas en estancias en curso.",
+)
+async def get_pulseras_disponibles(
+    sucursal_id: UUID, conn: asyncpg.Connection = Depends(get_db)
+) -> list[dict[str, Any]]:
+    return await get_pulseras_by_sucursal_id(conn, sucursal_id)
