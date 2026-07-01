@@ -1,52 +1,45 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.extras import ExtrasModel
-from app.schemas.extras import ExtrasCrear, ExtrasUpdate
+from app.repositories import extras_repository
+from app.schemas.extras import ExtrasCrear, ExtrasOut, ExtrasUpdate
 
 
-async def listar(session: AsyncSession, sucursal_id: UUID | None = None) -> list[ExtrasModel]:
-    """Devuelve extras de una sucursal específica más los globales (sucursal_id=None)."""
-    query = select(ExtrasModel).where(ExtrasModel.activo == True)
-    if sucursal_id:
-        query = query.where(
-            (ExtrasModel.sucursal_id == sucursal_id) | (ExtrasModel.sucursal_id == None)
-        )
-    result = await session.execute(query)
-    return result.scalars().all()
+async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[ExtrasOut]:
+    rows = await extras_repository.listar(conn, sucursal_id)
+    return [ExtrasOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, extra_id: UUID) -> ExtrasModel:
-    row = await session.get(ExtrasModel, extra_id)
-    if not row or not row.activo:
+async def obtener(conn: asyncpg.Connection, extra_id: UUID) -> ExtrasOut:
+    row = await extras_repository.obtener(conn, extra_id)
+    if not row or not row["activo"]:
         raise NoEncontrado("Extra")
-    return row
+    return ExtrasOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: ExtrasCrear) -> ExtrasModel:
-    extra = ExtrasModel(**body.model_dump())
-    session.add(extra)
-    await session.commit()
-    await session.refresh(extra)
-    return extra
+async def crear(conn: asyncpg.Connection, body: ExtrasCrear) -> ExtrasOut:
+    row = await extras_repository.crear(
+        conn,
+        sucursal_id=body.sucursal_id,
+        nombre=body.nombre,
+        descripcion=body.descripcion,
+        precio=body.precio,
+        unidad=body.unidad,
+    )
+    return ExtrasOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, extra_id: UUID, body: ExtrasUpdate) -> ExtrasModel:
-    row = await obtener(session, extra_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(conn: asyncpg.Connection, extra_id: UUID, body: ExtrasUpdate) -> ExtrasOut:
+    await obtener(conn, extra_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await extras_repository.actualizar(conn, extra_id, updates)
+    if not row:
+        raise NoEncontrado("Extra")
+    return ExtrasOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, extra_id: UUID) -> None:
-    row = await obtener(session, extra_id)
-    row.activo = False
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, extra_id: UUID) -> None:
+    await obtener(conn, extra_id)
+    await extras_repository.eliminar(conn, extra_id)

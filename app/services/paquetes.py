@@ -1,49 +1,49 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.paquetes import PaqueteModel
-from app.schemas.paquetes import PaquetesCreate, PaquetesUpdate
+from app.repositories import paquetes_repository
+from app.schemas.paquetes import PaquetesCreate, PaquetesOut, PaquetesUpdate
 
 
-async def listar(session: AsyncSession, sucursal_id: UUID | None = None) -> list[PaqueteModel]:
-    query = select(PaqueteModel).where(PaqueteModel.activo == True)
-    if sucursal_id:
-        query = query.where(PaqueteModel.sucursal_id == sucursal_id)
-    result = await session.execute(query)
-    return result.scalars().all()
+async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[PaquetesOut]:
+    rows = await paquetes_repository.listar(conn, sucursal_id)
+    return [PaquetesOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, paquete_id: UUID) -> PaqueteModel:
-    row = await session.get(PaqueteModel, paquete_id)
-    if not row or not row.activo:
+async def obtener(conn: asyncpg.Connection, paquete_id: UUID) -> PaquetesOut:
+    row = await paquetes_repository.obtener(conn, paquete_id)
+    if not row or not row["activo"]:
         raise NoEncontrado("Paquete")
-    return row
+    return PaquetesOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: PaquetesCreate) -> PaqueteModel:
-    paquete = PaqueteModel(**body.model_dump())
-    session.add(paquete)
-    await session.commit()
-    await session.refresh(paquete)
-    return paquete
+async def crear(conn: asyncpg.Connection, body: PaquetesCreate) -> PaquetesOut:
+    row = await paquetes_repository.crear(
+        conn,
+        sucursal_id=body.sucursal_id,
+        nombre=body.nombre,
+        descripcion=body.descripcion,
+        duracion_minutos=body.duracion_minutos,
+        personas_incluidas=body.personas_incluidas,
+        precio_base=body.precio_base,
+        precio_persona_extra=body.precio_persona_extra,
+    )
+    return PaquetesOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, paquete_id: UUID, body: PaquetesUpdate) -> PaqueteModel:
-    row = await obtener(session, paquete_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection, paquete_id: UUID, body: PaquetesUpdate
+) -> PaquetesOut:
+    await obtener(conn, paquete_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await paquetes_repository.actualizar(conn, paquete_id, updates)
+    if not row:
+        raise NoEncontrado("Paquete")
+    return PaquetesOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, paquete_id: UUID) -> None:
-    row = await obtener(session, paquete_id)
-    row.activo = False
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, paquete_id: UUID) -> None:
+    await obtener(conn, paquete_id)
+    await paquetes_repository.eliminar(conn, paquete_id)

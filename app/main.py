@@ -8,6 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routers import auth, branches, comandas, permissions, productos, users
 from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
+from app.routes import (
+    extras,
+    metodos_pago,
+    pagos_reservacion,
+    paquete_tipos_evento,
+    paquetes,
+    reservacion_extras,
+    reservaciones,
+    tipos_evento,
+)
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.DEBUG)
@@ -48,6 +58,13 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(branches.router)
 app.include_router(permissions.router)
-# TODO: comandas y productos usan SQLAlchemy — deben migrarse a asyncpg antes de producción
 app.include_router(comandas.router, prefix="/comandas", tags=["comandas"])
 app.include_router(productos.router, prefix="/productos", tags=["productos"])
+app.include_router(extras.router)
+app.include_router(metodos_pago.router)
+app.include_router(pagos_reservacion.router)
+app.include_router(paquetes.router)
+app.include_router(paquete_tipos_evento.router)
+app.include_router(reservaciones.router)
+app.include_router(reservacion_extras.router)
+app.include_router(tipos_evento.router)

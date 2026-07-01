@@ -1,6 +1,6 @@
-from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,10 +12,11 @@ class PaquetesBase(BaseModel):
     duracion_minutos: int = Field(120, gt=0)
     personas_incluidas: int = Field(10, gt=0)
     precio_base: Decimal = Field(..., ge=0)
-    precio_persona_extra: Decimal = Field(0, ge=0)
+    precio_persona_extra: Decimal = Field(Decimal(0), ge=0)
 
 
-class PaquetesCreate(PaquetesBase): pass
+class PaquetesCreate(PaquetesBase):
+    pass
 
 
 class PaquetesUpdate(BaseModel):

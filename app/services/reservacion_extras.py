@@ -1,46 +1,52 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.reservacion_extras import ReservacionExtrasModel
-from app.schemas.reservacion_extras import ReservacionExtrasCreate, ReservacionExtrasUpdate
+from app.repositories import reservacion_extras_repository
+from app.schemas.reservacion_extras import (
+    ReservacionExtrasCreate,
+    ReservacionExtrasOut,
+    ReservacionExtrasUpdate,
+)
 
 
-async def listar_por_reservacion(session: AsyncSession, reservacion_id: UUID) -> list[ReservacionExtrasModel]:
-    result = await session.execute(
-        select(ReservacionExtrasModel).where(ReservacionExtrasModel.reservacion_id == reservacion_id)
-    )
-    return result.scalars().all()
+async def listar_por_reservacion(
+    conn: asyncpg.Connection, reservacion_id: UUID
+) -> list[ReservacionExtrasOut]:
+    rows = await reservacion_extras_repository.listar_por_reservacion(conn, reservacion_id)
+    return [ReservacionExtrasOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, reservacion_extra_id: UUID) -> ReservacionExtrasModel:
-    row = await session.get(ReservacionExtrasModel, reservacion_extra_id)
+async def obtener(conn: asyncpg.Connection, reservacion_extra_id: UUID) -> ReservacionExtrasOut:
+    row = await reservacion_extras_repository.obtener(conn, reservacion_extra_id)
     if not row:
         raise NoEncontrado("Extra de reservación")
-    return row
+    return ReservacionExtrasOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: ReservacionExtrasCreate) -> ReservacionExtrasModel:
-    extra = ReservacionExtrasModel(**body.model_dump())
-    session.add(extra)
-    await session.commit()
-    await session.refresh(extra)
-    return extra
+async def crear(conn: asyncpg.Connection, body: ReservacionExtrasCreate) -> ReservacionExtrasOut:
+    row = await reservacion_extras_repository.crear(
+        conn,
+        reservacion_id=body.reservacion_id,
+        extra_id=body.extra_id,
+        cantidad=body.cantidad,
+        precio_unitario=body.precio_unitario,
+    )
+    return ReservacionExtrasOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, reservacion_extra_id: UUID, body: ReservacionExtrasUpdate) -> ReservacionExtrasModel:
-    row = await obtener(session, reservacion_extra_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection, reservacion_extra_id: UUID, body: ReservacionExtrasUpdate
+) -> ReservacionExtrasOut:
+    await obtener(conn, reservacion_extra_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await reservacion_extras_repository.actualizar(conn, reservacion_extra_id, updates)
+    if not row:
+        raise NoEncontrado("Extra de reservación")
+    return ReservacionExtrasOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, reservacion_extra_id: UUID) -> None:
-    row = await obtener(session, reservacion_extra_id)
-    await session.delete(row)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, reservacion_extra_id: UUID) -> None:
+    await obtener(conn, reservacion_extra_id)
+    await reservacion_extras_repository.eliminar(conn, reservacion_extra_id)

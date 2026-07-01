@@ -1,7 +1,7 @@
-from uuid import UUID
-from datetime import date, time, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -22,16 +22,17 @@ class ReservacionesBase(BaseModel):
     hora_fin: time
     numero_personas: int = Field(..., gt=0)
     precio_base: Decimal
-    precio_personas_extra: Decimal = Field(0, ge=0)
-    precio_extras: Decimal = Field(0, ge=0)
-    descuento: Decimal = Field(0, ge=0)
+    precio_personas_extra: Decimal = Field(Decimal(0), ge=0)
+    precio_extras: Decimal = Field(Decimal(0), ge=0)
+    descuento: Decimal = Field(Decimal(0), ge=0)
     precio_total: Decimal
-    anticipo: Decimal = Field(0, ge=0)
+    anticipo: Decimal = Field(Decimal(0), ge=0)
     estado: Literal['pendiente', 'confirmada', 'en_curso', 'completada', 'cancelada'] = 'pendiente'
     notas: str | None = None
 
 
-class ReservacionesCrear(ReservacionesBase): pass
+class ReservacionesCrear(ReservacionesBase):
+    pass
 
 
 class ReservacionesUpdate(BaseModel):

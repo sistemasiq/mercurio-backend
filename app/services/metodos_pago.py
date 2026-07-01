@@ -1,54 +1,44 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from sqlalchemy.exc import IntegrityError
+import asyncpg
 
 from app.exceptions import Conflicto, NoEncontrado
-from app.models.metodos_pago import MetodosPagoModel
-from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoUpdate
+from app.repositories import metodos_pago_repository
+from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoOut, MetodosPagoUpdate
 
 
-async def listar(session: AsyncSession) -> list[MetodosPagoModel]:
-    result = await session.execute(
-        select(MetodosPagoModel).where(MetodosPagoModel.activo == True)
-    )
-    return result.scalars().all()
+async def listar(conn: asyncpg.Connection) -> list[MetodosPagoOut]:
+    rows = await metodos_pago_repository.listar(conn)
+    return [MetodosPagoOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, metodo_pago_id: UUID) -> MetodosPagoModel:
-    row = await session.get(MetodosPagoModel, metodo_pago_id)
-    if not row or not row.activo:
+async def obtener(conn: asyncpg.Connection, metodo_pago_id: UUID) -> MetodosPagoOut:
+    row = await metodos_pago_repository.obtener(conn, metodo_pago_id)
+    if not row or not row["activo"]:
         raise NoEncontrado("Método de pago")
-    return row
+    return MetodosPagoOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: MetodosPagoCreate) -> MetodosPagoModel:
-    metodo = MetodosPagoModel(**body.model_dump())
-    session.add(metodo)
-    try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
+async def crear(conn: asyncpg.Connection, body: MetodosPagoCreate) -> MetodosPagoOut:
+    if await metodos_pago_repository.nombre_existe(conn, body.nombre):
         raise Conflicto(f"Ya existe un método de pago con el nombre '{body.nombre}'.")
-    await session.refresh(metodo)
-    return metodo
+    row = await metodos_pago_repository.crear(
+        conn, nombre=body.nombre, descripcion=body.descripcion
+    )
+    return MetodosPagoOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, metodo_pago_id: UUID, body: MetodosPagoUpdate) -> MetodosPagoModel:
-    row = await obtener(session, metodo_pago_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection, metodo_pago_id: UUID, body: MetodosPagoUpdate
+) -> MetodosPagoOut:
+    await obtener(conn, metodo_pago_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await metodos_pago_repository.actualizar(conn, metodo_pago_id, updates)
+    if not row:
+        raise NoEncontrado("Método de pago")
+    return MetodosPagoOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, metodo_pago_id: UUID) -> None:
-    row = await obtener(session, metodo_pago_id)
-    row.activo = False
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, metodo_pago_id: UUID) -> None:
+    await obtener(conn, metodo_pago_id)
+    await metodos_pago_repository.eliminar(conn, metodo_pago_id)

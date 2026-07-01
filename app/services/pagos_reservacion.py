@@ -1,46 +1,54 @@
+from datetime import UTC, datetime
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.pagos_reservacion import PagosReservacionModel
-from app.schemas.pagos_reservacion import PagosReservacionCreate, PagosReservacionUpdate
+from app.repositories import pagos_reservacion_repository
+from app.schemas.pagos_reservacion import (
+    PagosReservacionCreate,
+    PagosReservacionOut,
+    PagosReservacionUpdate,
+)
 
 
-async def listar_por_reservacion(session: AsyncSession, reservacion_id: UUID) -> list[PagosReservacionModel]:
-    result = await session.execute(
-        select(PagosReservacionModel).where(PagosReservacionModel.reservacion_id == reservacion_id)
-    )
-    return result.scalars().all()
+async def listar_por_reservacion(
+    conn: asyncpg.Connection, reservacion_id: UUID
+) -> list[PagosReservacionOut]:
+    rows = await pagos_reservacion_repository.listar_por_reservacion(conn, reservacion_id)
+    return [PagosReservacionOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, pago_id: UUID) -> PagosReservacionModel:
-    row = await session.get(PagosReservacionModel, pago_id)
+async def obtener(conn: asyncpg.Connection, pago_id: UUID) -> PagosReservacionOut:
+    row = await pagos_reservacion_repository.obtener(conn, pago_id)
     if not row:
         raise NoEncontrado("Pago")
-    return row
+    return PagosReservacionOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: PagosReservacionCreate) -> PagosReservacionModel:
-    pago = PagosReservacionModel(**body.model_dump(), fecha_pago=datetime.now(timezone.utc))
-    session.add(pago)
-    await session.commit()
-    await session.refresh(pago)
-    return pago
+async def crear(conn: asyncpg.Connection, body: PagosReservacionCreate) -> PagosReservacionOut:
+    row = await pagos_reservacion_repository.crear(
+        conn,
+        reservacion_id=body.reservacion_id,
+        metodo_pago_id=body.metodo_pago_id,
+        monto=body.monto,
+        fecha_pago=datetime.now(UTC),
+        notas=body.notas,
+    )
+    return PagosReservacionOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, pago_id: UUID, body: PagosReservacionUpdate) -> PagosReservacionModel:
-    row = await obtener(session, pago_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection, pago_id: UUID, body: PagosReservacionUpdate
+) -> PagosReservacionOut:
+    await obtener(conn, pago_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await pagos_reservacion_repository.actualizar(conn, pago_id, updates)
+    if not row:
+        raise NoEncontrado("Pago")
+    return PagosReservacionOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, pago_id: UUID) -> None:
-    row = await obtener(session, pago_id)
-    await session.delete(row)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, pago_id: UUID) -> None:
+    await obtener(conn, pago_id)
+    await pagos_reservacion_repository.eliminar(conn, pago_id)

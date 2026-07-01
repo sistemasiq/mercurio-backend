@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 
 
 class CredencialesInvalidas(HTTPException):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_CREDENTIALS", "message": "Credenciales incorrectas."},
@@ -10,7 +10,7 @@ class CredencialesInvalidas(HTTPException):
 
 
 class NoEncontrado(HTTPException):
-    def __init__(self, recurso: str = "Recurso"):
+    def __init__(self, recurso: str = "Recurso") -> None:
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "NOT_FOUND", "message": f"{recurso} no encontrado."},
@@ -18,7 +18,7 @@ class NoEncontrado(HTTPException):
 
 
 class Conflicto(HTTPException):
-    def __init__(self, mensaje: str = "El registro ya existe."):
+    def __init__(self, mensaje: str = "El registro ya existe.") -> None:
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "CONFLICT", "message": mensaje},

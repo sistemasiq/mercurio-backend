@@ -1,48 +1,42 @@
 from uuid import UUID
-from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.tipo_evento import TipoEventoModel
-from app.schemas.tipos_evento import TiposEventoCreate, TiposEventoUpdate
+from app.repositories import tipos_evento_repository
+from app.schemas.tipos_evento import TiposEventoCreate, TiposEventoOut, TiposEventoUpdate
 
 
-async def listar(session: AsyncSession) -> list[TipoEventoModel]:
-    result = await session.execute(
-        select(TipoEventoModel).where(TipoEventoModel.activo == True)
-    )
-    return result.scalars().all()
+async def listar(conn: asyncpg.Connection) -> list[TiposEventoOut]:
+    rows = await tipos_evento_repository.listar(conn)
+    return [TiposEventoOut.model_validate(r) for r in rows]
 
 
-async def obtener(session: AsyncSession, tipo_evento_id: UUID) -> TipoEventoModel:
-    row = await session.get(TipoEventoModel, tipo_evento_id)
-    if not row or not row.activo:
+async def obtener(conn: asyncpg.Connection, tipo_evento_id: UUID) -> TiposEventoOut:
+    row = await tipos_evento_repository.obtener(conn, tipo_evento_id)
+    if not row or not row["activo"]:
         raise NoEncontrado("Tipo de evento")
-    return row
+    return TiposEventoOut.model_validate(row)
 
 
-async def crear(session: AsyncSession, body: TiposEventoCreate) -> TipoEventoModel:
-    tipo = TipoEventoModel(**body.model_dump())
-    session.add(tipo)
-    await session.commit()
-    await session.refresh(tipo)
-    return tipo
+async def crear(conn: asyncpg.Connection, body: TiposEventoCreate) -> TiposEventoOut:
+    row = await tipos_evento_repository.crear(
+        conn, nombre=body.nombre, descripcion=body.descripcion
+    )
+    return TiposEventoOut.model_validate(row)
 
 
-async def actualizar(session: AsyncSession, tipo_evento_id: UUID, body: TiposEventoUpdate) -> TipoEventoModel:
-    row = await obtener(session, tipo_evento_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(row, field, value)
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
-    await session.refresh(row)
-    return row
+async def actualizar(
+    conn: asyncpg.Connection, tipo_evento_id: UUID, body: TiposEventoUpdate
+) -> TiposEventoOut:
+    await obtener(conn, tipo_evento_id)
+    updates = body.model_dump(exclude_unset=True)
+    row = await tipos_evento_repository.actualizar(conn, tipo_evento_id, updates)
+    if not row:
+        raise NoEncontrado("Tipo de evento")
+    return TiposEventoOut.model_validate(row)
 
 
-async def eliminar(session: AsyncSession, tipo_evento_id: UUID) -> None:
-    row = await obtener(session, tipo_evento_id)
-    row.activo = False
-    row.modificado = datetime.now(timezone.utc)
-    await session.commit()
+async def eliminar(conn: asyncpg.Connection, tipo_evento_id: UUID) -> None:
+    await obtener(conn, tipo_evento_id)
+    await tipos_evento_repository.eliminar(conn, tipo_evento_id)
