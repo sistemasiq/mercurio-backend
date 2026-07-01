@@ -1,13 +1,25 @@
-# TODO: migrar de SQLAlchemy a asyncpg (ver CLAUDE.md — no ORM)
+"""
+app/api/routers/productos.py
+Router de productos — solo delega al service.
+SAD §3.2 / Regla 11.4: el router nunca accede a un repository ni escribe SQL.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Any
+
+import asyncpg
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session  # type: ignore[import-not-found]
 
 from app.core.database import get_db
-from app.repositories import producto_repository
+from app.services import producto_service
 
 router = APIRouter()
 
 
 @router.get("/")
-def listar_productos(db: Session = Depends(get_db)):  # type: ignore[no-untyped-def]
-    return producto_repository.get_productos_activos(db)
+async def listar_productos(conn: asyncpg.Connection = Depends(get_db)) -> Any:
+    """Lista todos los productos activos."""
+    productos = await producto_service.listar_activos(conn)
+    return [asdict(p) for p in productos]

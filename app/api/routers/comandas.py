@@ -1,14 +1,21 @@
-# app/api/routers/comandas.py
-# TODO: migrar de SQLAlchemy a asyncpg (ver CLAUDE.md — no ORM)
-import traceback
+"""
+app/api/routers/comandas.py
+Router de comandas — solo valida entrada y delega al service.
+SAD §3.2 / Regla 11.4: el router nunca accede a un repository ni escribe SQL.
+"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from __future__ import annotations
+
+from dataclasses import asdict
+from typing import Any
+
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session  # type: ignore[import-not-found]
 
 from app.core.database import get_db
-from app.repositories import comanda_repository
-from app.schemas import comanda as schemas
+from app.schemas.comanda import ComandaCreate
+from app.services import comanda_service
 
 router = APIRouter()
 
@@ -17,32 +24,43 @@ class CambioEstadoRequest(BaseModel):
     estado_actual: str
 
 
-@router.post("/", response_model=schemas.Comanda)
-def post_comanda(comanda_in: schemas.ComandaCreate, db: Session = Depends(get_db)):  # type: ignore[no-untyped-def]
-    print("--- JSON RECIBIDO ---")
-    print(comanda_in.dict())
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def crear_comanda(
+    comanda_in: ComandaCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Any:
+    """Crea una comanda nueva con sus detalles."""
     try:
-        return comanda_repository.crear_comanda_con_detalles(db, comanda_in)
-    except Exception as e:
-        print("--- ERROR DETALLADO EN EL BACKEND ---")
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.patch("/{comanda_id}/estado")
-def cambiar_estado(  # type: ignore[no-untyped-def]
-    comanda_id: str,
-    data: CambioEstadoRequest,
-    db: Session = Depends(get_db),
-):
-    comanda_actualizada = comanda_repository.actualizar_estado_comanda(
-        db, comanda_id, data.estado_actual
-    )
-    if not comanda_actualizada:
-        raise HTTPException(status_code=404, detail="Comanda no encontrada")
-    return {"message": "Estado actualizado con éxito"}
+        comanda = await comanda_service.crear_comanda(conn, comanda_in)
+        return asdict(comanda)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/")
-def listar_comandas(db: Session = Depends(get_db)):  # type: ignore[no-untyped-def]
-    return comanda_repository.get_comandas_pendientes(db)
+async def listar_comandas(conn: asyncpg.Connection = Depends(get_db)) -> Any:
+    """Lista todas las comandas activas (P, E, L)."""
+    comandas = await comanda_service.listar_pendientes(conn)
+    return [asdict(c) for c in comandas]
+
+
+@router.patch("/{comanda_id}/estado")
+async def cambiar_estado(
+    comanda_id: str,
+    data: CambioEstadoRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Any:
+    """Actualiza el estado de una comanda."""
+    comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)
+    if comanda is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comanda no encontrada",
+        )
+    return {"message": "Estado actualizado con éxito"}

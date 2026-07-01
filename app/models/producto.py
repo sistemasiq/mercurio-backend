@@ -1,21 +1,27 @@
-# TODO: migrar de SQLAlchemy a asyncpg (ver CLAUDE.md — no ORM)
-from app.core.database import Base  # type: ignore[attr-defined]
-from sqlalchemy import Boolean, Column, DateTime, Numeric, String  # type: ignore[import-not-found]
-from sqlalchemy.sql import func  # type: ignore[import-not-found]
+"""
+app/models/producto.py
+Entidad de dominio — dataclass puro, sin ORM.
+Regla 11.1 SAD: prohibido SQLAlchemy en este proyecto.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 
 
-class Producto(Base):  # type: ignore[misc]
-    __tablename__ = "productos"
-
-    id = Column(String, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False, unique=True)
-    precio_unitario = Column(Numeric(10, 2), nullable=False)
-    tipo = Column(String, nullable=False)
-    descripcion = Column(String, nullable=True)
-    imagen = Column(String(255), nullable=True)
-    sucursal_id = Column(String, nullable=False)
-    activo = Column(Boolean, default=True)
-    creado = Column(DateTime(timezone=True), server_default=func.now())
-    creado_por = Column(String, nullable=True)
-    modificado = Column(DateTime(timezone=True), nullable=True)
-    modificado_por = Column(String, nullable=True)
+@dataclass
+class Producto:
+    id: str
+    nombre: str
+    precio_unitario: Decimal
+    tipo: str  # 'A' | 'B' | 'E' | 'S'
+    sucursal_id: str
+    activo: bool = True
+    descripcion: str | None = None
+    imagen: str | None = None
+    creado: datetime | None = None
+    creado_por: str | None = None
+    modificado: datetime | None = None
+    modificado_por: str | None = None
