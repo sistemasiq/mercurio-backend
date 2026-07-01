@@ -1,8 +1,14 @@
-import asyncpg
+from typing import Any
 from uuid import UUID
 
-async def get_activos_by_sucursal_id(conn: asyncpg.Connection,sucursal_id: UUID):
-    rows = await conn.fetch("""
+import asyncpg
+
+
+async def get_activos_by_sucursal_id(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
        SELECT
            r.id AS registro_id,
            dr.id AS detalle_id,
@@ -48,7 +54,8 @@ async def get_activos_by_sucursal_id(conn: asyncpg.Connection,sucursal_id: UUID)
 
 
        ORDER BY dr.entrada;
-   """, sucursal_id)
-
+   """,
+        sucursal_id,
+    )
 
     return [dict(r) for r in rows]

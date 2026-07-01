@@ -1,14 +1,20 @@
-import asyncpg
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-async def get_precio_individual_by_id(conn: asyncpg.Connection, prducto_id: UUID):
-    return await conn.fetchval(
-            "SELECT precio_unitario FROM productos WHERE id = $1",
-                prducto_id
-    )
+import asyncpg
 
-async def get_productos_estancia_by_sucursal_id(conn: asyncpg.Connection, sucursal_id: UUID):
-    rows = await conn.fetch("""
+
+async def get_precio_individual_by_id(conn: asyncpg.Connection, prducto_id: UUID) -> Decimal | None:
+    result = await conn.fetchval("SELECT precio_unitario FROM productos WHERE id = $1", prducto_id)
+    return Decimal(result) if result is not None else None
+
+
+async def get_productos_estancia_by_sucursal_id(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
        SELECT
            id,
            nombre,
@@ -19,7 +25,8 @@ async def get_productos_estancia_by_sucursal_id(conn: asyncpg.Connection, sucurs
          AND activo = TRUE
          AND tipo = 'E'
        ORDER BY precio_unitario
-   """, sucursal_id)
-
+   """,
+        sucursal_id,
+    )
 
     return [dict(r) for r in rows]

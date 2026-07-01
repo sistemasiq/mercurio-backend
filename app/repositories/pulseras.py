@@ -1,9 +1,14 @@
-import asyncpg
+from typing import Any
 from uuid import UUID
 
+import asyncpg
 
-async def get_pulseras_by_sucursal(conn: asyncpg.Connection, sucursal_id: UUID):
-    rows = await conn.fetch("""
+
+async def get_pulseras_by_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
        SELECT
            p.id,
            p.pulsera_rfid
@@ -20,7 +25,8 @@ async def get_pulseras_by_sucursal(conn: asyncpg.Connection, sucursal_id: UUID):
                  AND dr.salida IS NULL
          )
        ORDER BY p.pulsera_rfid
-   """, sucursal_id)
-
+   """,
+        sucursal_id,
+    )
 
     return [dict(r) for r in rows]
