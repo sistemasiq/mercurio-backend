@@ -13,7 +13,9 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
 from app.services import comanda_service
 
@@ -31,6 +33,7 @@ class CambioEstadoRequest(BaseModel):
 async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
 ) -> Any:
     """Crea una comanda nueva con sus detalles."""
     try:
@@ -44,7 +47,10 @@ async def crear_comanda(
 
 
 @router.get("/")
-async def listar_comandas(conn: asyncpg.Connection = Depends(get_db)) -> Any:
+async def listar_comandas(
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
+) -> Any:
     """Lista todas las comandas activas (P, E, L)."""
     comandas = await comanda_service.listar_pendientes(conn)
     return [asdict(c) for c in comandas]
@@ -55,6 +61,7 @@ async def cambiar_estado(
     comanda_id: str,
     data: CambioEstadoRequest,
     conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
 ) -> Any:
     """Actualiza el estado de una comanda."""
     comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)

@@ -12,14 +12,19 @@ from typing import Any
 import asyncpg
 from fastapi import APIRouter, Depends
 
+from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.schemas.auth import TokenData
 from app.services import producto_service
 
 router = APIRouter()
 
 
 @router.get("/")
-async def listar_productos(conn: asyncpg.Connection = Depends(get_db)) -> Any:
+async def listar_productos(
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
+) -> Any:
     """Lista todos los productos activos."""
     productos = await producto_service.listar_activos(conn)
     return [asdict(p) for p in productos]
