@@ -17,7 +17,7 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.services import producto_service
 
-router = APIRouter()
+router = APIRouter(prefix="/api/productos", tags=["productos"])
 
 
 @router.get("/")

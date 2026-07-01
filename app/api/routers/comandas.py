@@ -19,7 +19,7 @@ from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
 from app.services import comanda_service
 
-router = APIRouter()
+router = APIRouter(prefix="/api/comandas", tags=["comandas"])
 
 
 class CambioEstadoRequest(BaseModel):
