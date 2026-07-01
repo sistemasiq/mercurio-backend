@@ -5,19 +5,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, branches, comandas, permissions, productos, users
-from app.core.config import settings
-from app.core.database import close_pool, create_pool, get_pool
-from app.routes import (
+from app.api.routers import (
+    auth,
+    branches,
+    comandas,
+    estancias,
     extras,
     metodos_pago,
     pagos_reservacion,
     paquete_tipos_evento,
     paquetes,
+    permissions,
+    productos,
+    pulseras,
     reservacion_extras,
     reservaciones,
     tipos_evento,
+    users,
 )
+from app.core.config import settings
+from app.core.database import close_pool, create_pool, get_pool
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.DEBUG)
@@ -68,3 +75,5 @@ app.include_router(paquete_tipos_evento.router)
 app.include_router(reservaciones.router)
 app.include_router(reservacion_extras.router)
 app.include_router(tipos_evento.router)
+app.include_router(estancias.router)
+app.include_router(pulseras.router)

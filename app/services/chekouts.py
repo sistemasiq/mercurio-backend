@@ -1,70 +1,74 @@
-from uuid import UUID
-import asyncpg
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from math import ceil
+from typing import Any
+from uuid import UUID
+
+import asyncpg
 from fastapi import HTTPException
-from app.repositories.detalles_registro import get_detalle_registro_by_id,put_hora_salida_by_id,count_detalles_registro_abiertos
+
 from app.repositories.cargos_extra_estancia import make_extra_charge
-from app.repositories.registros import registro_add_total,change_registro_estado,EstadoRegistro
-EXTRA_GRACE_MINUTES=5
+from app.repositories.detalles_registro import (
+    count_detalles_registro_abiertos,
+    get_detalle_registro_by_id,
+    put_hora_salida_by_id,
+)
+from app.repositories.registros import EstadoRegistro, change_registro_estado, registro_add_total
 
-async def create_chekout(conn: asyncpg.Connection,detalle_id: UUID,usuario_id: UUID):
-
-       async with conn.transaction():
-           now = datetime.now(timezone.utc)
-
-           detalle = await get_detalle_registro_by_id(conn,detalle_id)
-
-           if not detalle:
-               raise HTTPException(404, "Detalle no encontrado")
-
-           if detalle["salida"] is not None:
-               raise HTTPException(400, "El niño ya realizó checkout")
-
-           salida_esperada = detalle["salida_esperada"]
-
-           if salida_esperada is None:
-               raise HTTPException(400, "Detalle sin salida esperada")
-
-           minutos_extra = (
-               now - salida_esperada
-           ).total_seconds() / 60
-
-           extra_horas = 0
+EXTRA_GRACE_MINUTES = 5
 
 
-           if minutos_extra > EXTRA_GRACE_MINUTES:
-               extra_horas = ceil(
-                   (minutos_extra - EXTRA_GRACE_MINUTES) / 60
-               )
+async def create_chekout(
+    conn: asyncpg.Connection, detalle_id: UUID, usuario_id: UUID
+) -> dict[str, Any]:
+    async with conn.transaction():
+        now = datetime.now(UTC)
 
-           total_extra = detalle["precio"] * extra_horas
+        detalle = await get_detalle_registro_by_id(conn, detalle_id)
 
-           await put_hora_salida_by_id(conn,usuario_id,detalle_id)
+        if not detalle:
+            raise HTTPException(404, "Detalle no encontrado")
 
-           if extra_horas > 0:
-               await make_extra_charge(
-                   conn,
-                   detalle["sucursal_id"],
-                   detalle["registros_id"],
-                   detalle_id,
-                   extra_horas,
-                   detalle["precio"],
-                   total_extra,
-                   usuario_id
-                ) 
-               await registro_add_total(conn,total_extra,usuario_id,detalle["registros_id"])
-            
-           abiertos = await count_detalles_registro_abiertos(conn,detalle["registros_id"])
+        if detalle["salida"] is not None:
+            raise HTTPException(400, "El niño ya realizó checkout")
 
-           if abiertos == 0:
-               
-               await change_registro_estado(conn,EstadoRegistro.CERRADO,detalle["registros_id"])
+        salida_esperada = detalle["salida_esperada"]
 
-           return {
-               "detalleId": str(detalle_id),
-               "registroId": str(detalle["registros_id"]),
-               "horasExtra": extra_horas,
-               "totalExtra": float(total_extra),
-               "ninosRestantes": abiertos
-           }
+        if salida_esperada is None:
+            raise HTTPException(400, "Detalle sin salida esperada")
+
+        minutos_extra = (now - salida_esperada).total_seconds() / 60
+
+        extra_horas = 0
+
+        if minutos_extra > EXTRA_GRACE_MINUTES:
+            extra_horas = ceil((minutos_extra - EXTRA_GRACE_MINUTES) / 60)
+
+        total_extra = detalle["precio"] * extra_horas
+
+        await put_hora_salida_by_id(conn, usuario_id, detalle_id)
+
+        if extra_horas > 0:
+            await make_extra_charge(
+                conn,
+                detalle["sucursal_id"],
+                detalle["registros_id"],
+                detalle_id,
+                extra_horas,
+                detalle["precio"],
+                total_extra,
+                usuario_id,
+            )
+            await registro_add_total(conn, total_extra, usuario_id, detalle["registros_id"])
+
+        abiertos = await count_detalles_registro_abiertos(conn, detalle["registros_id"])
+
+        if abiertos == 0:
+            await change_registro_estado(conn, EstadoRegistro.CERRADO, detalle["registros_id"])
+
+        return {
+            "detalleId": str(detalle_id),
+            "registroId": str(detalle["registros_id"]),
+            "horasExtra": extra_horas,
+            "totalExtra": float(total_extra),
+            "ninosRestantes": abiertos,
+        }
