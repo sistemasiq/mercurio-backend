@@ -11,6 +11,11 @@ _SELECT = """
 """
 
 
+async def listar_todos(conn: asyncpg.Connection) -> list[dict[str, Any]]:
+    rows = await conn.fetch(_SELECT + " ORDER BY fecha_pago DESC")
+    return [dict(r) for r in rows]
+
+
 async def listar_por_reservacion(
     conn: asyncpg.Connection, reservacion_id: UUID
 ) -> list[dict[str, Any]]:

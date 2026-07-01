@@ -16,6 +16,14 @@ from app.schemas.pagos_reservacion import (
 router = APIRouter(prefix="/api/pagos-reservacion", tags=["Pagos de Reservación"])
 
 
+@router.get("", response_model=list[PagosReservacionOut])
+async def listar_pagos(
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
+) -> list[PagosReservacionOut]:
+    return await svc.listar_todos(conn)
+
+
 @router.get("/reservacion/{reservacion_id}", response_model=list[PagosReservacionOut])
 async def listar_pagos_reservacion(
     reservacion_id: UUID,

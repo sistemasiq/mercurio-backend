@@ -12,6 +12,11 @@ from app.schemas.pagos_reservacion import (
 )
 
 
+async def listar_todos(conn: asyncpg.Connection) -> list[PagosReservacionOut]:
+    rows = await pagos_reservacion_repository.listar_todos(conn)
+    return [PagosReservacionOut.model_validate(r) for r in rows]
+
+
 async def listar_por_reservacion(
     conn: asyncpg.Connection, reservacion_id: UUID
 ) -> list[PagosReservacionOut]:
