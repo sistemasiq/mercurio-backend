@@ -8,7 +8,7 @@ class Metodos_Pago:
     """
     Clase que representa un método de pago disponible en el sistema de reservas.
     """
-    id: UUID =  field (default factory=uuid4)
+    id: UUID = field(default_factory=uuid4)
     nombre: str
     descripcion: str
     activo: bool = True
