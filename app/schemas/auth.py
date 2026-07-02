@@ -34,6 +34,7 @@ class UserOut(BaseModel):
     email: str
     role: RoleEnum
     branch_id: UUID | None
+    permissions: list[str] = []
 
 
 class LoginResponse(BaseModel):
@@ -50,5 +51,6 @@ class TokenData(BaseModel):
     email: str
     role: RoleEnum
     branch_id: UUID | None
+    permissions: list[str] = []
     jti: str
     exp: datetime

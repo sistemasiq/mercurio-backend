@@ -19,6 +19,7 @@ from app.repositories.refresh_token_repository import (
 )
 from app.repositories.user_repository import get_usuario_by_email, get_usuario_by_id
 from app.schemas.auth import LoginResponse, RoleEnum, UserOut
+from app.services.permission_service import get_permissions
 
 
 class InvalidCredentialsError(Exception):
@@ -46,6 +47,7 @@ async def login(
         raise InvalidCredentialsError
 
     rol = RoleEnum(usuario["rol"])
+    permissions = get_permissions(rol.value)
 
     sucursal_efectiva: UUID | None = None
     if rol != RoleEnum.administrador_sistema:
@@ -73,6 +75,7 @@ async def login(
             "email": usuario["email"],
             "role": rol.value,
             "branch_id": str(sucursal_efectiva) if sucursal_efectiva else None,
+            "permissions": permissions,
         },
         expires_delta=timedelta(minutes=access_minutes),
     )
@@ -92,6 +95,7 @@ async def login(
             email=usuario["email"],
             role=rol,
             branch_id=sucursal_efectiva,
+            permissions=permissions,
         ),
     )
 
@@ -116,6 +120,7 @@ async def refresh_access_token(
 
     rol = RoleEnum(usuario["rol"])
     sucursal_efectiva: UUID | None = usuario["sucursal_id"]
+    permissions = get_permissions(rol.value)
 
     token = create_access_token(
         payload={
@@ -123,6 +128,7 @@ async def refresh_access_token(
             "email": usuario["email"],
             "role": rol.value,
             "branch_id": str(sucursal_efectiva) if sucursal_efectiva else None,
+            "permissions": permissions,
         },
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
@@ -142,5 +148,6 @@ async def refresh_access_token(
             email=usuario["email"],
             role=rol,
             branch_id=sucursal_efectiva,
+            permissions=permissions,
         ),
     )

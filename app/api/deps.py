@@ -36,6 +36,7 @@ async def get_current_user(
         email = payload.get("email")
         role = payload.get("role")
         branch_id = payload.get("branch_id")
+        permissions = payload.get("permissions")
         jti = payload.get("jti")
         exp = payload.get("exp")
 
@@ -52,6 +53,7 @@ async def get_current_user(
             email=email,
             role=RoleEnum(role),
             branch_id=UUID(branch_id) if isinstance(branch_id, str) else None,
+            permissions=permissions if isinstance(permissions, list) else [],
             jti=jti,
             exp=exp_dt or datetime.now(tz=UTC),
         )

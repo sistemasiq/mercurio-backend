@@ -24,6 +24,7 @@ from app.services.auth_service import (
     login,
     refresh_access_token,
 )
+from app.services.permission_service import get_permissions
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -68,12 +69,14 @@ async def me_endpoint(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "USER_NOT_FOUND", "message": "Usuario no encontrado o inactivo."},
         )
+    rol = RoleEnum(usuario["rol"])
     return UserOut(
         id=usuario["id"],
         full_name=usuario["nombre_completo"],
         email=usuario["email"],
-        role=RoleEnum(usuario["rol"]),
+        role=rol,
         branch_id=usuario["sucursal_id"],
+        permissions=get_permissions(rol.value),
     )
 
 
