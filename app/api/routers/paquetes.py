@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.paquetes as svc
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.paquetes import PaquetesCreate, PaquetesOut, PaquetesUpdate
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/paquetes", tags=["Paquetes"])
 async def listar_paquetes(
     sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("paquetes:listar")),
 ) -> list[PaquetesOut]:
     return await svc.listar(conn, sucursal_id)
 
@@ -25,7 +25,7 @@ async def listar_paquetes(
 async def obtener_paquete(
     paquete_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("paquetes:ver")),
 ) -> PaquetesOut:
     return await svc.obtener(conn, paquete_id)
 
@@ -34,7 +34,7 @@ async def obtener_paquete(
 async def crear_paquete(
     body: PaquetesCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("paquetes:crear")),
 ) -> PaquetesOut:
     return await svc.crear(conn, body)
 
@@ -44,7 +44,7 @@ async def actualizar_paquete(
     paquete_id: UUID,
     body: PaquetesUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("paquetes:editar")),
 ) -> PaquetesOut:
     return await svc.actualizar(conn, paquete_id, body)
 
@@ -53,6 +53,6 @@ async def actualizar_paquete(
 async def eliminar_paquete(
     paquete_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("paquetes:eliminar")),
 ) -> None:
     await svc.eliminar(conn, paquete_id)

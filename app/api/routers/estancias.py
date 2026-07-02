@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 from starlette import status
 
+from app.api.deps import require_permission
 from app.core.database import get_db
+from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoIn
 from app.schemas.registros import (
     CheckoutResponse,
@@ -33,7 +35,9 @@ router = APIRouter(prefix="/api/estancias", tags=["Estancias"])
     description="Consulta todos los niños que se encuentran activos actualmente en la sucursal.",
 )
 async def get_activos(
-    sucursal_id: UUID, conn: asyncpg.Connection = Depends(get_db)
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("estancias:ver_activos")),
 ) -> list[dict[str, Any]]:
     return await get_activos_estancia_by_sucursal_id(conn, sucursal_id)
 
@@ -53,13 +57,14 @@ async def onboarding(
     fotoLlegada: UploadFile = File(...),  # noqa: N803 - nombre del campo multipart del front
     payload: str = Form(..., description="JSON string con los datos de OnboardingRequest"),
     conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("estancias:checkin")),
 ) -> dict[str, Any]:
     try:
         data = OnboardingRequest.model_validate_json(payload)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors()) from e
 
-    usuario_id = UUID("11111111-1111-1111-1111-111111111111")
+    usuario_id = UUID(current_user.sub)
 
     return await create_estancia(conn, data, fotoIne, fotoLlegada, usuario_id)
 
@@ -78,8 +83,9 @@ async def pago_estancia_extra(
     pagos: list[PagoIn],
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("estancias:gestionar_pagos")),
 ) -> None:
-    usuario_id = UUID("11111111-1111-1111-1111-111111111111")
+    usuario_id = UUID(current_user.sub)
     return await pago_create_service(conn, pagos, sucursal_id, registro_id, usuario_id)
 
 
@@ -94,8 +100,12 @@ async def pago_estancia_extra(
         "el registro como finalizado si corresponde."
     ),
 )
-async def checkout(detalle_id: UUID, conn: asyncpg.Connection = Depends(get_db)) -> dict[str, Any]:
-    usuario_id = UUID("11111111-1111-1111-1111-111111111111")
+async def checkout(
+    detalle_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("estancias:checkout")),
+) -> dict[str, Any]:
+    usuario_id = UUID(current_user.sub)
 
     return await create_chekout(conn, detalle_id, usuario_id)
 
@@ -107,6 +117,8 @@ async def checkout(detalle_id: UUID, conn: asyncpg.Connection = Depends(get_db))
     description="Obtiene el catálogo de productos tipo 'estancia' activos para la sucursal.",
 )
 async def get_productos(
-    sucursal_id: UUID, conn: asyncpg.Connection = Depends(get_db)
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("estancias:checkin")),
 ) -> list[dict[str, Any]]:
     return await get_productos_estancia_by_id_sucursal(conn, sucursal_id)

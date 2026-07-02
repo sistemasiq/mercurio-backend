@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.reservaciones as svc
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/reservaciones", tags=["Reservaciones"])
 @router.get("", response_model=list[ReservacionesOut])
 async def listar_reservaciones(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:listar")),
 ) -> list[ReservacionesOut]:
     return await svc.listar(conn)
 
@@ -24,7 +24,7 @@ async def listar_reservaciones(
 async def obtener_reservacion(
     reservacion_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:ver")),
 ) -> ReservacionesOut:
     return await svc.obtener(conn, reservacion_id)
 
@@ -33,7 +33,7 @@ async def obtener_reservacion(
 async def crear_reservacion(
     body: ReservacionesCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:crear")),
 ) -> ReservacionesOut:
     return await svc.crear(conn, body)
 
@@ -43,7 +43,7 @@ async def actualizar_reservacion(
     reservacion_id: UUID,
     body: ReservacionesUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:editar")),
 ) -> ReservacionesOut:
     return await svc.actualizar(conn, reservacion_id, body)
 
@@ -52,6 +52,6 @@ async def actualizar_reservacion(
 async def eliminar_reservacion(
     reservacion_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:eliminar")),
 ) -> None:
     await svc.eliminar(conn, reservacion_id)

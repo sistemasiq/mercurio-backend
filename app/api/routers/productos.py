@@ -12,7 +12,7 @@ from typing import Any
 import asyncpg
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.services import producto_service
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/productos", tags=["productos"])
 @router.get("/")
 async def listar_productos(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("inventario:ver")),
 ) -> Any:
     """Lista todos los productos activos."""
     productos = await producto_service.listar_activos(conn)
