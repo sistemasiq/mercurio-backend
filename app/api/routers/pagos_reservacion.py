@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.pagos_reservacion as svc
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pagos_reservacion import (
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/pagos-reservacion", tags=["Pagos de Reservación
 @router.get("", response_model=list[PagosReservacionOut])
 async def listar_pagos(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> list[PagosReservacionOut]:
     return await svc.listar_todos(conn)
 
@@ -28,7 +28,7 @@ async def listar_pagos(
 async def listar_pagos_reservacion(
     reservacion_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> list[PagosReservacionOut]:
     return await svc.listar_por_reservacion(conn, reservacion_id)
 
@@ -37,7 +37,7 @@ async def listar_pagos_reservacion(
 async def obtener_pago(
     pago_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> PagosReservacionOut:
     return await svc.obtener(conn, pago_id)
 
@@ -46,7 +46,7 @@ async def obtener_pago(
 async def crear_pago(
     body: PagosReservacionCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> PagosReservacionOut:
     return await svc.crear(conn, body)
 
@@ -56,7 +56,7 @@ async def actualizar_pago(
     pago_id: UUID,
     body: PagosReservacionUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> PagosReservacionOut:
     return await svc.actualizar(conn, pago_id, body)
 
@@ -65,6 +65,6 @@ async def actualizar_pago(
 async def eliminar_pago(
     pago_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> None:
     await svc.eliminar(conn, pago_id)

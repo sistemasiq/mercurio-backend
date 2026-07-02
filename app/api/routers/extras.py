@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.extras as svc
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.extras import ExtrasCrear, ExtrasOut, ExtrasUpdate
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/extras", tags=["Extras"])
 async def listar_extras(
     sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("extras:listar")),
 ) -> list[ExtrasOut]:
     return await svc.listar(conn, sucursal_id)
 
@@ -25,7 +25,7 @@ async def listar_extras(
 async def obtener_extra(
     extra_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("extras:ver")),
 ) -> ExtrasOut:
     return await svc.obtener(conn, extra_id)
 
@@ -34,7 +34,7 @@ async def obtener_extra(
 async def crear_extra(
     body: ExtrasCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("extras:crear")),
 ) -> ExtrasOut:
     return await svc.crear(conn, body)
 
@@ -44,7 +44,7 @@ async def actualizar_extra(
     extra_id: UUID,
     body: ExtrasUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("extras:editar")),
 ) -> ExtrasOut:
     return await svc.actualizar(conn, extra_id, body)
 
@@ -53,6 +53,6 @@ async def actualizar_extra(
 async def eliminar_extra(
     extra_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("extras:eliminar")),
 ) -> None:
     await svc.eliminar(conn, extra_id)
