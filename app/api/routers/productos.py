@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/productos", tags=["productos"])
 @router.get("/")
 async def listar_productos(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:ver")),
+    _: TokenData = Depends(require_permission("pos:acceder")),
 ) -> Any:
     """Lista todos los productos activos."""
     productos = await producto_service.listar_activos(conn)
