@@ -2,7 +2,7 @@ from uuid import UUID
 
 import asyncpg
 
-from app.exceptions import NoEncontrado
+from app.exceptions import DatosInvalidos, NoEncontrado
 from app.repositories import reservaciones_repository
 from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
 
@@ -28,8 +28,12 @@ async def crear(conn: asyncpg.Connection, body: ReservacionesCrear) -> Reservaci
 async def actualizar(
     conn: asyncpg.Connection, reservacion_id: UUID, body: ReservacionesUpdate
 ) -> ReservacionesOut:
-    await obtener(conn, reservacion_id)
+    actual = await obtener(conn, reservacion_id)
     updates = body.model_dump(exclude_unset=True)
+    hora_inicio = updates.get("hora_inicio", actual.hora_inicio)
+    hora_fin = updates.get("hora_fin", actual.hora_fin)
+    if hora_fin <= hora_inicio:
+        raise DatosInvalidos("hora_fin debe ser mayor a hora_inicio")
     row = await reservaciones_repository.actualizar(conn, reservacion_id, updates)
     if not row:
         raise NoEncontrado("Reservación")
