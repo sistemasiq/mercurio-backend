@@ -9,6 +9,7 @@ from app.api.routers import (
     auth,
     branches,
     comandas,
+    documentos,
     estancias,
     extras,
     metodos_pago,
@@ -53,11 +54,20 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
+async def log_requests(request: Request, call_next):
     body = await request.body()
-    logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body.decode())
+    content_type = request.headers.get("content-type", "")
+    
+    if "multipart/form-data" in content_type:
+        body_str = "<multipart form-data with files>"
+    else:
+        try:
+            body_str = body.decode("utf-8")
+        except UnicodeDecodeError:
+            body_str = "<binary data unreadable>"
+
+    logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body_str)
     response = await call_next(request)
-    logger.debug("<<< %s", response.status_code)
     return response
 
 
@@ -77,3 +87,4 @@ app.include_router(reservacion_extras.router)
 app.include_router(tipos_evento.router)
 app.include_router(estancias.router)
 app.include_router(pulseras.router)
+app.include_router(documentos.router)
