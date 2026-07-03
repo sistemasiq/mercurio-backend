@@ -121,10 +121,17 @@ async def actualizar_estado_comanda(
     return await get_comanda_por_id(conn, comanda_id)
 
 
-async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
-    """Retorna comandas en estado P, E o L con sus detalles."""
+async def get_comandas_pendientes(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[Comanda]:
+    """Retorna comandas en estado P, E o L con sus detalles.
+
+    Si sucursal_id es None no filtra por sucursal (uso exclusivo de
+    AdministradorSistema, que ve todas las sucursales)."""
+    filtro_sucursal = "AND c.sucursal_id = $1" if sucursal_id is not None else ""
+    params: list[str] = [sucursal_id] if sucursal_id is not None else []
     rows = await conn.fetch(
-        """
+        f"""
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
             c.sucursal_id, c.fecha_hora,
@@ -140,8 +147,10 @@ async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
         LEFT JOIN public.productos        p  ON p.id = dc.producto_id
         WHERE c.estado_actual IN ('P', 'E', 'L')
+        {filtro_sucursal}
         ORDER BY c.fecha_hora ASC
-        """
+        """,
+        *params,
     )
 
     # Agrupar detalles por comanda
