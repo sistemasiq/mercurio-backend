@@ -17,6 +17,7 @@ import logging
 from typing import Any
 
 from fastapi import WebSocket
+from fastapi.encoders import jsonable_encoder
 
 logger = logging.getLogger("mercury.ws")
 
@@ -41,11 +42,17 @@ class ConnectionManager:
 
     async def broadcast(self, sucursal_id: str, message: dict[str, Any]) -> None:
         """Envía a las conexiones de esa sucursal y a las del canal global
-        (AdministradorSistema, que ve todas las sucursales)."""
+        (AdministradorSistema, que ve todas las sucursales).
+
+        Se pasa por jsonable_encoder (el mismo que usa FastAPI para las
+        respuestas REST) porque send_json usa json.dumps puro, que no sabe
+        serializar Decimal/UUID/datetime tal cual vienen de los dataclasses
+        de dominio."""
+        payload = jsonable_encoder(message)
         for canal in {sucursal_id, CANAL_GLOBAL}:
             for websocket in list(self._connections.get(canal, ())):
                 try:
-                    await websocket.send_json(message)
+                    await websocket.send_json(payload)
                 except Exception:
                     logger.debug("Conexion WS caida al hacer broadcast, se descarta", exc_info=True)
                     self.disconnect(canal, websocket)
