@@ -134,7 +134,8 @@ async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
-            p.nombre
+            p.nombre,
+            p.tipo AS producto_tipo
         FROM public.comandas c
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
         LEFT JOIN public.productos        p  ON p.id = dc.producto_id
@@ -169,6 +170,7 @@ async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
                     producto_nombre=row.get("nombre"),
+                    producto_tipo=row.get("producto_tipo"),
                 )
             )
 
@@ -191,7 +193,8 @@ async def get_comanda_por_id(
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
-            p.nombre
+            p.nombre,
+            p.tipo AS producto_tipo
         FROM public.comandas c
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
         LEFT JOIN public.productos        p  ON p.id = dc.producto_id
@@ -226,6 +229,7 @@ async def get_comanda_por_id(
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
                     producto_nombre=row.get("nombre"),
+                    producto_tipo=row.get("producto_tipo"),
                 )
             )
 

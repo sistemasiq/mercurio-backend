@@ -21,8 +21,9 @@ class DetalleComanda:
     importe: Decimal
     sucursal_id: str
     notas_especiales: str | None = None
-    # Nombre del producto (join opcional al leer)
+    # Datos del producto (join opcional al leer)
     producto_nombre: str | None = None
+    producto_tipo: str | None = None
 
 
 @dataclass
