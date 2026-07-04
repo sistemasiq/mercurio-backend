@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.services.branch_service import (
+    AdministradorInvalidoError,
     BranchNotFoundError,
     InsufficientPermissionsError,
     NombreAlreadyExistsError,
@@ -35,6 +36,13 @@ _CONFLICT = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail={"code": "NOMBRE_ALREADY_EXISTS", "message": "Ya existe una sucursal con ese nombre."},
 )
+_ADMINISTRADOR_INVALIDO = HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "ADMINISTRADOR_INVALIDO",
+        "message": "El usuario indicado no existe, está inactivo o no tiene rol Administrador.",
+    },
+)
 
 
 @router.get("", response_model=list[BranchResponse])
@@ -55,6 +63,8 @@ async def post_branch(
         return await create_branch(conn, body, current_user)
     except NombreAlreadyExistsError:
         raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
 
 
 @router.get("/{branch_id}", response_model=BranchResponse)
@@ -84,6 +94,8 @@ async def put_branch(
         raise _NOT_FOUND from None
     except NombreAlreadyExistsError:
         raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
 
 
 @router.patch("/{branch_id}/deactivate", status_code=status.HTTP_200_OK)

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -38,12 +38,25 @@ class UserOut(BaseModel):
 
 
 class LoginResponse(BaseModel):
+    requires_branch_selection: Literal[False] = False
     token: str
     token_type: str = "Bearer"
     expires_in: int
     refresh_token: str
     refresh_expires_in: int
     user: UserOut
+
+
+class BranchOption(BaseModel):
+    id: UUID
+    nombre: str
+
+
+class BranchSelectionRequired(BaseModel):
+    """Respuesta de login cuando un Administrador con 2+ sucursales no indicó cuál usar."""
+
+    requires_branch_selection: Literal[True] = True
+    sucursales: list[BranchOption]
 
 
 class TokenData(BaseModel):

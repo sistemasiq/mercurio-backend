@@ -41,6 +41,7 @@ _SELECT = """
     JOIN public.roles r ON r.id = u.rol
     LEFT JOIN public.usuarios_sucursal us
            ON us.usuario_id = u.id AND us.activo = TRUE
+           AND r.nombre IN ('Cajero', 'Cocina')
 """
 
 
@@ -191,3 +192,84 @@ async def assign_usuario_to_branch(
         sucursal_id,
         creado_por,
     )
+
+
+async def get_sucursal_ids_activas(conn: asyncpg.Connection, usuario_id: UUID) -> list[UUID]:
+    """Sucursales activas de un usuario, sin asumir una sola (a diferencia de _SELECT).
+
+    Agnóstica al rol: la usa el login para resolver cuántas/cuáles sucursales
+    tiene un Administrador con potencialmente varias asignaciones.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT sucursal_id FROM public.usuarios_sucursal
+        WHERE usuario_id = $1 AND activo = TRUE
+        ORDER BY sucursal_id
+        """,
+        usuario_id,
+    )
+    return [r["sucursal_id"] for r in rows]
+
+
+async def assign_usuario_a_sucursal_especifica(
+    conn: asyncpg.Connection,
+    usuario_id: UUID,
+    sucursal_id: UUID,
+    creado_por: UUID,
+) -> None:
+    """Asigna un usuario a UNA sucursal específica sin tocar sus otras asignaciones.
+
+    A diferencia de update_usuario_branch (que desactiva todas las filas
+    activas del usuario antes de insertar), esta función habilita que un
+    mismo Administrador quede asignado a varias sucursales a la vez.
+    """
+    await conn.execute(
+        """
+        INSERT INTO public.usuarios_sucursal (usuario_id, sucursal_id, creado_por)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (usuario_id, sucursal_id)
+        DO UPDATE SET activo = TRUE, modificado = NOW(), modificado_por = EXCLUDED.creado_por
+        """,
+        usuario_id,
+        sucursal_id,
+        creado_por,
+    )
+
+
+async def desasignar_usuario_de_sucursal(
+    conn: asyncpg.Connection,
+    usuario_id: UUID,
+    sucursal_id: UUID,
+    modificado_por: UUID,
+) -> None:
+    """Desactiva el vínculo de un usuario con UNA sucursal específica.
+
+    Solo afecta ese par (usuario, sucursal); las demás asignaciones del
+    mismo usuario a otras sucursales quedan intactas.
+    """
+    await conn.execute(
+        """
+        UPDATE public.usuarios_sucursal
+        SET activo = FALSE, modificado = NOW(), modificado_por = $1
+        WHERE usuario_id = $2 AND sucursal_id = $3 AND activo = TRUE
+        """,
+        modificado_por,
+        usuario_id,
+        sucursal_id,
+    )
+
+
+async def get_usuario_administrador_by_id(
+    conn: asyncpg.Connection, usuario_id: UUID
+) -> UUID | None:
+    """Devuelve el id si el usuario existe, está activo y tiene rol Administrador."""
+    row = await conn.fetchrow(
+        """
+        SELECT u.id
+        FROM public.usuarios u
+        JOIN public.roles r ON r.id = u.rol
+        WHERE u.id = $1 AND u.activo = TRUE AND r.nombre = 'Administrador'
+        """,
+        usuario_id,
+    )
+    return UUID(str(row["id"])) if row else None
