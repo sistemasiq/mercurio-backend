@@ -45,15 +45,21 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
     )
 
 
-# Usamos 'uc' para usuario_creador y 'um' para usuario_modificador
+# Usamos 'uc' para usuario_creador y 'um' para usuario_modificador.
+# El administrador de la sucursal ya no es una columna plana: se deriva del
+# vínculo real en usuarios_sucursal (permite que el mismo admin esté
+# asignado a varias sucursales; ver 010_sucursal_admin_via_puente.sql).
 _SELECT = """
     SELECT s.id, s.nombre, s.direccion, s.telefono, s.correo,
-           s.administrador_id, s.administrador_name, s.clave, s.activo,
+           adm.id AS administrador_id, adm.nombre_completo AS administrador_name,
+           s.clave, s.activo,
            s.creado, s.creado_por, uc.nombre_completo AS creador_name,
            s.modificado, s.modificado_por, um.nombre_completo AS modificador_name
     FROM public.sucursales s
     LEFT JOIN public.usuarios uc ON s.creado_por = uc.id
     LEFT JOIN public.usuarios um ON s.modificado_por = um.id
+    LEFT JOIN public.usuarios_sucursal us ON us.sucursal_id = s.id AND us.activo = TRUE
+    LEFT JOIN public.usuarios adm ON adm.id = us.usuario_id
 """
 
 
@@ -72,31 +78,46 @@ async def nombre_exists(conn: asyncpg.Connection, nombre: str) -> bool:
     return row is not None
 
 
+class SucursalOption(TypedDict):
+    id: UUID
+    nombre: str
+
+
+async def get_sucursales_by_ids(
+    conn: asyncpg.Connection, sucursal_ids: list[UUID]
+) -> list[SucursalOption]:
+    """Nombres de un conjunto de sucursales, para el selector de sucursal activa en login."""
+    rows = await conn.fetch(
+        """
+        SELECT id, nombre FROM public.sucursales
+        WHERE id = ANY($1::uuid[]) AND activo = TRUE
+        ORDER BY nombre
+        """,
+        sucursal_ids,
+    )
+    return [SucursalOption(id=r["id"], nombre=r["nombre"]) for r in rows]
+
+
 async def create_sucursal(
     conn: asyncpg.Connection,
     nombre: str,
     direccion: str | None,
     telefono: str | None,
     correo: str | None,
-    administrador_id: UUID | None,
-    administrador_name: str | None,
     clave: str | None,
     creado_por: UUID,
 ) -> UUID:
     row = await conn.fetchrow(
         """
         INSERT INTO public.sucursales
-            (nombre, direccion, telefono, correo, administrador_id, administrador_name,
-             clave, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (nombre, direccion, telefono, correo, clave, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
         """,
         nombre,
         direccion,
         telefono,
         correo,
-        administrador_id,
-        administrador_name,
         clave,
         creado_por,
     )
@@ -111,27 +132,22 @@ async def update_sucursal(
     direccion: str | None,
     telefono: str | None,
     correo: str | None,
-    administrador_id: UUID | None,
-    administrador_name: str | None,
     modificado_por: UUID,
 ) -> bool:
     result = await conn.execute(
         """
         UPDATE public.sucursales
         SET nombre = $1, direccion = $2, telefono = $3, correo = $4,
-            administrador_id = $5::uuid, administrador_name = $6,
-            clave = $7,
-            modificado = NOW(), modificado_por = $8::uuid
-        WHERE id = $9::uuid AND activo = TRUE
+            clave = $5,
+            modificado = NOW(), modificado_por = $6::uuid
+        WHERE id = $7::uuid AND activo = TRUE
         """,
         nombre,  # $1
         direccion,  # $2
         telefono,  # $3
         correo,  # $4
-        administrador_id,  # $5
-        administrador_name,  # $6
-        clave,  # $7
-        modificado_por,  # $8
+        clave,  # $5
+        modificado_por,  # $6
         sucursal_id,
     )
     return str(result) == "UPDATE 1"

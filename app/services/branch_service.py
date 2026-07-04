@@ -14,6 +14,11 @@ from app.repositories.branch_repository import (
     reactivate_sucursal,
     update_sucursal,
 )
+from app.repositories.user_repository import (
+    assign_usuario_a_sucursal_especifica,
+    desasignar_usuario_de_sucursal,
+    get_usuario_administrador_by_id,
+)
 from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 
@@ -27,6 +32,10 @@ class BranchNotFoundError(Exception):
 
 
 class InsufficientPermissionsError(Exception):
+    pass
+
+
+class AdministradorInvalidoError(Exception):
     pass
 
 
@@ -78,17 +87,25 @@ async def create_branch(
 ) -> BranchResponse:
     if await nombre_exists(conn, data.nombre):
         raise NombreAlreadyExistsError
-    sucursal_id = await create_sucursal(
-        conn,
-        nombre=data.nombre,
-        direccion=data.direccion,
-        telefono=data.telefono,
-        correo=data.correo,
-        administrador_id=data.administrador_id,
-        administrador_name=data.administrador_name,
-        clave=data.clave,
-        creado_por=UUID(current_user.sub),
-    )
+    creado_por = UUID(current_user.sub)
+    if data.administrador_id is not None:
+        admin_id = await get_usuario_administrador_by_id(conn, data.administrador_id)
+        if admin_id is None:
+            raise AdministradorInvalidoError
+    async with conn.transaction():
+        sucursal_id = await create_sucursal(
+            conn,
+            nombre=data.nombre,
+            direccion=data.direccion,
+            telefono=data.telefono,
+            correo=data.correo,
+            clave=data.clave,
+            creado_por=creado_por,
+        )
+        if data.administrador_id is not None:
+            await assign_usuario_a_sucursal_especifica(
+                conn, data.administrador_id, sucursal_id, creado_por
+            )
     record = await get_sucursal_by_id(conn, sucursal_id)
     if record is None:
         raise RuntimeError("Error al recuperar la sucursal recién creada")
@@ -106,20 +123,34 @@ async def update_branch(
         raise BranchNotFoundError
     if data.nombre != record["nombre"] and await nombre_exists(conn, data.nombre):
         raise NombreAlreadyExistsError
-    updated = await update_sucursal(
-        conn,
-        sucursal_id=branch_id,
-        clave=data.clave,
-        nombre=data.nombre,
-        direccion=data.direccion,
-        telefono=data.telefono,
-        correo=data.correo,
-        administrador_id=data.administrador_id,
-        administrador_name=data.administrador_name,
-        modificado_por=UUID(current_user.sub),
-    )
-    if not updated:
-        raise BranchNotFoundError
+    modificado_por = UUID(current_user.sub)
+    if data.administrador_id is not None:
+        admin_id = await get_usuario_administrador_by_id(conn, data.administrador_id)
+        if admin_id is None:
+            raise AdministradorInvalidoError
+    admin_anterior = record["administrador_id"]
+    async with conn.transaction():
+        updated = await update_sucursal(
+            conn,
+            sucursal_id=branch_id,
+            clave=data.clave,
+            nombre=data.nombre,
+            direccion=data.direccion,
+            telefono=data.telefono,
+            correo=data.correo,
+            modificado_por=modificado_por,
+        )
+        if not updated:
+            raise BranchNotFoundError
+        if admin_anterior != data.administrador_id:
+            if admin_anterior is not None:
+                await desasignar_usuario_de_sucursal(
+                    conn, admin_anterior, branch_id, modificado_por
+                )
+            if data.administrador_id is not None:
+                await assign_usuario_a_sucursal_especifica(
+                    conn, data.administrador_id, branch_id, modificado_por
+                )
     record = await get_sucursal_by_id(conn, branch_id)
     if record is None:
         raise BranchNotFoundError

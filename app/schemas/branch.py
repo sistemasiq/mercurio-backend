@@ -15,7 +15,6 @@ class BranchCreateRequest(BaseModel):
     telefono: str | None = None
     correo: str | None = None
     administrador_id: UUID | None = None
-    administrador_name: str | None = None
     clave: str | None = None
 
 
@@ -25,7 +24,6 @@ class BranchUpdateRequest(BaseModel):
     telefono: str | None = None
     correo: str | None = None
     administrador_id: UUID | None = None
-    administrador_name: str | None = None
     clave: str | None = None
 
 
