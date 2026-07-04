@@ -10,6 +10,7 @@ from app.repositories.refresh_token_repository import revoke_refresh_token
 from app.repositories.token_repository import revoke_token
 from app.repositories.user_repository import get_usuario_by_id
 from app.schemas.auth import (
+    BranchSelectionRequired,
     LoginRequest,
     LoginResponse,
     RefreshRequest,
@@ -38,11 +39,11 @@ _INVALID_REFRESH = HTTPException(
 )
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse | BranchSelectionRequired)
 async def login_endpoint(
     body: LoginRequest,
     conn: asyncpg.Connection = Depends(get_db),
-) -> LoginResponse:
+) -> LoginResponse | BranchSelectionRequired:
     try:
         return await login(
             conn=conn,
@@ -75,7 +76,7 @@ async def me_endpoint(
         full_name=usuario["nombre_completo"],
         email=usuario["email"],
         role=rol,
-        branch_id=usuario["sucursal_id"],
+        branch_id=current_user.branch_id,
         permissions=get_permissions(rol.value),
     )
 

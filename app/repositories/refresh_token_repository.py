@@ -11,15 +11,17 @@ async def create_refresh_token(
     usuario_id: UUID,
     token_hash: str,
     expires_at: datetime,
+    sucursal_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
-        INSERT INTO public.refresh_tokens (usuario_id, token_hash, expires_at)
-        VALUES ($1, $2, $3)
+        INSERT INTO public.refresh_tokens (usuario_id, token_hash, expires_at, sucursal_id)
+        VALUES ($1, $2, $3, $4)
         """,
         usuario_id,
         token_hash,
         expires_at,
+        sucursal_id,
     )
 
 
@@ -29,7 +31,7 @@ async def get_refresh_token(
 ) -> asyncpg.Record | None:
     return await conn.fetchrow(
         """
-        SELECT id, usuario_id, expires_at, revocado
+        SELECT id, usuario_id, expires_at, revocado, sucursal_id
         FROM public.refresh_tokens
         WHERE token_hash = $1
         """,

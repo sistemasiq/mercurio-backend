@@ -12,13 +12,24 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.repositories.branch_repository import get_sucursales_by_ids
 from app.repositories.refresh_token_repository import (
     create_refresh_token,
     get_refresh_token,
     revoke_refresh_token,
 )
-from app.repositories.user_repository import get_usuario_by_email, get_usuario_by_id
-from app.schemas.auth import LoginResponse, RoleEnum, UserOut
+from app.repositories.user_repository import (
+    get_sucursal_ids_activas,
+    get_usuario_by_email,
+    get_usuario_by_id,
+)
+from app.schemas.auth import (
+    BranchOption,
+    BranchSelectionRequired,
+    LoginResponse,
+    RoleEnum,
+    UserOut,
+)
 from app.services.permission_service import get_permissions
 
 
@@ -40,7 +51,7 @@ async def login(
     password: str,
     sucursal_id: UUID | None,
     remember_me: bool,
-) -> LoginResponse:
+) -> LoginResponse | BranchSelectionRequired:
     usuario = await get_usuario_by_email(conn, email)
 
     if usuario is None or not verify_password(password, usuario["password_hash"]):
@@ -50,7 +61,24 @@ async def login(
     permissions = get_permissions(rol.value)
 
     sucursal_efectiva: UUID | None = None
-    if rol != RoleEnum.administrador_sistema:
+    if rol == RoleEnum.administrador:
+        # Un Administrador puede tener varias sucursales via usuarios_sucursal
+        # (a diferencia de Cajero/Cocina, que siguen siendo 1:1 más abajo).
+        sucursales_activas = await get_sucursal_ids_activas(conn, usuario["id"])
+        if not sucursales_activas:
+            raise SucursalNoAsignadaError
+        if len(sucursales_activas) == 1:
+            sucursal_efectiva = sucursales_activas[0]
+        elif sucursal_id is not None and sucursal_id in sucursales_activas:
+            sucursal_efectiva = sucursal_id
+        elif sucursal_id is not None:
+            raise SucursalNoAsignadaError
+        else:
+            opciones = await get_sucursales_by_ids(conn, sucursales_activas)
+            return BranchSelectionRequired(
+                sucursales=[BranchOption(id=o["id"], nombre=o["nombre"]) for o in opciones]
+            )
+    elif rol != RoleEnum.administrador_sistema:
         sucursal_en_bd = usuario["sucursal_id"]
         if sucursal_en_bd is None:
             raise SucursalNoAsignadaError
@@ -82,7 +110,9 @@ async def login(
 
     raw_refresh, refresh_hash = generate_refresh_token()
     refresh_expires_at = datetime.now(UTC) + timedelta(days=refresh_days)
-    await create_refresh_token(conn, usuario["id"], refresh_hash, refresh_expires_at)
+    await create_refresh_token(
+        conn, usuario["id"], refresh_hash, refresh_expires_at, sucursal_efectiva
+    )
 
     return LoginResponse(
         token=token,
@@ -119,7 +149,13 @@ async def refresh_access_token(
         raise InvalidRefreshTokenError
 
     rol = RoleEnum(usuario["rol"])
-    sucursal_efectiva: UUID | None = usuario["sucursal_id"]
+    # La sucursal activa es una elección de sesión (hecha en login), no un
+    # atributo del usuario: para Administrador, usuario["sucursal_id"]
+    # siempre es None (puede tener varias). Se reutiliza la que se guardó
+    # en el refresh token al emitirlo, en vez de re-derivarla.
+    sucursal_efectiva: UUID | None = (
+        record["sucursal_id"] if rol == RoleEnum.administrador else usuario["sucursal_id"]
+    )
     permissions = get_permissions(rol.value)
 
     token = create_access_token(
@@ -135,7 +171,7 @@ async def refresh_access_token(
 
     raw_new, new_hash = generate_refresh_token()
     refresh_expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
-    await create_refresh_token(conn, usuario["id"], new_hash, refresh_expires_at)
+    await create_refresh_token(conn, usuario["id"], new_hash, refresh_expires_at, sucursal_efectiva)
 
     return LoginResponse(
         token=token,
