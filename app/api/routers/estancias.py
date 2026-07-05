@@ -43,7 +43,7 @@ async def get_activos(
 
 
 @router.post(
-    "/",
+    "",
     status_code=status.HTTP_201_CREATED,
     response_model=OnboardingResponse,
     summary="Registrar entrada de niños",
