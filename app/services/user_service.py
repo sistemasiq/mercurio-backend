@@ -98,6 +98,10 @@ async def create_user(
     if await email_exists(conn, data.email):
         raise EmailAlreadyExistsError
 
+    # Un Administrador se asigna a sucursales desde branch_service (puede
+    # tener varias); branch_id aquí solo aplica a Cajero/Cocina.
+    branch_id = data.branch_id if data.role != RoleEnum.administrador else None
+
     creator_id = UUID(current_user.sub)
     async with conn.transaction():
         user_id = await create_usuario(
@@ -108,8 +112,8 @@ async def create_user(
             rol=data.role.value,
             creado_por=creator_id,
         )
-        if data.branch_id is not None:
-            await assign_usuario_to_branch(conn, user_id, data.branch_id, creator_id)
+        if branch_id is not None:
+            await assign_usuario_to_branch(conn, user_id, branch_id, creator_id)
 
     record = await get_usuario_by_id(conn, user_id)
     if record is None:
@@ -147,7 +151,11 @@ async def update_user(
 
     editor_id = UUID(current_user.sub)
     password_hash = hash_password(data.password) if data.password else None
-    branch_changed = data.branch_id != target["sucursal_id"]
+    # Un Administrador se reasigna a sucursales desde branch_service (puede
+    # tener varias); este endpoint nunca debe tocar usuarios_sucursal para
+    # ese rol, para no desactivar asignaciones hechas por ese otro camino.
+    branch_id = data.branch_id if data.role != RoleEnum.administrador else None
+    branch_changed = data.role != RoleEnum.administrador and branch_id != target["sucursal_id"]
 
     async with conn.transaction():
         updated = await update_usuario(
@@ -162,7 +170,7 @@ async def update_user(
         if not updated:
             raise UserNotFoundError
         if branch_changed:
-            await update_usuario_branch(conn, user_id, data.branch_id, editor_id)
+            await update_usuario_branch(conn, user_id, branch_id, editor_id)
 
     record = await get_usuario_by_id(conn, user_id)
     if record is None:

@@ -49,6 +49,10 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
 # El administrador de la sucursal ya no es una columna plana: se deriva del
 # vínculo real en usuarios_sucursal (permite que el mismo admin esté
 # asignado a varias sucursales; ver 010_sucursal_admin_via_puente.sql).
+# usuarios_sucursal es genérica (también la usan Cajero/Cocina), así que el
+# join se restringe a filas con rol Administrador; y como puede haber más
+# de una fila histórica para la misma sucursal (p. ej. datos previos a esta
+# migración), se toma como máximo una por sucursal (la más reciente).
 _SELECT = """
     SELECT s.id, s.nombre, s.direccion, s.telefono, s.correo,
            adm.id AS administrador_id, adm.nombre_completo AS administrador_name,
@@ -58,8 +62,15 @@ _SELECT = """
     FROM public.sucursales s
     LEFT JOIN public.usuarios uc ON s.creado_por = uc.id
     LEFT JOIN public.usuarios um ON s.modificado_por = um.id
-    LEFT JOIN public.usuarios_sucursal us ON us.sucursal_id = s.id AND us.activo = TRUE
-    LEFT JOIN public.usuarios adm ON adm.id = us.usuario_id
+    LEFT JOIN (
+        SELECT DISTINCT ON (us.sucursal_id) us.sucursal_id, us.usuario_id
+        FROM public.usuarios_sucursal us
+        JOIN public.usuarios u ON u.id = us.usuario_id
+        JOIN public.roles r ON r.id = u.rol
+        WHERE us.activo = TRUE AND r.nombre = 'Administrador'
+        ORDER BY us.sucursal_id, us.modificado DESC
+    ) admin_link ON admin_link.sucursal_id = s.id
+    LEFT JOIN public.usuarios adm ON adm.id = admin_link.usuario_id
 """
 
 
