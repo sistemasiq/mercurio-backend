@@ -21,7 +21,7 @@ from app.services.user_service import (
     update_user,
 )
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+router = APIRouter(prefix="/api/usuarios", tags=["Usuarios"])
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -72,29 +72,29 @@ async def post_user(
         raise  # unreachable, satisfies mypy
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@router.get("/{usuario_id}", response_model=UserResponse)
 async def get_user_endpoint(
-    user_id: UUID,
+    usuario_id: UUID,
     current_user: TokenData = Depends(require_permission("usuarios:ver")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserResponse:
     try:
-        return await get_user(conn, user_id, current_user)
+        return await get_user(conn, usuario_id, current_user)
     except UserNotFoundError:
         raise _NOT_FOUND from None
     except InsufficientPermissionsError:
         raise _FORBIDDEN from None
 
 
-@router.put("/{user_id}", response_model=UserResponse)
+@router.put("/{usuario_id}", response_model=UserResponse)
 async def put_user(
-    user_id: UUID,
+    usuario_id: UUID,
     body: UserUpdateRequest,
     current_user: TokenData = Depends(require_permission("usuarios:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserResponse:
     try:
-        return await update_user(conn, user_id, body, current_user)
+        return await update_user(conn, usuario_id, body, current_user)
     except UserNotFoundError:
         raise _NOT_FOUND from None
     except (EmailAlreadyExistsError, BranchRequiredError, InsufficientPermissionsError) as exc:
@@ -102,14 +102,14 @@ async def put_user(
         raise  # unreachable, satisfies mypy
 
 
-@router.delete("/{user_id}")
+@router.delete("/{usuario_id}")
 async def delete_user_endpoint(
-    user_id: UUID,
+    usuario_id: UUID,
     current_user: TokenData = Depends(require_permission("usuarios:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await delete_user(conn, user_id, current_user)
+        await delete_user(conn, usuario_id, current_user)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except UserNotFoundError:
         raise _NOT_FOUND from None

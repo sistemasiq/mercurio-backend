@@ -25,6 +25,9 @@ from app.services.estancias import (
 )
 from app.services.pagos_estancia import pago_create_service
 
+# Tipo A (acción sobre un id): "/{id}/verbo" — /{registro_id}/pagos, /{detalle_id}/checkout.
+# Tipo B (sub-colección filtrada, no acción): "/verbo/{id}" — /activos/{sucursal_id},
+# /productos/{sucursal_id}. Ver RUTAS.md §5.5.
 router = APIRouter(prefix="/api/estancias", tags=["Estancias"])
 
 
@@ -91,7 +94,7 @@ async def pago_estancia_extra(
 
 # Endpoint para calcular checkout
 @router.post(
-    "/checkout/{detalle_id}",
+    "/{detalle_id}/checkout",
     status_code=status.HTTP_201_CREATED,
     response_model=CheckoutResponse,
     summary="Procesar salida del niño",

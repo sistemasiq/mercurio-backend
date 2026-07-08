@@ -22,7 +22,7 @@ from app.services.branch_service import (
     update_branch,
 )
 
-router = APIRouter(prefix="/api/branches", tags=["branches"])
+router = APIRouter(prefix="/api/sucursales", tags=["Sucursales"])
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -67,29 +67,29 @@ async def post_branch(
         raise _ADMINISTRADOR_INVALIDO from None
 
 
-@router.get("/{branch_id}", response_model=BranchResponse)
+@router.get("/{sucursal_id}", response_model=BranchResponse)
 async def get_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:ver")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
-        return await get_branch(conn, branch_id, current_user)
+        return await get_branch(conn, sucursal_id, current_user)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
     except InsufficientPermissionsError:
         raise _FORBIDDEN from None
 
 
-@router.put("/{branch_id}", response_model=BranchResponse)
+@router.put("/{sucursal_id}", response_model=BranchResponse)
 async def put_branch(
-    branch_id: UUID,
+    sucursal_id: UUID,
     body: BranchUpdateRequest,
     current_user: TokenData = Depends(require_permission("sucursales:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
-        return await update_branch(conn, branch_id, body, current_user)
+        return await update_branch(conn, sucursal_id, body, current_user)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
     except NombreAlreadyExistsError:
@@ -98,27 +98,27 @@ async def put_branch(
         raise _ADMINISTRADOR_INVALIDO from None
 
 
-@router.patch("/{branch_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.patch("/{sucursal_id}/deactivate", status_code=status.HTTP_200_OK)
 async def deactivate_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await deactivate_branch(conn, branch_id, current_user)
+        await deactivate_branch(conn, sucursal_id, current_user)
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
 
 
-@router.patch("/{branch_id}/reactivate", status_code=status.HTTP_200_OK)
+@router.patch("/{sucursal_id}/reactivate", status_code=status.HTTP_200_OK)
 async def reactivate_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await reactivate_branch(conn, branch_id, current_user)
+        await reactivate_branch(conn, sucursal_id, current_user)
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None

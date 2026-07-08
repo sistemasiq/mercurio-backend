@@ -16,7 +16,7 @@ from app.services.permission_service import (
     update_rol_permisos,
 )
 
-router = APIRouter(prefix="/api/permissions", tags=["permissions"])
+router = APIRouter(prefix="/api/permisos", tags=["Permisos"])
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -65,7 +65,7 @@ async def put_rol_permisos(
         ) from None
 
 
-@router.get("/permisos", response_model=list[PermisoResponse])
+@router.get("/catalogo", response_model=list[PermisoResponse])
 async def get_permisos(
     _: TokenData = Depends(require_permission("permisos:ver")),
     conn: asyncpg.Connection = Depends(get_db),

@@ -27,7 +27,7 @@ from app.services.auth_service import (
 )
 from app.services.permission_service import get_permissions
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
 _INVALID_CREDENTIALS = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,

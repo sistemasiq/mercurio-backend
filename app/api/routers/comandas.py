@@ -32,7 +32,7 @@ from app.services.permission_service import has_permission
 
 logger = logging.getLogger("mercury.ws")
 
-router = APIRouter(prefix="/api/comandas", tags=["comandas"])
+router = APIRouter(prefix="/api/comandas", tags=["Comandas"])
 
 
 class CambioEstadoRequest(BaseModel):
@@ -42,7 +42,7 @@ class CambioEstadoRequest(BaseModel):
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
@@ -59,7 +59,7 @@ async def crear_comanda(
         ) from exc
 
 
-@router.get("/")
+@router.get("")
 async def listar_comandas(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:ver_pedidos")),

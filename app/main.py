@@ -2,8 +2,9 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.routers import (
     auth,
@@ -54,10 +55,10 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> Response:
     body = await request.body()
     content_type = request.headers.get("content-type", "")
-    
+
     if "multipart/form-data" in content_type:
         body_str = "<multipart form-data with files>"
     else:
