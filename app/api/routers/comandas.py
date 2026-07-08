@@ -75,7 +75,7 @@ async def cambiar_estado(
     comanda_id: str,
     data: CambioEstadoRequest,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("restaurante:gestionar_cocina")),
+    current_user: TokenData = Depends(require_permission("restaurante:gestionar_cocina")),
 ) -> Any:
     """Actualiza el estado de una comanda."""
     comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)
@@ -84,6 +84,15 @@ async def cambiar_estado(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Comanda no encontrada",
         )
+
+    scope = comanda_service.sucursal_scope(current_user)
+    canal = scope if scope is not None else CANAL_GLOBAL
+
+    await manager.broadcast(
+        canal,
+        {"tipo": "comanda_actualizada", "comanda": asdict(comanda)},
+    )
+
     return asdict(comanda)
 
 
@@ -114,8 +123,7 @@ async def comandas_ws(
     await manager.connect(canal, websocket)
     try:
         while True:
-            # No esperamos nada del cliente; solo bloquea hasta que se cierre
-            # la conexion (WebSocketDisconnect) para poder limpiar el registro.
+
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(canal, websocket)
