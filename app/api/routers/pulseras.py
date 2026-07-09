@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pulseras import PulseraCrear, PulseraOut, PulseraResponse, PulseraUpdate
 from app.services import pulseras as pulseras_service
-from app.services.pulseras import get_pulseras_by_sucursal_id
+from app.services.pulseras import get_pulseras_disponibles_by_sucursal_id
 
 router = APIRouter(prefix="/api/pulseras", tags=["Pulseras"])
 
@@ -18,14 +18,14 @@ router = APIRouter(prefix="/api/pulseras", tags=["Pulseras"])
     "/sucursal/{sucursal_id}",
     response_model=list[PulseraResponse],
     summary="Listar pulseras disponibles",
-    description="Obtiene pulseras activas que no están siendo utilizadas en estancias en curso.",
+    description="Obtiene pulseras disponibles por sucursal.",
 )
 async def get_pulseras_disponibles(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("estancias:checkin")),
 ) -> list[dict[str, Any]]:
-    return await get_pulseras_by_sucursal_id(conn, sucursal_id)
+    return await get_pulseras_disponibles_by_sucursal_id(conn, sucursal_id)
 
 
 @router.get(
