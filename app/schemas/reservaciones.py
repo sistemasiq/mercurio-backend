@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ReservacionesBase(BaseModel):
@@ -29,6 +29,12 @@ class ReservacionesBase(BaseModel):
     anticipo: Decimal = Field(Decimal(0), ge=0)
     estado: Literal["pendiente", "confirmada", "en_curso", "completada", "cancelada"] = "pendiente"
     notas: str | None = None
+
+    @model_validator(mode="after")
+    def validar_horario(self) -> "ReservacionesBase":
+        if self.hora_fin <= self.hora_inicio:
+            raise ValueError("hora_fin debe ser mayor a hora_inicio")
+        return self
 
 
 class ReservacionesCrear(ReservacionesBase):
@@ -56,6 +62,14 @@ class ReservacionesUpdate(BaseModel):
     estado: Literal["pendiente", "confirmada", "en_curso", "completada", "cancelada"] | None = None
     notas: str | None = None
     activo: bool | None = None
+
+    @model_validator(mode="after")
+    def validar_horario(self) -> "ReservacionesUpdate":
+        if self.hora_inicio is None or self.hora_fin is None:
+            return self
+        if self.hora_fin <= self.hora_inicio:
+            raise ValueError("hora_fin debe ser mayor a hora_inicio")
+        return self
 
 
 class ReservacionesOut(ReservacionesBase):

@@ -174,17 +174,17 @@ Los permisos se asignan por rol y se validan en cada endpoint. El sistema carga 
 
 ---
 
-### Usuarios — `/api/users`
+### Usuarios — `/api/usuarios`
 
 | Método | Ruta | Permiso requerido | Descripción |
 |--------|------|-------------------|-------------|
-| `GET` | `/api/users` | `usuarios:listar` | Listar usuarios |
-| `POST` | `/api/users` | `usuarios:crear` | Crear usuario |
-| `GET` | `/api/users/{id}` | `usuarios:ver` | Ver usuario |
-| `PUT` | `/api/users/{id}` | `usuarios:editar` | Editar usuario |
-| `DELETE` | `/api/users/{id}` | `usuarios:eliminar` | Eliminar usuario (soft delete) |
+| `GET` | `/api/usuarios` | `usuarios:listar` | Listar usuarios |
+| `POST` | `/api/usuarios` | `usuarios:crear` | Crear usuario |
+| `GET` | `/api/usuarios/{id}` | `usuarios:ver` | Ver usuario |
+| `PUT` | `/api/usuarios/{id}` | `usuarios:editar` | Editar usuario |
+| `DELETE` | `/api/usuarios/{id}` | `usuarios:eliminar` | Eliminar usuario (soft delete) |
 
-**Body para crear usuario (`POST /api/users`):**
+**Body para crear usuario (`POST /api/usuarios`):**
 ```json
 {
   "email": "nuevo@ejemplo.com",
@@ -200,15 +200,15 @@ Los permisos se asignan por rol y se validan en cada endpoint. El sistema carga 
 
 ---
 
-### Sucursales — `/api/branches`
+### Sucursales — `/api/sucursales`
 
 | Método | Ruta | Permiso requerido | Descripción |
 |--------|------|-------------------|-------------|
-| `GET` | `/api/branches` | `sucursales:listar` | Listar sucursales |
-| `POST` | `/api/branches` | `sucursales:crear` | Crear sucursal |
-| `GET` | `/api/branches/{id}` | `sucursales:ver` | Ver sucursal |
-| `PUT` | `/api/branches/{id}` | `sucursales:editar` | Editar sucursal |
-| `DELETE` | `/api/branches/{id}` | `sucursales:eliminar` | Eliminar sucursal (soft delete) |
+| `GET` | `/api/sucursales` | `sucursales:listar` | Listar sucursales |
+| `POST` | `/api/sucursales` | `sucursales:crear` | Crear sucursal |
+| `GET` | `/api/sucursales/{id}` | `sucursales:ver` | Ver sucursal |
+| `PUT` | `/api/sucursales/{id}` | `sucursales:editar` | Editar sucursal |
+| `DELETE` | `/api/sucursales/{id}` | `sucursales:eliminar` | Eliminar sucursal (soft delete) |
 
 **Body para crear/editar sucursal:**
 ```json
@@ -223,24 +223,24 @@ Los permisos se asignan por rol y se validan en cada endpoint. El sistema carga 
 
 ---
 
-### Permisos — `/api/permissions`
+### Permisos — `/api/permisos`
 
 | Método | Ruta | Permiso requerido | Descripción |
 |--------|------|-------------------|-------------|
-| `GET` | `/api/permissions/roles` | `permisos:ver` | Listar roles con sus permisos |
-| `GET` | `/api/permissions/roles/{id}` | `permisos:ver` | Ver un rol específico |
-| `PUT` | `/api/permissions/roles/{id}` | `permisos:editar` | Actualizar permisos de un rol |
-| `GET` | `/api/permissions/permisos` | `permisos:ver` | Listar todos los permisos disponibles |
-| `POST` | `/api/permissions/cache/reload` | `permisos:editar` | Forzar recarga del caché de permisos |
+| `GET` | `/api/permisos/roles` | `permisos:ver` | Listar roles con sus permisos |
+| `GET` | `/api/permisos/roles/{id}` | `permisos:ver` | Ver un rol específico |
+| `PUT` | `/api/permisos/roles/{id}` | `permisos:editar` | Actualizar permisos de un rol |
+| `GET` | `/api/permisos/catalogo` | `permisos:ver` | Listar todos los permisos disponibles |
+| `POST` | `/api/permisos/cache/reload` | `permisos:editar` | Forzar recarga del caché de permisos |
 
-**Body para actualizar permisos de un rol (`PUT /api/permissions/roles/{id}`):**
+**Body para actualizar permisos de un rol (`PUT /api/permisos/roles/{id}`):**
 ```json
 {
   "permiso_ids": [1, 2, 3, 4, 5]
 }
 ```
 
-> Los IDs se obtienen primero llamando a `GET /api/permissions/permisos`.
+> Los IDs se obtienen primero llamando a `GET /api/permisos/catalogo`.
 
 ---
 
@@ -255,13 +255,13 @@ curl -X POST http://localhost:8000/api/auth/login \
 
 ### Listar usuarios (con token)
 ```bash
-curl http://localhost:8000/api/users \
+curl http://localhost:8000/api/usuarios \
   -H "Authorization: Bearer <token>"
 ```
 
 ### Listar roles y permisos
 ```bash
-curl http://localhost:8000/api/permissions/roles \
+curl http://localhost:8000/api/permisos/roles \
   -H "Authorization: Bearer <token>"
 ```
 

@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.metodos_pago as svc
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoOut, MetodosPagoUpdate
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/metodos-pago", tags=["Métodos de Pago"])
 @router.get("", response_model=list[MetodosPagoOut])
 async def listar_metodos_pago(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("metodos_pago:listar")),
 ) -> list[MetodosPagoOut]:
     return await svc.listar(conn)
 
@@ -24,7 +24,7 @@ async def listar_metodos_pago(
 async def obtener_metodo_pago(
     metodo_pago_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("metodos_pago:ver")),
 ) -> MetodosPagoOut:
     return await svc.obtener(conn, metodo_pago_id)
 
@@ -33,7 +33,7 @@ async def obtener_metodo_pago(
 async def crear_metodo_pago(
     body: MetodosPagoCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("metodos_pago:crear")),
 ) -> MetodosPagoOut:
     return await svc.crear(conn, body)
 
@@ -43,7 +43,7 @@ async def actualizar_metodo_pago(
     metodo_pago_id: UUID,
     body: MetodosPagoUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("metodos_pago:editar")),
 ) -> MetodosPagoOut:
     return await svc.actualizar(conn, metodo_pago_id, body)
 
@@ -52,6 +52,6 @@ async def actualizar_metodo_pago(
 async def eliminar_metodo_pago(
     metodo_pago_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
+    _: TokenData = Depends(require_permission("metodos_pago:eliminar")),
 ) -> None:
     await svc.eliminar(conn, metodo_pago_id)

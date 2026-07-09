@@ -40,6 +40,11 @@ def has_permission(role_name: str, permission_code: str) -> bool:
     return permission_code in _cache.get(role_name, frozenset())
 
 
+def get_permissions(role_name: str) -> list[str]:
+    """Devuelve los códigos de permiso del rol, para incluir como claim en el JWT."""
+    return sorted(_cache.get(role_name, frozenset()))
+
+
 def _permiso_to_response(r: PermisoRecord) -> PermisoResponse:
     return PermisoResponse(
         id=r["id"],

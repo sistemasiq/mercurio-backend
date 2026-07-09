@@ -121,10 +121,17 @@ async def actualizar_estado_comanda(
     return await get_comanda_por_id(conn, comanda_id)
 
 
-async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
-    """Retorna comandas en estado P, E o L con sus detalles."""
+async def get_comandas_pendientes(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[Comanda]:
+    """Retorna comandas en estado P, E o L con sus detalles.
+
+    Si sucursal_id es None no filtra por sucursal (uso exclusivo de
+    AdministradorSistema, que ve todas las sucursales)."""
+    filtro_sucursal = "AND c.sucursal_id = $1" if sucursal_id is not None else ""
+    params: list[str] = [sucursal_id] if sucursal_id is not None else []
     rows = await conn.fetch(
-        """
+        f"""
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
             c.sucursal_id, c.fecha_hora,
@@ -134,13 +141,16 @@ async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
-            p.nombre
+            p.nombre,
+            p.tipo AS producto_tipo
         FROM public.comandas c
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
         LEFT JOIN public.productos        p  ON p.id = dc.producto_id
         WHERE c.estado_actual IN ('P', 'E', 'L')
+        {filtro_sucursal}
         ORDER BY c.fecha_hora ASC
-        """
+        """,
+        *params,
     )
 
     # Agrupar detalles por comanda
@@ -169,6 +179,7 @@ async def get_comandas_pendientes(conn: asyncpg.Connection) -> list[Comanda]:
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
                     producto_nombre=row.get("nombre"),
+                    producto_tipo=row.get("producto_tipo"),
                 )
             )
 
@@ -191,7 +202,8 @@ async def get_comanda_por_id(
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
-            p.nombre
+            p.nombre,
+            p.tipo AS producto_tipo
         FROM public.comandas c
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
         LEFT JOIN public.productos        p  ON p.id = dc.producto_id
@@ -226,6 +238,7 @@ async def get_comanda_por_id(
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
                     producto_nombre=row.get("nombre"),
+                    producto_tipo=row.get("producto_tipo"),
                 )
             )
 

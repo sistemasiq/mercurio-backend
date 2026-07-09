@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 from app.services.branch_service import (
+    AdministradorInvalidoError,
     BranchNotFoundError,
     InsufficientPermissionsError,
     NombreAlreadyExistsError,
@@ -21,7 +22,7 @@ from app.services.branch_service import (
     update_branch,
 )
 
-router = APIRouter(prefix="/api/branches", tags=["branches"])
+router = APIRouter(prefix="/api/sucursales", tags=["Sucursales"])
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -34,6 +35,13 @@ _FORBIDDEN = HTTPException(
 _CONFLICT = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail={"code": "NOMBRE_ALREADY_EXISTS", "message": "Ya existe una sucursal con ese nombre."},
+)
+_ADMINISTRADOR_INVALIDO = HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "ADMINISTRADOR_INVALIDO",
+        "message": "El usuario indicado no existe, está inactivo o no tiene rol Administrador.",
+    },
 )
 
 
@@ -55,58 +63,62 @@ async def post_branch(
         return await create_branch(conn, body, current_user)
     except NombreAlreadyExistsError:
         raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
 
 
-@router.get("/{branch_id}", response_model=BranchResponse)
+@router.get("/{sucursal_id}", response_model=BranchResponse)
 async def get_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:ver")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
-        return await get_branch(conn, branch_id, current_user)
+        return await get_branch(conn, sucursal_id, current_user)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
     except InsufficientPermissionsError:
         raise _FORBIDDEN from None
 
 
-@router.put("/{branch_id}", response_model=BranchResponse)
+@router.put("/{sucursal_id}", response_model=BranchResponse)
 async def put_branch(
-    branch_id: UUID,
+    sucursal_id: UUID,
     body: BranchUpdateRequest,
     current_user: TokenData = Depends(require_permission("sucursales:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> BranchResponse:
     try:
-        return await update_branch(conn, branch_id, body, current_user)
+        return await update_branch(conn, sucursal_id, body, current_user)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
     except NombreAlreadyExistsError:
         raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
 
 
-@router.patch("/{branch_id}/deactivate", status_code=status.HTTP_200_OK)
+@router.patch("/{sucursal_id}/deactivate", status_code=status.HTTP_200_OK)
 async def deactivate_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:eliminar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await deactivate_branch(conn, branch_id, current_user)
+        await deactivate_branch(conn, sucursal_id, current_user)
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
 
 
-@router.patch("/{branch_id}/reactivate", status_code=status.HTTP_200_OK)
+@router.patch("/{sucursal_id}/reactivate", status_code=status.HTTP_200_OK)
 async def reactivate_branch_endpoint(
-    branch_id: UUID,
+    sucursal_id: UUID,
     current_user: TokenData = Depends(require_permission("sucursales:editar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     try:
-        await reactivate_branch(conn, branch_id, current_user)
+        await reactivate_branch(conn, sucursal_id, current_user)
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None

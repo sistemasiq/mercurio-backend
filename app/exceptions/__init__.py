@@ -23,3 +23,11 @@ class Conflicto(HTTPException):
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "CONFLICT", "message": mensaje},
         )
+
+
+class DatosInvalidos(HTTPException):
+    def __init__(self, mensaje: str = "Los datos enviados no son válidos.") -> None:
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_DATA", "message": mensaje},
+        )

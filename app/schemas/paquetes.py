@@ -1,13 +1,14 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class PaquetesBase(BaseModel):
     sucursal_id: UUID
-    nombre: str = Field(..., max_length=150)
+    nombre: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
     descripcion: str | None = None
     duracion_minutos: int = Field(120, gt=0)
     personas_incluidas: int = Field(10, gt=0)

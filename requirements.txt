@@ -6,3 +6,4 @@ pydantic-settings==2.7.0
 asyncpg==0.31.0
 bcrypt==5.0.0
 python-multipart==0.0.20
+pytz==2026.2
