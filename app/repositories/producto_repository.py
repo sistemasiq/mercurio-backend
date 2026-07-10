@@ -16,7 +16,7 @@ from app.models.producto import Producto
 
 _COLUMNS = """
     id, nombre, precio_unitario, tipo, sucursal_id, activo,
-    descripcion, imagen, creado, creado_por, modificado, modificado_por
+    descripcion, imagen, creado, creado_por, modificado, modificado_por, es_combo
 """
 
 
@@ -34,6 +34,7 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         creado_por=row.get("creado_por"),
         modificado=row.get("modificado"),
         modificado_por=row.get("modificado_por"),
+        es_combo=row.get("es_combo"),
     )
 
 
@@ -56,12 +57,12 @@ async def listar_todos(
         )
     else:
         rows = await conn.fetch(f"SELECT {_COLUMNS} FROM public.productos ORDER BY nombre ASC")
-    return [dict(r) for r in rows]
+    return [_row_to_producto(r) for r in rows]
 
 
-async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> dict[str, Any] | None:
+async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> Producto | None:
     row = await conn.fetchrow(f"SELECT {_COLUMNS} FROM public.productos WHERE id = $1", producto_id)
-    return dict(row) if row else None
+    return _row_to_producto(row) if row else None
 
 
 async def crear(
@@ -73,11 +74,13 @@ async def crear(
     descripcion: str | None,
     imagen: str | None,
 ) -> dict[str, Any]:
+    es_combo = True if tipo == "C" else False
+
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.productos
-            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_COLUMNS}
         """,
         nombre,
@@ -86,9 +89,9 @@ async def crear(
         sucursal_id,
         descripcion,
         imagen,
+        es_combo,
     )
     return dict(row)
-
 
 async def actualizar(
     conn: asyncpg.Connection, producto_id: UUID, updates: dict[str, Any]
