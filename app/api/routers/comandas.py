@@ -38,6 +38,13 @@ router = APIRouter(prefix="/api/comandas", tags=["Comandas"])
 class CambioEstadoRequest(BaseModel):
     estado_actual: str
 
+def get_active_branch(current_user: TokenData) -> UUID:
+    if current_user.branch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La sesión no tiene una sucursal activa.",
+        )
+    return current_user.branch_id
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -46,17 +53,16 @@ class CambioEstadoRequest(BaseModel):
 async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("restaurante:crear_pedido")),
+    current_user: TokenData = Depends(require_permission("restaurante:crear_pedido")),
 ) -> Any:
-    """Crea una comanda nueva con sus detalles."""
-    try:
-        comanda = await comanda_service.crear_comanda(conn, comanda_in)
-        return asdict(comanda)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    # Obtenemos la sucursal de forma centralizada y segura
+    active_branch_id = get_active_branch(current_user)
+
+    # Inyectamos el UUID directamente (sin convertir a string innecesariamente)
+    comanda_in = comanda_in.model_copy(update={"sucursal_id": active_branch_id})
+    
+    comanda = await comanda_service.crear_comanda(conn, comanda_in)
+    return asdict(comanda)
 
 
 @router.get("")

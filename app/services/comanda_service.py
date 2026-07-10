@@ -42,9 +42,8 @@ async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate) -> 
 
 
 async def listar_pendientes(conn: asyncpg.Connection, current_user: TokenData) -> list[Comanda]:
-    """Retorna las comandas activas (estados P, E, L) de la sucursal de
-    current_user, o de todas si es AdministradorSistema."""
     scope = sucursal_scope(current_user)
+    # Si scope es None, esto trae todo; si tiene UUID, filtra.
     return await comanda_repository.get_comandas_pendientes(conn, scope)
 
 

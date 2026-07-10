@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Optional
+import uuid
 
 from pydantic import UUID4, BaseModel, Field
 
@@ -33,7 +35,7 @@ class ComandaCreate(BaseModel):
     detalles_comanda: list[DetalleCreate]
     ticket_numero: str
     total_final: Decimal
-    sucursal_id: str
+    sucursal_id: Optional[uuid.UUID] = None
 
 
 # Esquema de respuesta

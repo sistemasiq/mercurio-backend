@@ -149,13 +149,20 @@ async def refresh_access_token(
         raise InvalidRefreshTokenError
 
     rol = RoleEnum(usuario["rol"])
-    # La sucursal activa es una elección de sesión (hecha en login), no un
-    # atributo del usuario: para Administrador, usuario["sucursal_id"]
-    # siempre es None (puede tener varias). Se reutiliza la que se guardó
-    # en el refresh token al emitirlo, en vez de re-derivarla.
-    sucursal_efectiva: UUID | None = (
-        record["sucursal_id"] if rol == RoleEnum.administrador else usuario["sucursal_id"]
-    )
+    sucursales_activas = await get_sucursal_ids_activas(conn, usuario["id"])
+    if rol == RoleEnum.administrador_sistema:
+        sucursal_efectiva: UUID | None = None
+    else:
+        if not sucursales_activas:
+            raise InvalidRefreshTokenError
+
+        sucursal_efectiva = record["sucursal_id"]
+        if sucursal_efectiva not in sucursales_activas:
+            sucursal_efectiva = usuario["sucursal_id"]
+
+        if sucursal_efectiva is None or sucursal_efectiva not in sucursales_activas:
+            raise InvalidRefreshTokenError
+
     permissions = get_permissions(rol.value)
 
     token = create_access_token(
