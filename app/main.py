@@ -29,7 +29,7 @@ from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
 
 logger = logging.getLogger("mercury.debug")
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -67,7 +67,7 @@ async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> 
         except UnicodeDecodeError:
             body_str = "<binary data unreadable>"
 
-    logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body_str)
+    # logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body_str)
     response = await call_next(request)
     return response
 
