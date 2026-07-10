@@ -5,8 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-TipoProducto = Literal["A", "B", "E", "S"]  # Alimento | Bebida | Estancia | Servicio
+TipoProducto = Literal["A", "B", "E", "S", "C"]  # Alimento | Bebida | Estancia | Servicio
 
+class ComboItem(BaseModel):
+    producto_id: UUID
+    cantidad: int = Field(..., ge=1)
 
 class ProductoBase(BaseModel):
     nombre: str = Field(..., max_length=150)
@@ -18,6 +21,7 @@ class ProductoBase(BaseModel):
 
 class ProductoCrear(ProductoBase):
     sucursal_id: UUID
+    productos_combo: list[ComboItem] | None = None
 
 
 class ProductoUpdate(BaseModel):
@@ -33,9 +37,11 @@ class ProductoOut(ProductoBase):
     id: UUID
     sucursal_id: UUID
     activo: bool
+    es_combo: bool
     creado: datetime | None
     creado_por: UUID | None
     modificado: datetime | None
     modificado_por: UUID | None
+    productos_combo: list[dict] | None = None
 
     model_config = {"from_attributes": True}
