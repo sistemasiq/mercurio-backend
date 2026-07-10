@@ -65,15 +65,38 @@ async def crear(conn: asyncpg.Connection, body: ProductoCrear, usuario_id: UUID 
     return ProductoOut.model_validate(row_dict)
 
 async def actualizar(
-    conn: asyncpg.Connection, producto_id: UUID, body: ProductoUpdate
+    conn: asyncpg.Connection, producto_id: UUID, body: ProductoUpdate, usuario_id: UUID | None = None # <-- Recibimos usuario_id
 ) -> ProductoOut:
     await obtener(conn, producto_id)
+
     updates = body.model_dump(exclude_unset=True)
+    productos_combo = updates.pop("productos_combo", None)
+
+    if usuario_id:
+        updates["modificado_por"] = usuario_id
+
     row = await producto_repository.actualizar(conn, producto_id, updates)
     if not row:
         raise NoEncontrado("Producto")
-    return ProductoOut.model_validate(row)
 
+    row_dict = dict(row) if not hasattr(row, "__dataclass_fields__") else asdict(row)
+
+    if row_dict.get("tipo") == "C" and productos_combo is not None:
+        async with conn.transaction():
+            await combo_repository.desasociar_todos_los_productos(conn, producto_id)
+            if productos_combo:
+                items_dict = [
+                    item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                    for item in productos_combo
+                ]
+                await combo_repository.asociar_productos_a_combo(
+                    conn,
+                    combo_id=producto_id,
+                    items=items_dict,
+                    usuario_id=usuario_id
+                )
+
+    return await obtener(conn, producto_id)
 
 async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> None:
     await obtener(conn, producto_id)

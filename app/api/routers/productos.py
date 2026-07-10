@@ -66,10 +66,10 @@ async def actualizar_producto(
     producto_id: UUID,
     body: ProductoUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:gestionar_productos")),
+    current_user: TokenData = Depends(require_permission("inventario:gestionar_productos")),
 ) -> ProductoOut:
-    return await producto_service.actualizar(conn, producto_id, body)
-
+    usuario_id = UUID(current_user.sub) if current_user.sub else None
+    return await producto_service.actualizar(conn, producto_id, body, usuario_id=usuario_id)
 
 @router.delete("/{producto_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def eliminar_producto(
