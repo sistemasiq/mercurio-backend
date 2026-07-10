@@ -17,6 +17,8 @@ class DetalleIn(BaseModel):
 class OnboardingRequest(BaseModel):
     sucursalId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     tutor: TutorIn
+    nombreSegundoTutor: str | None = None
+    pulseraTutorId: UUID
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn]
@@ -28,6 +30,8 @@ class OnboardingResponse(BaseModel):
     pagado: float
     estado: str
 
+class CheckoutRequest(BaseModel):
+    pulseraTutorId: str
 
 class CheckoutResponse(BaseModel):
     detalleId: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
@@ -40,13 +44,16 @@ class CheckoutResponse(BaseModel):
 class ProductoResponse(BaseModel):
     id: UUID
     nombre: str
-    precio_unitario: float
+    precioUnitario: float
     descripcion: str | None
 
 
 class DetalleActivoResponse(BaseModel):
-    registro_id: UUID
-    detalle_id: UUID
+    registroId: UUID
+    nombreSegundoTutor: str | None = None
+    pulseraTutorId: UUID
+    pulseraTutorRfid: str
+    detalleId: UUID
     nino: str
     notas: str | None
     edad: int
@@ -54,5 +61,5 @@ class DetalleActivoResponse(BaseModel):
     telefono: str
     parentesco: str
     pulsera: str
-    minutos_pagados: float
-    minutos_transcurridos: float
+    minutosPagados: float
+    minutosTranscurridos: float

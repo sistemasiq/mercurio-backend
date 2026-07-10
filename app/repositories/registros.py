@@ -10,14 +10,32 @@ class EstadoRegistro(str, Enum):
     CERRADO = "C"
 
 
+async def get_guardian_bracelet_by_detalles_registro_id(
+        conn: asyncpg.Connection,
+        registro_id: UUID
+) -> UUID | None:
+    
+    bracelet_id = await conn.fetchval(
+        """
+        SELECT pulseras_tutor_id
+        FROM registros
+        WHERE id = $1
+        """, 
+        registro_id
+    )
+
+    return bracelet_id
+
 async def registro_create(
     conn: asyncpg.Connection,
     registro_id: UUID,
     sucursal_id: UUID,
     tutor_id: UUID,
+    pulsera_tutor_id : UUID,
     foto_ine: str,
     foto_llegada: str,
     usuario_id: UUID,
+    nombre_segundo_tutor: str | None = None,
 ) -> None:
     await conn.execute(
         """
@@ -25,17 +43,21 @@ async def registro_create(
            id,
            sucursal_id,
            tutores_id,
+           nombre_segundo_tutor,
+           pulseras_tutor_id,
            foto_ine,
            foto_llegada,
            total,
            estado,
            creado_por
        )
-       VALUES ($1,$2,$3,$4,$5,0,'P',$6)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',$8)
    """,
         registro_id,
         sucursal_id,
         tutor_id,
+        nombre_segundo_tutor,
+        pulsera_tutor_id,
         foto_ine,
         foto_llegada,
         usuario_id,
