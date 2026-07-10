@@ -12,9 +12,9 @@ import asyncpg
 
 from app.exceptions import NoEncontrado
 from app.models.producto import Producto
-from app.repositories import producto_repository
+from app.repositories import producto_repository, combo_repository
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
-
+from dataclasses import asdict
 
 async def listar_activos(conn: asyncpg.Connection) -> list[Producto]:
     """Retorna todos los productos activos."""
@@ -32,10 +32,16 @@ async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> ProductoOut:
     row = await producto_repository.obtener(conn, producto_id)
     if not row:
         raise NoEncontrado("Producto")
-    return ProductoOut.model_validate(row)
 
+    producto_dict = asdict(row) if hasattr(row, "__dataclass_fields__") else dict(row)
 
-async def crear(conn: asyncpg.Connection, body: ProductoCrear) -> ProductoOut:
+    if producto_dict.get("tipo") == "C":
+        items = await combo_repository.obtener_items_de_combo(conn, producto_id)
+        producto_dict["productos_combo"] = items
+
+    return ProductoOut.model_validate(producto_dict)
+
+async def crear(conn: asyncpg.Connection, body: ProductoCrear, usuario_id: UUID | None = None) -> ProductoOut:
     row = await producto_repository.crear(
         conn,
         nombre=body.nombre,
@@ -45,8 +51,18 @@ async def crear(conn: asyncpg.Connection, body: ProductoCrear) -> ProductoOut:
         descripcion=body.descripcion,
         imagen=body.imagen,
     )
-    return ProductoOut.model_validate(row)
+    row_dict = dict(row) if not hasattr(row, "__dataclass_fields__") else asdict(row)
 
+    if body.tipo == "C" and hasattr(body, "productos_combo") and body.productos_combo:
+        items_dict = [item.model_dump() for item in body.productos_combo]
+        await combo_repository.asociar_productos_a_combo(
+            conn,
+            combo_id=row_dict["id"],
+            items=items_dict,
+            usuario_id=usuario_id
+        )
+
+    return ProductoOut.model_validate(row_dict)
 
 async def actualizar(
     conn: asyncpg.Connection, producto_id: UUID, body: ProductoUpdate
