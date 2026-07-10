@@ -31,6 +31,7 @@ class ProductoUpdate(BaseModel):
     descripcion: str | None = None
     imagen: str | None = None
     activo: bool | None = None
+    productos_combo: list[ComboItem] | None = None
 
 
 class ProductoOut(ProductoBase):
