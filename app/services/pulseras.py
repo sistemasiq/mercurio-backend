@@ -29,7 +29,9 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> PulseraOut:
 
 async def crear(conn: asyncpg.Connection, body: PulseraCrear) -> PulseraOut:
     try:
-        row = await pulseras_repository.crear(conn, body.sucursal_id, body.pulsera_rfid)
+        row = await pulseras_repository.crear(
+            conn, body.sucursal_id, body.pulsera_rfid, body.activo, body.numero_lote
+        )
     except asyncpg.UniqueViolationError as exc:
         raise Conflicto("Ya existe una pulsera con ese RFID en esta sucursal.") from exc
     return PulseraOut.model_validate(row)

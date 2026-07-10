@@ -4,7 +4,7 @@ from uuid import UUID
 import asyncpg
 
 _COLUMNS = """
-    id, sucursal_id, pulsera_rfid, activo, creado, creado_por, modificado, modificado_por
+    id, sucursal_id, pulsera_rfid, activo, numero_lote, creado, creado_por, modificado, modificado_por
 """
 
 
@@ -51,15 +51,23 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> dict[str, Any] 
     return dict(row) if row else None
 
 
-async def crear(conn: asyncpg.Connection, sucursal_id: UUID, pulsera_rfid: str) -> dict[str, Any]:
+async def crear(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    pulsera_rfid: str,
+    activo: bool,
+    numero_lote: str | None,
+) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid)
-        VALUES ($1, $2)
+        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, activo, numero_lote)
+        VALUES ($1, $2, $3, $4)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
         pulsera_rfid,
+        activo,
+        numero_lote,
     )
     return dict(row)
 
