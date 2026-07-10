@@ -6,31 +6,28 @@ SAD §3.2 / Regla 11.4: el router nunca accede a un repository ni escribe SQL.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
 from app.services import producto_service
 
+
 router = APIRouter(prefix="/api/productos", tags=["Productos"])
 
 
-@router.get("")
-async def listar_productos(
+@router.get("/catalogo")
+async def listar_productos_cajero(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("pos:acceder")),
-) -> Any:
-    """Lista todos los productos activos (usado por caja y check-in)."""
-    productos = await producto_service.listar_activos(conn)
-    return [asdict(p) for p in productos]
-
+    current_user: TokenData = Depends(get_current_user),
+):
+    return await producto_service.obtener_productos_para_cajero(conn, current_user)
 
 @router.get("/admin", response_model=list[ProductoOut])
 async def listar_productos_admin(

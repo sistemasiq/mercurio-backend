@@ -111,3 +111,21 @@ async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> bool:
         producto_id,
     )
     return bool(result == "UPDATE 1")
+
+
+async def get_catalogo_venta_by_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    # Aquí traemos EXCLUSIVAMENTE Alimentos (A) y Bebidas (B)
+    rows = await conn.fetch(
+        """
+        SELECT id, nombre, precio_unitario, descripcion, tipo, imagen
+        FROM productos
+        WHERE sucursal_id = $1
+          AND activo = TRUE
+          AND tipo IN ('A', 'B')
+        ORDER BY nombre
+        """,
+        sucursal_id,
+    )
+    return [dict(r) for r in rows]

@@ -11,14 +11,9 @@ from uuid import UUID
 import asyncpg
 
 from app.exceptions import NoEncontrado
-from app.models.producto import Producto
 from app.repositories import producto_repository
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
-
-
-async def listar_activos(conn: asyncpg.Connection) -> list[Producto]:
-    """Retorna todos los productos activos."""
-    return await producto_repository.get_productos_activos(conn)
+from app.schemas.auth import TokenData
 
 
 async def listar_todos(
@@ -62,3 +57,8 @@ async def actualizar(
 async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> None:
     await obtener(conn, producto_id)
     await producto_repository.eliminar(conn, producto_id)
+
+
+async def obtener_productos_para_cajero(conn: asyncpg.Connection, current_user: TokenData):
+    # Aquí llamamos directamente a la función que SÍ trae comida y bebida
+    return await producto_repository.get_catalogo_venta_by_sucursal(conn, current_user.branch_id)
