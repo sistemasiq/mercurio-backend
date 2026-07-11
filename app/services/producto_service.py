@@ -50,6 +50,7 @@ async def crear(conn: asyncpg.Connection, body: ProductoCrear, usuario_id: UUID 
         sucursal_id=body.sucursal_id,
         descripcion=body.descripcion,
         imagen=body.imagen,
+        usuario_id=usuario_id,
     )
     row_dict = dict(row) if not hasattr(row, "__dataclass_fields__") else asdict(row)
 
@@ -98,6 +99,6 @@ async def actualizar(
 
     return await obtener(conn, producto_id)
 
-async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> None:
+async def eliminar(conn: asyncpg.Connection, producto_id: UUID, usuario_id: UUID | None = None) -> None:
     await obtener(conn, producto_id)
-    await producto_repository.eliminar(conn, producto_id)
+    await producto_repository.eliminar(conn, producto_id, usuario_id=usuario_id)

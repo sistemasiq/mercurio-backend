@@ -75,6 +75,7 @@ async def actualizar_producto(
 async def eliminar_producto(
     producto_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:eliminar_producto")),
+    current_user: TokenData = Depends(require_permission("inventario:eliminar_producto")),
 ) -> None:
-    await producto_service.eliminar(conn, producto_id)
+    usuario_id = UUID(current_user.sub) if current_user.sub else None
+    await producto_service.eliminar(conn, producto_id, usuario_id=usuario_id)

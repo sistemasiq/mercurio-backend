@@ -73,14 +73,15 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
+    usuario_id: UUID | None = None,
 ) -> dict[str, Any]:
     es_combo = True if tipo == "C" else False
 
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.productos
-            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING {_COLUMNS}
         """,
         nombre,
@@ -90,6 +91,7 @@ async def crear(
         descripcion,
         imagen,
         es_combo,
+        usuario_id,
     )
     return dict(row)
 
@@ -107,10 +109,11 @@ async def actualizar(
     return dict(row) if row else None
 
 
-async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> bool:
+async def eliminar(conn: asyncpg.Connection, producto_id: UUID, usuario_id: UUID | None = None) -> bool:
     result = await conn.execute(
-        "UPDATE public.productos SET activo = FALSE, modificado = NOW() "
+        "UPDATE public.productos SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
         "WHERE id = $1 AND activo = TRUE",
         producto_id,
+        usuario_id,
     )
     return bool(result == "UPDATE 1")
