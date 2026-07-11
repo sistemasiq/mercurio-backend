@@ -12,7 +12,7 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.repositories.branch_repository import get_sucursales_by_ids
+from app.repositories.branch_repository import get_sucursal_nombre, get_sucursales_by_ids
 from app.repositories.refresh_token_repository import (
     create_refresh_token,
     get_refresh_token,
@@ -114,6 +114,8 @@ async def login(
         conn, usuario["id"], refresh_hash, refresh_expires_at, sucursal_efectiva
     )
 
+    branch_name = await get_sucursal_nombre(conn, sucursal_efectiva) if sucursal_efectiva else None
+
     return LoginResponse(
         token=token,
         expires_in=access_minutes * 60,
@@ -125,6 +127,7 @@ async def login(
             email=usuario["email"],
             role=rol,
             branch_id=sucursal_efectiva,
+            branch_name=branch_name,
             permissions=permissions,
         ),
     )
@@ -173,6 +176,8 @@ async def refresh_access_token(
     refresh_expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     await create_refresh_token(conn, usuario["id"], new_hash, refresh_expires_at, sucursal_efectiva)
 
+    branch_name = await get_sucursal_nombre(conn, sucursal_efectiva) if sucursal_efectiva else None
+
     return LoginResponse(
         token=token,
         expires_in=settings.access_token_expire_minutes * 60,
@@ -184,6 +189,7 @@ async def refresh_access_token(
             email=usuario["email"],
             role=rol,
             branch_id=sucursal_efectiva,
+            branch_name=branch_name,
             permissions=permissions,
         ),
     )
