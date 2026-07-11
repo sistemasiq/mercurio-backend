@@ -15,7 +15,7 @@ import asyncpg
 from app.models.producto import Producto
 
 _COLUMNS = """
-    id, nombre, precio_unitario, tipo, sucursal_id, activo,
+    id, nombre, precio_unitario, tipo, sucursal_id, activo, es_combo,
     descripcion, imagen, creado, creado_por, modificado, modificado_por
 """
 
@@ -28,6 +28,7 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         tipo=row["tipo"],
         sucursal_id=str(row["sucursal_id"]),
         activo=row["activo"],
+        es_combo=row.get("es_combo", False),
         descripcion=row.get("descripcion"),
         imagen=row.get("imagen"),
         creado=row.get("creado"),
@@ -116,16 +117,53 @@ async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> bool:
 async def get_catalogo_venta_by_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID
 ) -> list[dict[str, Any]]:
-    # Aquí traemos EXCLUSIVAMENTE Alimentos (A) y Bebidas (B)
-    rows = await conn.fetch(
-        """
-        SELECT id, nombre, precio_unitario, descripcion, tipo, imagen
+    SQL_CATALOGO = """
+        SELECT id, nombre, precio_unitario, descripcion, tipo, imagen, es_combo
         FROM productos
         WHERE sucursal_id = $1
           AND activo = TRUE
-          AND tipo IN ('A', 'B')
-        ORDER BY nombre
-        """,
-        sucursal_id,
-    )
+          AND (tipo IN ('A', 'B') OR es_combo = TRUE)
+        ORDER BY es_combo ASC, nombre
+    """
+    rows = await conn.fetch(SQL_CATALOGO, sucursal_id)
     return [dict(r) for r in rows]
+
+async def es_producto_combo(conn: asyncpg.Connection, producto_id: UUID) -> bool:
+    """
+    Verifica si un producto está marcado como combo en la base de datos.
+    """
+    # Usamos fetchval porque solo esperamos un único valor booleano
+    query = "SELECT es_combo FROM productos WHERE id = $1"
+    result = await conn.fetchval(query, producto_id)
+    
+    # Retornamos False si el resultado es None o False
+    return result is True
+
+async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
+        SELECT producto_id, cantidad
+        FROM public.producto_combo
+        WHERE combo_id = $1
+        """,
+        combo_id,
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_hijos_a_padres_map(conn: asyncpg.Connection) -> dict[str, str]:
+    """Retorna un map {producto_hijo_id: nombre_combo_padre} para TODOS los combos."""
+    rows = await conn.fetch(
+        """
+        SELECT pc.producto_id AS hijo_id, p.nombre AS padre_nombre
+        FROM public.producto_combo pc
+        JOIN public.productos p ON p.id = pc.combo_id
+        """
+    )
+    return {str(r["hijo_id"]): r["padre_nombre"] for r in rows}
+
+async def get_by_id(conn: asyncpg.Connection, producto_id: str):
+    return await conn.fetchrow(
+        "SELECT * FROM productos WHERE id = $1", 
+        producto_id
+    )

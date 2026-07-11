@@ -22,6 +22,7 @@ class DetalleComanda:
     sucursal_id: str
     notas_especiales: str | None = None
     # Datos del producto (join opcional al leer)
+    nombre: str | None = None
     producto_nombre: str | None = None
     producto_tipo: str | None = None
 

@@ -18,6 +18,7 @@ class ProductoBase(BaseModel):
 
 class ProductoCrear(ProductoBase):
     sucursal_id: UUID
+    es_combo: bool = False
 
 
 class ProductoUpdate(BaseModel):
@@ -27,12 +28,14 @@ class ProductoUpdate(BaseModel):
     descripcion: str | None = None
     imagen: str | None = None
     activo: bool | None = None
+    es_combo: bool | None = None
 
 
 class ProductoOut(ProductoBase):
     id: UUID
     sucursal_id: UUID
     activo: bool
+    es_combo: bool = False
     creado: datetime | None
     creado_por: UUID | None
     modificado: datetime | None

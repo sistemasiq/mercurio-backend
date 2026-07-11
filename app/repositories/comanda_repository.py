@@ -31,6 +31,7 @@ def _row_to_detalle(row: asyncpg.Record) -> DetalleComanda:
         importe=Decimal(str(row["importe"])),
         sucursal_id=str(row["sucursal_id"]),
         notas_especiales=row.get("notas_especiales"),
+        nombre=row.get("nombre"),
         producto_nombre=row.get("nombre"),  # alias del JOIN
     )
 
@@ -50,9 +51,28 @@ def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Coma
 # ── Queries ───────────────────────────────────────────────────────────────────
 
 
+def _campos_insercion_detalle(item) -> tuple[str, int, Decimal, Decimal, str | None]:
+    if isinstance(item, dict):
+        producto_id = str(item.get("producto_id") or item["id"])
+        cantidad = item["cantidad"]
+        precio_unitario = Decimal(str(item["precio_unitario"]))
+        importe = Decimal(str(item.get("subtotal", item.get("importe", 0))))
+        notas = item.get("notas_especiales")
+        return producto_id, cantidad, precio_unitario, importe, notas
+
+    return (
+        str(item.id),
+        item.cantidad,
+        item.precio_unitario,
+        item.subtotal,
+        item.notas_especiales,
+    )
+
+
 async def crear_comanda_con_detalles(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
+    detalles_procesados: list | None = None,
 ) -> Comanda:
     """
     Inserta comanda + detalles en una transacción.
@@ -76,22 +96,25 @@ async def crear_comanda_con_detalles(
             fecha,
         )
 
-        for item in comanda_in.detalles_comanda:
+        detalles = detalles_procesados if detalles_procesados is not None else comanda_in.detalles_comanda
+
+        for item in detalles:
+            producto_id, cantidad, precio_unitario, importe, notas = _campos_insercion_detalle(item)
             await conn.execute(
                 """
                 INSERT INTO public.detalles_comanda
                     (id, comanda_id, producto_id, cantidad, precio_unitario, importe,
-                     sucursal_id, notas_especiales)
+                    sucursal_id, notas_especiales)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 str(uuid.uuid4()),
                 comanda_id,
-                item.id,
-                item.cantidad,
-                item.precio_unitario,
-                item.subtotal,
+                producto_id,
+                cantidad,
+                precio_unitario,
+                importe,
                 comanda_in.sucursal_id,
-                item.notas_especiales,
+                notas,
             )
 
     # Releer para devolver el objeto completo
@@ -181,6 +204,7 @@ async def get_comandas_pendientes(
                     importe=Decimal(str(row["importe"])),
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
+                    nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
                 )
@@ -240,6 +264,7 @@ async def get_comanda_por_id(
                     importe=Decimal(str(row["importe"])),
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
+                    nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
                 )
