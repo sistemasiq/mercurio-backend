@@ -84,7 +84,7 @@ async def actualizar(
 
     if row_dict.get("tipo") == "C" and productos_combo is not None:
         async with conn.transaction():
-            await combo_repository.desasociar_todos_los_productos(conn, producto_id)
+            await combo_repository.desasociar_todos_los_productos(conn, producto_id, usuario_id=usuario_id)
             if productos_combo:
                 items_dict = [
                     item.model_dump() if hasattr(item, "model_dump") else dict(item)

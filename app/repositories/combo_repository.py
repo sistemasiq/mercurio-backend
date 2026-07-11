@@ -26,23 +26,26 @@ async def asociar_productos_a_combo(
     if not items:
         return
 
-    # Construimos la consulta para una inserción eficiente
     valores = []
     argumentos = [combo_id, usuario_id]
 
-    # El combo_id será $1 y creado_por será $2. Los elementos iteran desde $3 en adelante
-    for i, item in enumerate(items):
+    # $1=combo_id, $2=usuario_id. Los pares producto/cantidad iteran desde $3
+    for item in items:
         idx_prod = len(argumentos) + 1
         idx_cant = len(argumentos) + 2
         valores.append(f"(gen_random_uuid(), $1, ${idx_prod}, ${idx_cant}, TRUE, NOW(), $2)")
         argumentos.extend([item["producto_id"], item["cantidad"]])
 
     sql = f"""
-        INSERT INTO public.producto_combo 
+        INSERT INTO public.producto_combo
             (id, combo_id, producto_id, cantidad, activo, creado, creado_por)
         VALUES {', '.join(valores)}
-        ON CONFLICT (combo_id, producto_id) 
-        DO UPDATE SET cantidad = EXCLUDED.cantidad, activo = TRUE, modificado = NOW();
+        ON CONFLICT (combo_id, producto_id)
+        DO UPDATE SET
+            cantidad = EXCLUDED.cantidad,
+            activo = TRUE,
+            modificado = NOW(),
+            modificado_por = $2;
     """
     await conn.execute(sql, *argumentos)
 
@@ -73,13 +76,16 @@ async def obtener_items_de_combo(
 
 async def desasociar_todos_los_productos(
         conn: asyncpg.Connection,
-        combo_id: UUID
+        combo_id: UUID,
+        usuario_id: UUID | None = None
 ) -> None:
     """
-    Desactiva o remueve lógicamente todos los productos de un combo.
+    Desactiva lógicamente todos los productos de un combo.
     Útil antes de una actualización completa del combo.
     """
     await conn.execute(
-        "UPDATE public.producto_combo SET activo = FALSE, modificado = NOW() WHERE combo_id = $1",
-        combo_id
+        "UPDATE public.producto_combo SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
+        "WHERE combo_id = $1",
+        combo_id,
+        usuario_id,
     )
