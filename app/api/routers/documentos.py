@@ -1,11 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR, PRODUCTOS_DIR
 
 router = APIRouter(prefix="/api/uploads", tags=["Archivos Protegidos"])
 
-DIRECTORIOS = {"identificaciones": IDENTIFICACIONES_DIR, "llegadas": LLEGADAS_DIR}
+DIRECTORIOS = {
+    "identificaciones": IDENTIFICACIONES_DIR,
+    "llegadas": LLEGADAS_DIR,
+    "productos": PRODUCTOS_DIR,
+}
 
 
 @router.get("/{carpeta}/{nombre_archivo}")

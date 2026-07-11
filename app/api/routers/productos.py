@@ -11,7 +11,8 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import ValidationError
 
 from app.api.deps import require_permission
 from app.core.database import get_db
@@ -54,23 +55,38 @@ async def obtener_producto(
 
 @router.post("", response_model=ProductoOut, status_code=status.HTTP_201_CREATED)
 async def crear_producto(
-    body: ProductoCrear,
+    payload: str = Form(..., description="JSON string con los datos de ProductoCrear"),
+    imagen: UploadFile | None = File(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("inventario:gestionar_productos")),
 ) -> ProductoOut:
+    try:
+        body = ProductoCrear.model_validate_json(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors()) from e
+
     usuario_id = UUID(current_user.sub) if current_user.sub else None
-    return await producto_service.crear(conn, body, usuario_id=usuario_id)
+    return await producto_service.crear(conn, body, usuario_id=usuario_id, imagen=imagen)
 
 
 @router.patch("/{producto_id}", response_model=ProductoOut)
 async def actualizar_producto(
     producto_id: UUID,
-    body: ProductoUpdate,
+    payload: str = Form(..., description="JSON string con los datos de ProductoUpdate"),
+    imagen: UploadFile | None = File(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("inventario:gestionar_productos")),
 ) -> ProductoOut:
+    try:
+        body = ProductoUpdate.model_validate_json(payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors()) from e
+
     usuario_id = UUID(current_user.sub) if current_user.sub else None
-    return await producto_service.actualizar(conn, producto_id, body, usuario_id=usuario_id)
+    return await producto_service.actualizar(
+        conn, producto_id, body, usuario_id=usuario_id, imagen=imagen
+    )
+
 
 @router.delete("/{producto_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def eliminar_producto(
