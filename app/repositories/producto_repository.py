@@ -38,11 +38,20 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
     )
 
 
-async def get_productos_activos(conn: asyncpg.Connection) -> list[Producto]:
-    """Retorna todos los productos activos."""
-    rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.productos WHERE activo = TRUE ORDER BY nombre ASC"
-    )
+async def get_productos_activos(
+    conn: asyncpg.Connection, sucursal_id: UUID | None = None
+) -> list[Producto]:
+    """Retorna los productos activos, filtrados por sucursal si se indica."""
+    if sucursal_id:
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS} FROM public.productos "
+            "WHERE activo = TRUE AND sucursal_id = $1 ORDER BY nombre ASC",
+            sucursal_id,
+        )
+    else:
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS} FROM public.productos WHERE activo = TRUE ORDER BY nombre ASC"
+        )
     return [_row_to_producto(r) for r in rows]
 
 

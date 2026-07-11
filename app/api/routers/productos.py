@@ -24,11 +24,12 @@ router = APIRouter(prefix="/api/productos", tags=["Productos"])
 
 @router.get("")
 async def listar_productos(
+    sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("pos:acceder")),
 ) -> Any:
-    """Lista todos los productos activos (usado por caja y check-in)."""
-    productos = await producto_service.listar_activos(conn)
+    """Lista los productos activos de una sucursal (usado por caja y check-in)."""
+    productos = await producto_service.listar_activos(conn, sucursal_id)
     return [asdict(p) for p in productos]
 
 
