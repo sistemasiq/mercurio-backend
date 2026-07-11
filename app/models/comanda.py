@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass
@@ -24,6 +25,9 @@ class DetalleComanda:
     # Datos del producto (join opcional al leer)
     producto_nombre: str | None = None
     producto_tipo: str | None = None
+    # Desglose de items si producto_tipo == 'C' (combo), para que cocina sepa
+    # que preparar. Se llena aparte, no viene del JOIN base de detalles_comanda.
+    productos_combo: list[dict[str, Any]] | None = None
 
 
 @dataclass
