@@ -52,9 +52,9 @@ async def obtener_producto(
 async def crear_producto(
     body: ProductoCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:gestionar_productos")),
+    current_user: TokenData = Depends(require_permission("inventario:gestionar_productos")),
 ) -> ProductoOut:
-    return await producto_service.crear(conn, body)
+    return await producto_service.crear(conn, body, UUID(current_user.sub))
 
 
 @router.patch("/{producto_id}", response_model=ProductoOut)

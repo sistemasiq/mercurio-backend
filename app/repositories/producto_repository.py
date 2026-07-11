@@ -73,12 +73,13 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
+    creado_por: UUID | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.productos
-            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_COLUMNS}
         """,
         nombre,
@@ -87,6 +88,7 @@ async def crear(
         sucursal_id,
         descripcion,
         imagen,
+        creado_por,
     )
     return dict(row)
 

@@ -31,7 +31,7 @@ async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> ProductoOut:
     return ProductoOut.model_validate(row)
 
 
-async def crear(conn: asyncpg.Connection, body: ProductoCrear) -> ProductoOut:
+async def crear(conn: asyncpg.Connection, body: ProductoCrear, creado_por: UUID | None = None) -> ProductoOut:
     row = await producto_repository.crear(
         conn,
         nombre=body.nombre,
@@ -40,6 +40,7 @@ async def crear(conn: asyncpg.Connection, body: ProductoCrear) -> ProductoOut:
         sucursal_id=body.sucursal_id,
         descripcion=body.descripcion,
         imagen=body.imagen,
+        creado_por=creado_por,
     )
     return ProductoOut.model_validate(row)
 

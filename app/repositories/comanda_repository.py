@@ -73,6 +73,7 @@ async def crear_comanda_con_detalles(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
     detalles_procesados: list | None = None,
+    creado_por: str | None = None,
 ) -> Comanda:
     """
     Inserta comanda + detalles en una transacción.
@@ -85,8 +86,8 @@ async def crear_comanda_con_detalles(
         await conn.execute(
             """
             INSERT INTO public.comandas
-                (id, ticket_numero, estado_actual, total_final, sucursal_id, fecha_hora)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (id, ticket_numero, estado_actual, total_final, sucursal_id, fecha_hora, creado_por)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             comanda_id,
             comanda_in.ticket_numero,
@@ -94,6 +95,7 @@ async def crear_comanda_con_detalles(
             comanda_in.total_final,
             comanda_in.sucursal_id,
             fecha,
+            creado_por,
         )
 
         detalles = detalles_procesados if detalles_procesados is not None else comanda_in.detalles_comanda
@@ -104,8 +106,8 @@ async def crear_comanda_con_detalles(
                 """
                 INSERT INTO public.detalles_comanda
                     (id, comanda_id, producto_id, cantidad, precio_unitario, importe,
-                    sucursal_id, notas_especiales)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    sucursal_id, notas_especiales, creado_por)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 str(uuid.uuid4()),
                 comanda_id,
@@ -115,6 +117,7 @@ async def crear_comanda_con_detalles(
                 importe,
                 comanda_in.sucursal_id,
                 notas,
+                creado_por,
             )
 
     # Releer para devolver el objeto completo

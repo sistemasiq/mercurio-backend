@@ -33,12 +33,12 @@ def sucursal_scope(current_user: TokenData) -> str | None:
         return "00000000-0000-0000-0000-000000000000"
     return str(current_user.branch_id)
 
-async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate) -> Comanda:
+async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate, creado_por: str | None = None) -> Comanda:
     """Crea una comanda con los combos desglosados y notifica."""
 
     detalles_expandidos = await expandir_detalles_comanda(conn, comanda_in.detalles_comanda)
     comanda = await comanda_repository.crear_comanda_con_detalles(
-        conn, comanda_in, detalles_expandidos
+        conn, comanda_in, detalles_expandidos, creado_por
     )
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
 

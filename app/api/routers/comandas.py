@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 from fastapi import (
@@ -61,7 +62,7 @@ async def crear_comanda(
     # Inyectamos el UUID directamente (sin convertir a string innecesariamente)
     comanda_in = comanda_in.model_copy(update={"sucursal_id": active_branch_id})
     
-    comanda = await comanda_service.crear_comanda(conn, comanda_in)
+    comanda = await comanda_service.crear_comanda(conn, comanda_in, UUID(current_user.sub))
     return asdict(comanda)
 
 
