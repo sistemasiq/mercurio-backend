@@ -1,6 +1,6 @@
 from typing import Any
 from uuid import UUID
-
+from app.schemas.pulseras import PulseraResponse
 import asyncpg
 
 _COLUMNS = """
@@ -15,7 +15,7 @@ async def get_pulseras_disponibles_por_sucursal(
         """
         SELECT
             p.id,
-            p.pulsera_rfid
+            p.pulsera_rfid AS "pulseraRfid"
         FROM pulseras p
         WHERE p.sucursal_id = $1
         AND p.activo = TRUE
@@ -34,7 +34,7 @@ async def get_pulseras_disponibles_por_sucursal(
         sucursal_id,
     )
 
-    return [dict(r) for r in rows]
+    return [PulseraResponse.model_validate(dict(r)) for r in rows]
 
 
 async def listar_todas(conn: asyncpg.Connection, sucursal_id: UUID) -> list[dict[str, Any]]:

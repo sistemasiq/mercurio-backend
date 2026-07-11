@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoIn
 from app.schemas.registros import (
+    CheckoutRequest,
     CheckoutResponse,
     DetalleActivoResponse,
     OnboardingRequest,
@@ -105,13 +106,13 @@ async def pago_estancia_extra(
 )
 async def checkout(
     detalle_id: UUID,
+    body: CheckoutRequest,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:checkout")),
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
 
-    return await create_chekout(conn, detalle_id, usuario_id)
-
+    return await create_chekout(conn, detalle_id, body.pulseraTutorId, usuario_id)
 
 @router.get(
     "/productos/{sucursal_id}",

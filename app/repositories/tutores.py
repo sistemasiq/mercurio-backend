@@ -2,20 +2,19 @@ from __future__ import annotations
 
 from typing import TypedDict
 from uuid import UUID
-
 import asyncpg
 
 
 class TutorRecord(TypedDict):
     id: UUID
-    nombre_completo: str
+    nombreCompleto: str
     telefono: str
 
 
 def _tutor_row(row: asyncpg.Record) -> TutorRecord:
     return {
         "id": row["id"],
-        "nombre_completo": row["nombre_completo"],
+        "nombreCompleto": row["nombreCompleto"],
         "telefono": row["telefono"],
     }
 
@@ -25,7 +24,7 @@ async def get_tutor_by_phone(
 ) -> TutorRecord | None:
     row = await conn.fetchrow(
         """
-       SELECT id, nombre_completo, telefono
+       SELECT id, nombre_completo AS "nombreCompleto", telefono
        FROM tutores
        WHERE telefono = $1 AND sucursal_id = $2 AND activo = TRUE
    """,

@@ -57,10 +57,10 @@ async def create_estancia(
         # Rutas relativas para guardar en BD
         ruta_bd_ine = f"uploads/identificaciones/{nombre_archivo}"
         ruta_bd_llegada = f"uploads/llegadas/{nombre_archivo}"
-
+            
         # 2. registro (Un solo INSERT limpio)
         await registro_create(
-            conn, registro_id, data.sucursalId, tutor_id, ruta_bd_ine, ruta_bd_llegada, usuario_id
+            conn, registro_id, data.sucursalId, tutor_id,data.pulseraTutorId, ruta_bd_ine, ruta_bd_llegada, usuario_id, data.nombreSegundoTutor
         )
 
         total = Decimal(0)
