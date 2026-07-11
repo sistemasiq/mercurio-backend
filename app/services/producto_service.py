@@ -6,7 +6,6 @@ SAD §3.2: el service orquesta repositorios, nunca escribe SQL directamente.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict
 from pathlib import Path
 from uuid import UUID
@@ -14,7 +13,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import UploadFile
 
-from app.core.storage import PRODUCTOS_DIR
+from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.exceptions import NoEncontrado
 from app.models.producto import Producto
 from app.repositories import combo_repository, producto_repository
@@ -22,12 +21,13 @@ from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
 
 
 async def _guardar_imagen(producto_id: UUID, imagen: UploadFile) -> str:
-    """Guarda la imagen del producto a disco y retorna su ruta relativa."""
+    """Sube la imagen del producto a MinIO y retorna su clave (ruta)."""
     extension = Path(imagen.filename or "").suffix.lower() or ".jpg"
     nombre_archivo = f"{producto_id}{extension}"
-    ruta_fisica = PRODUCTOS_DIR / nombre_archivo
-    await asyncio.to_thread(ruta_fisica.write_bytes, await imagen.read())
-    return f"uploads/productos/{nombre_archivo}"
+    data = await validar_y_leer(imagen)
+    ruta = f"{PREFIJOS['productos']}/{nombre_archivo}"
+    await upload_bytes(ruta, data, imagen.content_type or "image/jpeg")
+    return ruta
 
 
 async def listar_activos(
