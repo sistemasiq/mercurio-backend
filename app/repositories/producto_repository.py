@@ -104,6 +104,7 @@ async def crear(
     )
     return dict(row)
 
+
 async def actualizar(
     conn: asyncpg.Connection, producto_id: UUID, updates: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -118,7 +119,9 @@ async def actualizar(
     return dict(row) if row else None
 
 
-async def eliminar(conn: asyncpg.Connection, producto_id: UUID, usuario_id: UUID | None = None) -> bool:
+async def eliminar(
+    conn: asyncpg.Connection, producto_id: UUID, usuario_id: UUID | None = None
+) -> bool:
     result = await conn.execute(
         "UPDATE public.productos SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
         "WHERE id = $1 AND activo = TRUE",
