@@ -84,6 +84,15 @@ async def get_sucursal_by_id(conn: asyncpg.Connection, sucursal_id: UUID) -> Suc
     return _row_to_record(row) if row else None
 
 
+async def get_sucursal_nombre(conn: asyncpg.Connection, sucursal_id: UUID) -> str | None:
+    """Nombre de una sucursal, para adjuntar en las respuestas de auth (login/me)."""
+    row = await conn.fetchrow(
+        "SELECT nombre FROM public.sucursales WHERE id = $1",
+        sucursal_id,
+    )
+    return row["nombre"] if row else None
+
+
 async def nombre_exists(conn: asyncpg.Connection, nombre: str) -> bool:
     row = await conn.fetchrow("SELECT id FROM public.sucursales WHERE nombre = $1", nombre)
     return row is not None
