@@ -34,6 +34,7 @@ class UserOut(BaseModel):
     email: str
     role: RoleEnum
     branch_id: UUID | None
+    branch_name: str | None = None
     permissions: list[str] = []
 
 

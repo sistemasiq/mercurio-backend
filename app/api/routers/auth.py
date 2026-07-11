@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.security import hash_refresh_token
+from app.repositories.branch_repository import get_sucursal_nombre
 from app.repositories.refresh_token_repository import revoke_refresh_token
 from app.repositories.token_repository import revoke_token
 from app.repositories.user_repository import get_usuario_by_id
@@ -71,12 +72,16 @@ async def me_endpoint(
             detail={"code": "USER_NOT_FOUND", "message": "Usuario no encontrado o inactivo."},
         )
     rol = RoleEnum(usuario["rol"])
+    branch_name = (
+        await get_sucursal_nombre(conn, current_user.branch_id) if current_user.branch_id else None
+    )
     return UserOut(
         id=usuario["id"],
         full_name=usuario["nombre_completo"],
         email=usuario["email"],
         role=rol,
         branch_id=current_user.branch_id,
+        branch_name=branch_name,
         permissions=get_permissions(rol.value),
     )
 
