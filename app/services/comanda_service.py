@@ -10,10 +10,11 @@ from dataclasses import asdict
 
 import asyncpg
 
+from app.core.roles import ROL_SISTEMA
 from app.core.ws_manager import manager
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
 
 VE_TODAS_LAS_SUCURSALES = None
@@ -25,7 +26,7 @@ def sucursal_scope(current_user: TokenData) -> str | None:
     criterio que branch_service.list_branches. Si el usuario no es
     AdministradorSistema y no tiene sucursal asignada, devuelve un id que no
     existe para que el filtro no traiga nada, en vez de reventar."""
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == ROL_SISTEMA:
         return VE_TODAS_LAS_SUCURSALES
     if current_user.branch_id is None:
         return "00000000-0000-0000-0000-000000000000"

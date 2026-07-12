@@ -1,16 +1,8 @@
 from datetime import datetime
-from enum import Enum
 from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
-
-
-class RoleEnum(str, Enum):
-    administrador_sistema = "AdministradorSistema"
-    administrador = "Administrador"
-    cajero = "Cajero"
-    cocina = "Cocina"
 
 
 class LoginRequest(BaseModel):
@@ -32,7 +24,7 @@ class UserOut(BaseModel):
     id: UUID
     full_name: str
     email: str
-    role: RoleEnum
+    role: str
     branch_id: UUID | None
     branch_name: str | None = None
     permissions: list[str] = []
@@ -63,7 +55,7 @@ class BranchSelectionRequired(BaseModel):
 class TokenData(BaseModel):
     sub: str
     email: str
-    role: RoleEnum
+    role: str
     branch_id: UUID | None
     permissions: list[str] = []
     jti: str

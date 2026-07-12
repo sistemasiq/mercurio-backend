@@ -113,7 +113,7 @@ async def comandas_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    if not has_permission(current_user.role.value, "restaurante:ver_pedidos"):
+    if not has_permission(current_user.role, "restaurante:ver_pedidos"):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 

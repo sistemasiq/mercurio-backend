@@ -11,7 +11,7 @@ from jose import JWTError
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.repositories.token_repository import is_token_revoked
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 
 _bearer = HTTPBearer()
 
@@ -41,7 +41,12 @@ async def _resolve_token_data(token: str, conn: asyncpg.Connection) -> TokenData
         jti = payload.get("jti")
         exp = payload.get("exp")
 
-        if not isinstance(sub, str) or not isinstance(email, str) or not isinstance(jti, str):
+        if (
+            not isinstance(sub, str)
+            or not isinstance(email, str)
+            or not isinstance(jti, str)
+            or not isinstance(role, str)
+        ):
             raise _INVALID_TOKEN from None
 
         if await is_token_revoked(conn, jti):
@@ -52,7 +57,7 @@ async def _resolve_token_data(token: str, conn: asyncpg.Connection) -> TokenData
         return TokenData(
             sub=sub,
             email=email,
-            role=RoleEnum(role),
+            role=role,
             branch_id=UUID(branch_id) if isinstance(branch_id, str) else None,
             permissions=permissions if isinstance(permissions, list) else [],
             jti=jti,
@@ -77,7 +82,7 @@ async def get_current_user_ws(token: str, conn: asyncpg.Connection) -> TokenData
 
 
 def require_role(
-    *allowed_roles: RoleEnum,
+    *allowed_roles: str,
 ) -> Callable[..., Coroutine[Any, Any, TokenData]]:
     """Restringe el acceso a los roles indicados (comprobación por nombre de rol)."""
 
@@ -100,7 +105,7 @@ def require_permission(
     async def dependency(
         current_user: TokenData = Depends(get_current_user),
     ) -> TokenData:
-        if not all(has_permission(current_user.role.value, code) for code in codes):
+        if not all(has_permission(current_user.role, code) for code in codes):
             raise _FORBIDDEN
         return current_user
 
