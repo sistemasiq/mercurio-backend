@@ -40,9 +40,7 @@ def _row_to_permiso(row: asyncpg.Record) -> PermisoRecord:
 
 
 async def get_all_roles(conn: asyncpg.Connection) -> list[RolRecord]:
-    rows = await conn.fetch(
-        "SELECT id, nombre, descripcion, activo FROM public.roles WHERE activo = TRUE ORDER BY id"
-    )
+    rows = await conn.fetch("SELECT id, nombre, descripcion, activo FROM public.roles ORDER BY id")
     return [_row_to_rol(r) for r in rows]
 
 
@@ -50,6 +48,14 @@ async def get_rol_by_id(conn: asyncpg.Connection, rol_id: int) -> RolRecord | No
     row = await conn.fetchrow(
         "SELECT id, nombre, descripcion, activo FROM public.roles WHERE id = $1",
         rol_id,
+    )
+    return _row_to_rol(row) if row else None
+
+
+async def get_rol_by_nombre(conn: asyncpg.Connection, nombre: str) -> RolRecord | None:
+    row = await conn.fetchrow(
+        "SELECT id, nombre, descripcion, activo FROM public.roles WHERE nombre = $1",
+        nombre,
     )
     return _row_to_rol(row) if row else None
 
@@ -93,6 +99,36 @@ async def get_all_rol_permisos_cache(conn: asyncpg.Connection) -> dict[str, set[
             result[rol] = set()
         result[rol].add(row["codigo"])
     return result
+
+
+async def create_rol(conn: asyncpg.Connection, nombre: str, descripcion: str | None) -> int:
+    row = await conn.fetchrow(
+        "INSERT INTO public.roles (nombre, descripcion) VALUES ($1, $2) RETURNING id",
+        nombre,
+        descripcion,
+    )
+    return row["id"]
+
+
+async def update_rol_metadata(
+    conn: asyncpg.Connection,
+    rol_id: int,
+    nombre: str | None,
+    descripcion: str | None,
+    activo: bool | None,
+    update_descripcion: bool,
+) -> None:
+    """Actualiza solo los campos indicados. `descripcion` puede ser un
+    None deliberado (borrarla), por eso `update_descripcion` distingue
+    "no tocar" de "poner en null"."""
+    if nombre is not None:
+        await conn.execute("UPDATE public.roles SET nombre = $1 WHERE id = $2", nombre, rol_id)
+    if update_descripcion:
+        await conn.execute(
+            "UPDATE public.roles SET descripcion = $1 WHERE id = $2", descripcion, rol_id
+        )
+    if activo is not None:
+        await conn.execute("UPDATE public.roles SET activo = $1 WHERE id = $2", activo, rol_id)
 
 
 async def set_rol_permisos(conn: asyncpg.Connection, rol_id: int, permiso_ids: list[int]) -> None:
