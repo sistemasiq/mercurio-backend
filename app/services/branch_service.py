@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.core.roles import ROL_ADMINISTRADOR, ROL_SISTEMA
 from app.repositories.branch_repository import (
     SucursalRecord,
     create_sucursal,
@@ -19,7 +20,7 @@ from app.repositories.user_repository import (
     desasignar_usuario_de_sucursal,
     get_usuario_administrador_by_id,
 )
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
 
 
@@ -60,7 +61,7 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
 
 
 async def list_branches(conn: asyncpg.Connection, current_user: TokenData) -> list[BranchResponse]:
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == ROL_SISTEMA:
         records = await get_all_sucursales(conn)
         return [_to_response(r) for r in records]
     if current_user.branch_id is None:
@@ -72,7 +73,7 @@ async def list_branches(conn: asyncpg.Connection, current_user: TokenData) -> li
 async def get_branch(
     conn: asyncpg.Connection, branch_id: UUID, current_user: TokenData
 ) -> BranchResponse:
-    if current_user.role == RoleEnum.administrador and current_user.branch_id != branch_id:
+    if current_user.role == ROL_ADMINISTRADOR and current_user.branch_id != branch_id:
         raise InsufficientPermissionsError
     record = await get_sucursal_by_id(conn, branch_id)
     if record is None:

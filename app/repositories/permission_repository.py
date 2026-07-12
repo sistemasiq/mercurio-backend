@@ -107,7 +107,8 @@ async def create_rol(conn: asyncpg.Connection, nombre: str, descripcion: str | N
         nombre,
         descripcion,
     )
-    return row["id"]
+    rol_id: int = row["id"]
+    return rol_id
 
 
 async def update_rol_metadata(
