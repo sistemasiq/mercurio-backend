@@ -44,8 +44,8 @@ async def tutor_create(
 ) -> UUID:
     row = await conn.fetchrow(
         """
-       INSERT INTO tutores (sucursal_id, nombre_completo, telefono, creado_por)
-       VALUES ($1,$2,$3,$4)
+       INSERT INTO tutores (sucursal_id, nombre_completo, telefono, creado, creado_por)
+       VALUES ($1,$2,$3,NOW(),$4)
        RETURNING id
    """,
         sucursal_id,

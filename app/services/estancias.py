@@ -107,11 +107,11 @@ async def create_estancia(
             total_pagado += p.monto
 
         # 5. actualizar total
-        await registro_update_total(conn, registro_id, total)
+        await registro_update_total(conn, usuario_id, registro_id, total)
 
         # 6. activar si ya pagó todo
         if total_pagado >= total:
-            await change_registro_estado(conn, EstadoRegistro.ACTIVO, registro_id)
+            await change_registro_estado(conn, EstadoRegistro.ACTIVO,usuario_id, registro_id)
 
         return {
             "registroId": registro_id,

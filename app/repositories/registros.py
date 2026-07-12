@@ -18,7 +18,7 @@ async def get_guardian_bracelet_by_detalles_registro_id(
         """
         SELECT pulseras_tutor_id
         FROM registros
-        WHERE id = $1
+        WHERE id = $1 AND activo = TRUE
         """, 
         registro_id
     )
@@ -48,9 +48,10 @@ async def registro_create(
            foto_llegada,
            total,
            estado,
+           creado,
            creado_por
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',NOW(),$8)
    """,
         registro_id,
         sucursal_id,
@@ -65,13 +66,18 @@ async def registro_create(
 
 
 async def registro_update_total(
-    conn: asyncpg.Connection, registro_id: UUID, total: Decimal
+    conn: asyncpg.Connection, usuario_id: UUID, registro_id: UUID, total: Decimal
 ) -> None:
     await conn.execute(
         """
-       UPDATE registros SET total = $1 WHERE id = $2
-   """,
+        UPDATE registros 
+        SET total = $1, 
+            modificado = NOW(),
+            modificado_por = $2 
+        WHERE id = $3
+        """,
         total,
+        usuario_id,
         registro_id,
     )
 
@@ -81,12 +87,12 @@ async def registro_add_total(
 ) -> None:
     await conn.execute(
         """
-                   UPDATE registros
-                   SET total = total + $1,
-                       modificado = NOW(),
-                       modificado_por = $2
-                   WHERE id = $3
-               """,
+        UPDATE registros
+        SET total = total + $1,
+            modificado = NOW(),
+            modificado_por = $2
+        WHERE id = $3
+        """,
         total_extra,
         usuario_id,
         registro_id,
@@ -94,13 +100,18 @@ async def registro_add_total(
 
 
 async def change_registro_estado(
-    conn: asyncpg.Connection, estado_nuevo: EstadoRegistro, registro_id: UUID
+    conn: asyncpg.Connection, estado_nuevo: EstadoRegistro, usuario_id:UUID, registro_id: UUID
 ) -> None:
     await conn.execute(
         """
-       UPDATE registros SET estado = $1 WHERE id = $2
+        UPDATE registros 
+        SET estado = $1,
+            modificado = NOW(),
+            modificado_por = $2 
+        WHERE id = $3
    """,
         estado_nuevo.value,
+        usuario_id,
         registro_id,
     )
 
