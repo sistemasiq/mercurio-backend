@@ -68,7 +68,7 @@ async def create_chekout(
         abiertos = await count_detalles_registro_abiertos(conn, detalle["registros_id"])
 
         if abiertos == 0:
-            await change_registro_estado(conn, EstadoRegistro.CERRADO, detalle["registros_id"])
+            await change_registro_estado(conn, EstadoRegistro.CERRADO, usuario_id, detalle["registros_id"])
 
         return {
             "detalleId": str(detalle_id),
