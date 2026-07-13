@@ -14,6 +14,7 @@ from app.api.routers import (
     estancias,
     extras,
     metodos_pago,
+    pagos,
     pagos_reservacion,
     paquete_tipos_evento,
     paquetes,
@@ -80,6 +81,7 @@ app.include_router(comandas.router)
 app.include_router(productos.router)
 app.include_router(extras.router)
 app.include_router(metodos_pago.router)
+app.include_router(pagos.router)
 app.include_router(pagos_reservacion.router)
 app.include_router(paquetes.router)
 app.include_router(paquete_tipos_evento.router)
