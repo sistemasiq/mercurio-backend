@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,7 +9,14 @@ from app.exceptions import DatosInvalidos
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository, pago_repository
 from app.schemas.comanda import ComandaCreate, EstadoComanda
-from app.schemas.pagos import PaymentOut, PaymentRequest, PagoCompletoRequest
+from app.schemas.pagos import (
+    DetalleOrdenOut,
+    EstadisticasOut,
+    HistorialOut,
+    PaymentOut,
+    PaymentRequest,
+    PagoCompletoRequest,
+)
 
 
 async def procesar_pagos(
@@ -51,10 +59,10 @@ async def completar_pago(
     from app.services.comanda_service import expandir_detalles_comanda
 
     total_pagos: Decimal = sum(p.monto for p in body.pagos)
-    if total_pagos != body.total_final:
+    if total_pagos < body.total_final:
         raise DatosInvalidos(
-            f"El total de los pagos ({total_pagos}) no coincide "
-            f"con el total de la comanda ({body.total_final})."
+            f"El total de los pagos ({total_pagos}) es menor "
+            f"al total de la comanda ({body.total_final})."
         )
 
     comanda_in = ComandaCreate(
@@ -86,3 +94,53 @@ async def completar_pago(
     )
 
     return comanda
+
+
+
+
+def _calcular_desde(filtro: str) -> datetime:
+    ahora = datetime.now()
+    if filtro == "hoy":
+        return ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    if filtro == "semana":
+        inicio_semana = ahora - timedelta(days=ahora.weekday())
+        return inicio_semana.replace(hour=0, minute=0, second=0, microsecond=0)
+    return ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def obtener_historial(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    filtro: str = "hoy",
+    estado: str = "todos",
+) -> list[HistorialOut]:
+    desde = _calcular_desde(filtro)
+    rows = await pago_repository.historial(conn, sucursal_id, desde, estado)
+    return [HistorialOut.model_validate(r) for r in rows]
+
+
+async def obtener_detalle(
+    conn: asyncpg.Connection,
+    pago_id: UUID,
+) -> DetalleOrdenOut | None:
+    data = await pago_repository.detalle_por_id(conn, pago_id)
+    if data is None:
+        return None
+    return DetalleOrdenOut.model_validate(data)
+
+
+async def obtener_estadisticas(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    filtro: str = "hoy",
+) -> EstadisticasOut:
+    desde = _calcular_desde(filtro)
+    data = await pago_repository.estadisticas(conn, sucursal_id, desde)
+    total_ventas = float(data["total_ventas"])
+    total_ordenes = int(data["total_ordenes"])
+    ticket_promedio = total_ventas / total_ordenes if total_ordenes > 0 else 0.0
+    return EstadisticasOut(
+        total_ventas=total_ventas,
+        total_ordenes=total_ordenes,
+        ticket_promedio=ticket_promedio,
+    )

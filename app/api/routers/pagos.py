@@ -2,13 +2,20 @@ from dataclasses import asdict
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import app.services.pago_service as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.pagos import PaymentOut, PaymentRequest, PagoCompletoRequest
+from app.schemas.pagos import (
+    DetalleOrdenOut,
+    EstadisticasOut,
+    HistorialOut,
+    PaymentOut,
+    PaymentRequest,
+    PagoCompletoRequest,
+)
 
 router = APIRouter(prefix="/api/pagos", tags=["Pagos"])
 
@@ -60,3 +67,64 @@ async def completar_pago(
     sucursal_id = _get_active_branch(current_user)
     comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id)
     return asdict(comanda)
+
+
+@router.get(
+    "/estadisticas",
+    response_model=EstadisticasOut,
+    summary="Estadísticas de ventas del periodo",
+    description=(
+        "Devuelve total de ventas, órdenes y ticket promedio "
+        "para el filtro temporal indicado."
+    ),
+)
+async def listar_estadisticas(
+    filtro: str = Query("hoy", regex="^(hoy|semana|mes)$"),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> EstadisticasOut:
+    sucursal_id = _get_active_branch(current_user)
+    return await svc.obtener_estadisticas(conn, sucursal_id, filtro)
+
+
+@router.get(
+    "/detalles/{pago_id}",
+    response_model=DetalleOrdenOut,
+    summary="Detalle completo de una transacción",
+    description=(
+        "Devuelve la comanda asociada al pago: productos, totales, "
+        "método de pago y datos del usuario que creó el registro."
+    ),
+)
+async def obtener_detalle(
+    pago_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> DetalleOrdenOut:
+    resultado = await svc.obtener_detalle(conn, pago_id)
+    if resultado is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el pago con el ID proporcionado.",
+        )
+    return resultado
+
+
+@router.get(
+    "/historial",
+    response_model=list[HistorialOut],
+    summary="Historial de transacciones",
+    description=(
+        "Devuelve los pagos de la sucursal del usuario autenticado. "
+        "Acepta filtro temporal (hoy/semana/mes) y filtro de estado "
+        "(todos/pagado/cancelado)."
+    ),
+)
+async def listar_historial(
+    filtro: str = Query("hoy", regex="^(hoy|semana|mes)$"),
+    estado: str = Query("todos", regex="^(todos|pagado|cancelado)$"),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> list[HistorialOut]:
+    sucursal_id = _get_active_branch(current_user)
+    return await svc.obtener_historial(conn, sucursal_id, filtro, estado)
