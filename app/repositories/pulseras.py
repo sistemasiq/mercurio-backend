@@ -57,17 +57,19 @@ async def crear(
     pulsera_rfid: str,
     activo: bool,
     numero_lote: str | None,
+    creado_por: UUID,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, activo, numero_lote)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, activo, numero_lote, creado_por)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
         pulsera_rfid,
         activo,
         numero_lote,
+        creado_por,
     )
     return dict(row)
 
