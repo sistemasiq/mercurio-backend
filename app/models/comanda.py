@@ -25,6 +25,10 @@ class DetalleComanda:
     nombre: str | None = None
     producto_nombre: str | None = None
     producto_tipo: str | None = None
+    # Origen del combo — persistidos en BD para evitar ambigüedad
+    nombre_combo_padre: str | None = None
+    es_hijo_de: str | None = None
+    es_hijo_combo: bool = False
 
 
 @dataclass

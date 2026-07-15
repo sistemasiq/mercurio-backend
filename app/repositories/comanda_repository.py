@@ -33,6 +33,9 @@ def _row_to_detalle(row: asyncpg.Record) -> DetalleComanda:
         notas_especiales=row.get("notas_especiales"),
         nombre=row.get("nombre"),
         producto_nombre=row.get("nombre"),  # alias del JOIN
+        nombre_combo_padre=row.get("nombre_combo_padre"),
+        es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+        es_hijo_combo=bool(row.get("es_hijo_combo", False)),
     )
 
 
@@ -51,14 +54,20 @@ def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Coma
 # ── Queries ───────────────────────────────────────────────────────────────────
 
 
-def _campos_insercion_detalle(item) -> tuple[str, int, Decimal, Decimal, str | None]:
+def _campos_insercion_detalle(item) -> tuple:
     if isinstance(item, dict):
         producto_id = str(item.get("producto_id") or item["id"])
         cantidad = item["cantidad"]
         precio_unitario = Decimal(str(item["precio_unitario"]))
         importe = Decimal(str(item.get("subtotal", item.get("importe", 0))))
         notas = item.get("notas_especiales")
-        return producto_id, cantidad, precio_unitario, importe, notas
+        nombre_combo_padre = item.get("nombre_combo_padre")
+        es_hijo_de = str(item["es_hijo_de"]) if item.get("es_hijo_de") else None
+        es_hijo_combo = bool(item.get("es_hijo_combo", False))
+        return (
+            producto_id, cantidad, precio_unitario, importe,
+            notas, nombre_combo_padre, es_hijo_de, es_hijo_combo,
+        )
 
     return (
         str(item.id),
@@ -66,6 +75,9 @@ def _campos_insercion_detalle(item) -> tuple[str, int, Decimal, Decimal, str | N
         item.precio_unitario,
         item.subtotal,
         item.notas_especiales,
+        getattr(item, "nombre_combo_padre", None),
+        str(item.es_hijo_de) if getattr(item, "es_hijo_de", None) else None,
+        bool(getattr(item, "es_hijo_combo", False)),
     )
 
 
@@ -98,16 +110,24 @@ async def crear_comanda_con_detalles(
             creado_por,
         )
 
-        detalles = detalles_procesados if detalles_procesados is not None else comanda_in.detalles_comanda
+        detalles = (
+            detalles_procesados
+            if detalles_procesados is not None
+            else comanda_in.detalles_comanda
+        )
 
         for item in detalles:
-            producto_id, cantidad, precio_unitario, importe, notas = _campos_insercion_detalle(item)
+            (
+                producto_id, cantidad, precio_unitario, importe,
+                notas, nombre_combo_padre, es_hijo_de, es_hijo_combo,
+            ) = _campos_insercion_detalle(item)
             await conn.execute(
                 """
                 INSERT INTO public.detalles_comanda
                     (id, comanda_id, producto_id, cantidad, precio_unitario, importe,
-                    sucursal_id, notas_especiales, creado_por)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    sucursal_id, notas_especiales, nombre_combo_padre, es_hijo_de,
+                    es_hijo_combo, creado_por)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 """,
                 str(uuid.uuid4()),
                 comanda_id,
@@ -117,6 +137,9 @@ async def crear_comanda_con_detalles(
                 importe,
                 comanda_in.sucursal_id,
                 notas,
+                nombre_combo_padre,
+                es_hijo_de,
+                es_hijo_combo,
                 creado_por,
             )
 
@@ -150,10 +173,9 @@ async def actualizar_estado_comanda(
 async def get_comandas_pendientes(
     conn: asyncpg.Connection, sucursal_id: str | None = None
 ) -> list[Comanda]:
-    
     # 1. Fuerza el casteo en SQL: $1::uuid
     filtro_sucursal = "AND c.sucursal_id = $1::uuid" if sucursal_id is not None else ""
-    
+
     # 2. Asegura que el parámetro sea string (asyncpg maneja UUID desde string)
     params = [str(sucursal_id)] if sucursal_id is not None else []
 
@@ -168,6 +190,9 @@ async def get_comandas_pendientes(
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
+            dc.nombre_combo_padre,
+            dc.es_hijo_de,
+            dc.es_hijo_combo,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
@@ -179,8 +204,6 @@ async def get_comandas_pendientes(
         """,
         *params,
     )
-   
-
 
     # Agrupar detalles por comanda
     comandas_map: dict[str, Comanda] = {}
@@ -210,6 +233,9 @@ async def get_comandas_pendientes(
                     nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
+                    nombre_combo_padre=row.get("nombre_combo_padre"),
+                    es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+                    es_hijo_combo=bool(row.get("es_hijo_combo", False)),
                 )
             )
 
@@ -232,6 +258,9 @@ async def get_comanda_por_id(
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
+            dc.nombre_combo_padre,
+            dc.es_hijo_de,
+            dc.es_hijo_combo,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
@@ -270,6 +299,9 @@ async def get_comanda_por_id(
                     nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
+                    nombre_combo_padre=row.get("nombre_combo_padre"),
+                    es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+                    es_hijo_combo=bool(row.get("es_hijo_combo", False)),
                 )
             )
 

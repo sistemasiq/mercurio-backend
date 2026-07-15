@@ -23,6 +23,9 @@ class DetalleCreate(BaseModel):
     precio_unitario: Decimal
     subtotal: Decimal
     notas_especiales: str | None = None
+    nombre_combo_padre: str | None = None
+    es_hijo_de: str | None = None
+    es_hijo_combo: bool = False
 
     class Config:
         populate_by_name = True

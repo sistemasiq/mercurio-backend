@@ -39,6 +39,16 @@ async def listar_productos_admin(
     return await producto_service.listar_todos(conn, sucursal_id)
 
 
+@router.get("/{producto_id}/combo-hijos")
+async def obtener_combo_hijos(
+    producto_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(get_current_user),
+) -> Any:
+    """Retorna los hijos de un combo para su expansión en el carrito."""
+    return await producto_service.obtener_hijos_combo(conn, producto_id)
+
+
 @router.get("/{producto_id}", response_model=ProductoOut)
 async def obtener_producto(
     producto_id: UUID,

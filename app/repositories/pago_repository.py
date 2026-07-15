@@ -29,7 +29,7 @@ async def crear_pagos(
             comanda_id,
             pago.metodo_pago_id,
             pago.monto,
-            pago.notas_pago,
+            pago.notas_pago or "",
             sucursal_id,
             usuario_id,
         )

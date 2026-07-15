@@ -154,12 +154,17 @@ async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[
 
 
 async def get_hijos_a_padres_map(conn: asyncpg.Connection) -> dict[str, str]:
-    """Retorna un map {producto_hijo_id: nombre_combo_padre} para TODOS los combos."""
+    """Retorna un map {producto_hijo_id: nombre_combo_padre} para TODOS los combos.
+
+    ORDER BY garantiza que si un hijo pertenece a múltiples combos,
+    el nombre alfabéticamente menor se asigne de forma determinista.
+    """
     rows = await conn.fetch(
         """
         SELECT pc.producto_id AS hijo_id, p.nombre AS padre_nombre
         FROM public.producto_combo pc
         JOIN public.productos p ON p.id = pc.combo_id
+        ORDER BY p.nombre ASC
         """
     )
     return {str(r["hijo_id"]): r["padre_nombre"] for r in rows}

@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from decimal import Decimal
-
 import asyncpg
 
 from app.core.ws_manager import manager
@@ -33,12 +31,15 @@ def sucursal_scope(current_user: TokenData) -> str | None:
         return "00000000-0000-0000-0000-000000000000"
     return str(current_user.branch_id)
 
-async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate, creado_por: str | None = None) -> Comanda:
-    """Crea una comanda con los combos desglosados y notifica."""
+async def crear_comanda(
+    conn: asyncpg.Connection,
+    comanda_in: ComandaCreate,
+    creado_por: str | None = None,
+) -> Comanda:
+    """Crea una comanda, la reexpande desde BD y notifica."""
 
-    detalles_expandidos = await expandir_detalles_comanda(conn, comanda_in.detalles_comanda)
     comanda = await comanda_repository.crear_comanda_con_detalles(
-        conn, comanda_in, detalles_expandidos, creado_por
+        conn, comanda_in, None, creado_por
     )
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
 
@@ -53,7 +54,7 @@ async def listar_pendientes(conn: asyncpg.Connection, current_user: TokenData) -
 
     for comanda in comandas:
         comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
-        
+
     return comandas
 
 
@@ -93,12 +94,6 @@ def _cantidad_de_detalle(item) -> int:
     return item["cantidad"] if isinstance(item, dict) else item.cantidad
 
 
-def _notas_de_detalle(item) -> str | None:
-    if isinstance(item, dict):
-        return item.get("notas_especiales")
-    return item.notas_especiales
-
-
 def _detalle_a_dict(item, nombre: str) -> dict:
     if isinstance(item, dict):
         detalle = dict(item)
@@ -107,12 +102,6 @@ def _detalle_a_dict(item, nombre: str) -> dict:
     else:
         detalle = asdict(item)
     detalle["nombre"] = nombre
-    if (
-        Decimal(str(detalle.get("precio_unitario", 0))) == 0
-        and Decimal(str(detalle.get("importe", detalle.get("subtotal", 0)))) == 0
-        and not detalle.get("es_hijo_de")
-    ):
-        detalle["es_hijo_combo"] = True
     return detalle
 
 
@@ -120,34 +109,62 @@ async def expandir_detalles_comanda(conn, detalles: list) -> list[dict]:
     hijos_a_padres = await producto_repository.get_hijos_a_padres_map(conn)
     detalles_finales = []
 
+    # Pre-computar: ¿qué combos ya tienen hijos en la lista?
+    hijos_existentes = set()
+    for d in detalles:
+        padre = getattr(d, "es_hijo_de", None) or (
+            d.get("es_hijo_de") if isinstance(d, dict) else None
+        )
+        if padre:
+            hijos_existentes.add(padre)
+
     for item in detalles:
         producto_id = _producto_id_de_detalle(item)
 
         if await producto_repository.es_producto_combo(conn, producto_id):
-            producto_padre = await producto_repository.get_by_id(conn, producto_id)
-            nombre_padre = producto_padre["nombre"] if producto_padre else ""
-            hijos = await producto_repository.get_combo_hijos(conn, producto_id)
+            if producto_id in hijos_existentes:
+                continue
+            else:
+                producto_padre = await producto_repository.get_by_id(conn, producto_id)
+                nombre_padre = producto_padre["nombre"] if producto_padre else ""
+                hijos = await producto_repository.get_combo_hijos(conn, producto_id)
 
-            for hijo in hijos:
-                hijo_producto = await producto_repository.get_by_id(conn, str(hijo["producto_id"]))
-                nombre_hijo = hijo_producto["nombre"] if hijo_producto else ""
-                detalles_finales.append({
-                    "producto_id": str(hijo["producto_id"]),
-                    "nombre": nombre_hijo,
-                    "nombre_combo_padre": nombre_padre,
-                    "cantidad": hijo["cantidad"] * _cantidad_de_detalle(item),
-                    "precio_unitario": 0,
-                    "subtotal": 0,
-                    "es_hijo_de": producto_id,
-                    "notas_especiales": _notas_de_detalle(item),
-                })
+                for hijo in hijos:
+                    h_id = str(hijo["producto_id"])
+                    hijo_producto = await producto_repository.get_by_id(conn, h_id)
+                    nombre_hijo = hijo_producto["nombre"] if hijo_producto else ""
+                    detalles_finales.append({
+                        "producto_id": str(hijo["producto_id"]),
+                        "nombre": nombre_hijo,
+                        "nombre_combo_padre": nombre_padre,
+                        "cantidad": hijo["cantidad"] * _cantidad_de_detalle(item),
+                        "precio_unitario": 0,
+                        "subtotal": 0,
+                        "es_hijo_de": producto_id,
+                        "es_hijo_combo": True,
+                        "notas_especiales": None,
+                    })
         else:
             producto_info = await producto_repository.get_by_id(conn, producto_id)
             nombre_producto = producto_info["nombre"] if producto_info else ""
             detalle = _detalle_a_dict(item, nombre_producto)
-            padre_nombre = hijos_a_padres.get(producto_id)
-            if padre_nombre:
-                detalle["nombre_combo_padre"] = padre_nombre
+
+            stored_padre = detalle.get("nombre_combo_padre")
+            stored_hijo_de = detalle.get("es_hijo_de")
+            stored_hijo_combo = detalle.get("es_hijo_combo")
+
+            if stored_padre:
+                detalle["nombre_combo_padre"] = stored_padre
+                if stored_hijo_de:
+                    detalle["es_hijo_de"] = stored_hijo_de
+                if stored_hijo_combo is not None:
+                    detalle["es_hijo_combo"] = stored_hijo_combo
+            else:
+                padre_nombre = hijos_a_padres.get(producto_id)
+                if padre_nombre:
+                    detalle["nombre_combo_padre"] = padre_nombre
+                    detalle["es_hijo_combo"] = True
+
             detalles_finales.append(detalle)
 
     return detalles_finales

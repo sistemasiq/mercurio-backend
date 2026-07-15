@@ -11,7 +11,7 @@ from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
-from app.repositories.pagos import pago_create
+from app.repositories.pagos_comanda import pago_create
 from app.repositories.productos import (
     get_precio_individual_by_id,
     get_productos_estancia_by_sucursal_id,
