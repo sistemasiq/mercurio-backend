@@ -4,6 +4,8 @@ UPLOADS_DIR = Path("uploads")
 
 IDENTIFICACIONES_DIR = UPLOADS_DIR / "identificaciones"
 LLEGADAS_DIR = UPLOADS_DIR / "llegadas"
+PRODUCTOS_DIR = UPLOADS_DIR / "productos"
 
 IDENTIFICACIONES_DIR.mkdir(parents=True, exist_ok=True)
 LLEGADAS_DIR.mkdir(parents=True, exist_ok=True)
+PRODUCTOS_DIR.mkdir(parents=True, exist_ok=True)
