@@ -121,9 +121,9 @@ async def obtener_historial(
 
 async def obtener_detalle(
     conn: asyncpg.Connection,
-    pago_id: UUID,
+    comanda_id: UUID,
 ) -> DetalleOrdenOut | None:
-    data = await pago_repository.detalle_por_id(conn, pago_id)
+    data = await pago_repository.detalle_por_comanda(conn, comanda_id)
     if data is None:
         return None
     return DetalleOrdenOut.model_validate(data)

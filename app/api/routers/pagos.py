@@ -88,24 +88,24 @@ async def listar_estadisticas(
 
 
 @router.get(
-    "/detalles/{pago_id}",
+    "/detalles/{comanda_id}",
     response_model=DetalleOrdenOut,
     summary="Detalle completo de una transacción",
     description=(
-        "Devuelve la comanda asociada al pago: productos, totales, "
-        "método de pago y datos del usuario que creó el registro."
+        "Devuelve la comanda: productos, totales, "
+        "métodos de pago y datos del usuario que creó el registro."
     ),
 )
 async def obtener_detalle(
-    pago_id: UUID,
+    comanda_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
 ) -> DetalleOrdenOut:
-    resultado = await svc.obtener_detalle(conn, pago_id)
+    resultado = await svc.obtener_detalle(conn, comanda_id)
     if resultado is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontró el pago con el ID proporcionado.",
+            detail="No se encontró la comanda con el ID proporcionado.",
         )
     return resultado
 

@@ -68,30 +68,38 @@ class PagoCompletoRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class HistorialOut(BaseModel):
-    id: UUID
-    comanda_id: UUID
-    ticket_numero: str
-    total_final: Decimal
-    estado_actual: str
+class MetodoPagoResumen(BaseModel):
     metodo_pago_id: UUID
     metodo_pago_nombre: str
     monto: Decimal
     notas_pago: str | None = None
+
+    @field_serializer("monto")
+    @staticmethod
+    def _decimal_to_float(v: Decimal) -> float:
+        return float(v)
+
+
+class HistorialOut(BaseModel):
+    comanda_id: UUID
+    ticket_numero: str
+    total_final: Decimal
+    estado_actual: str
     sucursal_id: UUID
     creado: datetime
     creado_por: UUID | None = None
+    metodos_pago: list[MetodoPagoResumen]
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("monto", "total_final")
+    @field_serializer("total_final")
     @staticmethod
     def _decimal_to_float(v: Decimal) -> float:
         return float(v)
 
 
 # ---------------------------------------------------------------------------
-# DTOs para el endpoint GET /api/pagos/detalles/{id}
+# DTOs para el endpoint GET /api/pagos/detalles/{comanda_id}
 # ---------------------------------------------------------------------------
 
 
@@ -104,17 +112,20 @@ class DetalleProductoOut(BaseModel):
     nombre_combo_padre: str | None = None
 
 
+class MetodoPagoDetalle(BaseModel):
+    metodo_pago_nombre: str
+    monto: float
+    notas_pago: str | None = None
+
+
 class DetalleOrdenOut(BaseModel):
-    pago_id: str
-    pago_monto: float
-    pago_notas: str | None = None
-    pago_creado: str | None = None
+    comanda_id: str
     ticket_numero: str
     total_final: float
     estado_actual: str
     fecha_hora: str | None = None
-    metodo_pago_nombre: str
     creado_por_nombre: str | None = None
+    metodos_pago: list[MetodoPagoDetalle]
     detalles: list[DetalleProductoOut]
 
 
