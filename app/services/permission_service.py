@@ -6,7 +6,6 @@ from app.core.roles import ROL_SISTEMA, ROLES_SIN_SUCURSAL_FIJA
 from app.repositories.permission_repository import (
     PermisoRecord,
     RolRecord,
-    create_rol as insert_rol,
     get_all_permisos,
     get_all_rol_permisos_cache,
     get_all_roles,
@@ -15,6 +14,9 @@ from app.repositories.permission_repository import (
     get_rol_by_nombre,
     set_rol_permisos,
     update_rol_metadata,
+)
+from app.repositories.permission_repository import (
+    create_rol as insert_rol,
 )
 from app.schemas.permission import PermisoResponse, RolConPermisosResponse, RolUpdateRequest
 
