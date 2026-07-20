@@ -13,12 +13,31 @@ import asyncpg
 
 from app.core.ws_manager import manager
 from app.models.comanda import Comanda
-from app.repositories import comanda_repository
+from app.repositories import comanda_repository, combo_repository
 from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.comanda import ComandaCreate, EstadoComanda
 from app.services import inventario_service
 
 VE_TODAS_LAS_SUCURSALES = None
+
+
+async def _adjuntar_items_combo(conn: asyncpg.Connection, comandas: list[Comanda]) -> None:
+    """Adjunta a cada detalle de tipo combo el desglose de productos que lo
+    integran (cantidad ya multiplicada por la cantidad de combos pedidos),
+    para que cocina sepa exactamente que preparar."""
+    for comanda in comandas:
+        for detalle in comanda.detalles:
+            if detalle.producto_tipo != "C":
+                continue
+            items = await combo_repository.obtener_items_de_combo(conn, UUID(detalle.producto_id))
+            detalle.productos_combo = [
+                {
+                    "producto_id": str(item["producto_id"]),
+                    "nombre": item["nombre"],
+                    "cantidad": item["cantidad"] * detalle.cantidad,
+                }
+                for item in items
+            ]
 
 
 def sucursal_scope(current_user: TokenData) -> str | None:
@@ -49,6 +68,7 @@ async def crear_comanda(
             comanda.id,
             UUID(current_user.sub),
         )
+    await _adjuntar_items_combo(conn, [comanda])
     await manager.broadcast(
         comanda.sucursal_id, {"type": "comanda_creada", "comanda": asdict(comanda)}
     )
@@ -59,7 +79,9 @@ async def listar_pendientes(conn: asyncpg.Connection, current_user: TokenData) -
     """Retorna las comandas activas (estados P, E, L) de la sucursal de
     current_user, o de todas si es AdministradorSistema."""
     scope = sucursal_scope(current_user)
-    return await comanda_repository.get_comandas_pendientes(conn, scope)
+    comandas = await comanda_repository.get_comandas_pendientes(conn, scope)
+    await _adjuntar_items_combo(conn, comandas)
+    return comandas
 
 
 async def cambiar_estado(
@@ -91,6 +113,7 @@ async def cambiar_estado(
             )
 
     if comanda is not None:
+        await _adjuntar_items_combo(conn, [comanda])
         await manager.broadcast(
             comanda.sucursal_id, {"type": "comanda_actualizada", "comanda": asdict(comanda)}
         )
@@ -102,4 +125,7 @@ async def obtener_por_id(
     comanda_id: str,
 ) -> Comanda | None:
     """Retorna una comanda por su ID, o None si no existe."""
-    return await comanda_repository.get_comanda_por_id(conn, comanda_id)
+    comanda = await comanda_repository.get_comanda_por_id(conn, comanda_id)
+    if comanda is not None:
+        await _adjuntar_items_combo(conn, [comanda])
+    return comanda

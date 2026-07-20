@@ -32,7 +32,7 @@ async def upsert(
     insumo = await insumo_repository.obtener(conn, insumo_id)
     if not insumo:
         raise NoEncontrado("Insumo")
-    if insumo["sucursal_id"] != producto["sucursal_id"]:
+    if str(insumo["sucursal_id"]) != producto.sucursal_id:
         raise DatosInvalidos("El insumo no pertenece a la misma sucursal del producto.")
     await producto_insumo_repository.upsert(conn, producto_id, insumo_id, body.cantidad)
     row = await producto_insumo_repository.obtener(conn, producto_id, insumo_id)
