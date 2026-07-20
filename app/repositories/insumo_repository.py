@@ -91,3 +91,24 @@ async def eliminar(conn: asyncpg.Connection, insumo_id: UUID) -> bool:
         insumo_id,
     )
     return bool(result == "UPDATE 1")
+
+
+async def ajustar_stock(
+    conn: asyncpg.Connection, insumo_id: UUID, delta: Decimal
+) -> Decimal | None:
+    """Aplica delta (positivo o negativo) a stock_actual de forma atómica.
+    Retorna el nuevo stock_actual, o None si el insumo no existe o el delta
+    dejaría el stock en negativo (bloqueo por stock insuficiente). El WHERE
+    hace que Postgres serialice UPDATEs concurrentes sobre la misma fila, sin
+    necesidad de un SELECT FOR UPDATE aparte."""
+    row = await conn.fetchrow(
+        """
+        UPDATE public.insumos
+        SET stock_actual = stock_actual + $2, modificado = NOW()
+        WHERE id = $1 AND stock_actual + $2 >= 0
+        RETURNING stock_actual
+        """,
+        insumo_id,
+        delta,
+    )
+    return row["stock_actual"] if row else None

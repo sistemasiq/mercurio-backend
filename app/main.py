@@ -15,6 +15,7 @@ from app.api.routers import (
     extras,
     insumos,
     metodos_pago,
+    movimientos_inventario,
     pagos_reservacion,
     paquete_tipos_evento,
     paquetes,
@@ -97,3 +98,4 @@ app.include_router(unidades_medida.router)
 app.include_router(proveedores.router)
 app.include_router(insumos.router)
 app.include_router(producto_insumos.router)
+app.include_router(movimientos_inventario.router)
