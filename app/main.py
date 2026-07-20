@@ -19,6 +19,7 @@ from app.api.routers import (
     paquete_tipos_evento,
     paquetes,
     permissions,
+    producto_insumos,
     productos,
     proveedores,
     pulseras,
@@ -95,3 +96,4 @@ app.include_router(documentos.router)
 app.include_router(unidades_medida.router)
 app.include_router(proveedores.router)
 app.include_router(insumos.router)
+app.include_router(producto_insumos.router)
