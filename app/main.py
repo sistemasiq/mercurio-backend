@@ -13,16 +13,19 @@ from app.api.routers import (
     documentos,
     estancias,
     extras,
+    insumos,
     metodos_pago,
     pagos_reservacion,
     paquete_tipos_evento,
     paquetes,
     permissions,
     productos,
+    proveedores,
     pulseras,
     reservacion_extras,
     reservaciones,
     tipos_evento,
+    unidades_medida,
     users,
 )
 from app.core.config import settings
@@ -89,3 +92,6 @@ app.include_router(tipos_evento.router)
 app.include_router(estancias.router)
 app.include_router(pulseras.router)
 app.include_router(documentos.router)
+app.include_router(unidades_medida.router)
+app.include_router(proveedores.router)
+app.include_router(insumos.router)
