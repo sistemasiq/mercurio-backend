@@ -8,6 +8,7 @@ import asyncpg
 from fastapi import HTTPException, UploadFile
 
 from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.core.ws_manager import manager
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -23,7 +24,18 @@ from app.repositories.registros import (
     registro_update_total,
 )
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
+from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.registros import OnboardingRequest
+
+VE_TODAS_LAS_SUCURSALES = None
+
+
+def sucursal_scope(current_user: TokenData) -> str | None:
+    if current_user.role == RoleEnum.administrador_sistema:
+        return VE_TODAS_LAS_SUCURSALES
+    if current_user.branch_id is None:
+        return "00000000-0000-0000-0000-000000000000"
+    return str(current_user.branch_id)
 
 
 async def create_estancia(
@@ -113,12 +125,25 @@ async def create_estancia(
         if total_pagado >= total:
             await change_registro_estado(conn, EstadoRegistro.ACTIVO,usuario_id, registro_id)
 
-        return {
+        resultado = {
             "registroId": registro_id,
             "total": total,
             "pagado": total_pagado,
             "estado": "A" if total_pagado >= total else "P",
         }
+
+    # Se notifica ya fuera de la transacción, para no avisar a los clientes
+    # de datos que todavía podrían revertirse por un rollback.
+    await manager.broadcast(
+        str(data.sucursalId),
+        {
+            "type": "estancia_creada",
+            "sucursalId": str(data.sucursalId),
+            "registroId": str(registro_id),
+        },
+    )
+
+    return resultado
 
 
 async def get_activos_estancia_by_sucursal_id(

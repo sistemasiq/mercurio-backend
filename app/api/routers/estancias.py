@@ -1,13 +1,25 @@
+import logging
 from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import ValidationError
 from starlette import status
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_user_ws, require_permission
 from app.core.database import get_db
+from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoIn
 from app.schemas.registros import (
@@ -23,12 +35,13 @@ from app.services.estancias import (
     create_estancia,
     get_activos_estancia_by_sucursal_id,
     get_productos_estancia_by_id_sucursal,
+    sucursal_scope,
 )
 from app.services.pagos_estancia import pago_create_service
+from app.services.permission_service import has_permission
 
-# Tipo A (acción sobre un id): "/{id}/verbo" — /{registro_id}/pagos, /{detalle_id}/checkout.
-# Tipo B (sub-colección filtrada, no acción): "/verbo/{id}" — /activos/{sucursal_id},
-# /productos/{sucursal_id}. Ver RUTAS.md §5.5.
+logger = logging.getLogger("mercury.ws")
+
 router = APIRouter(prefix="/api/estancias", tags=["Estancias"])
 
 
@@ -126,3 +139,33 @@ async def get_productos(
     _: TokenData = Depends(require_permission("estancias:checkin")),
 ) -> list[dict[str, Any]]:
     return await get_productos_estancia_by_id_sucursal(conn, sucursal_id)
+
+
+@router.websocket("/ws")
+async def estancias_ws(
+    websocket: WebSocket,
+    token: str = Query(...),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> None:
+    try:
+        current_user = await get_current_user_ws(token, conn)
+    except HTTPException:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    if not has_permission(current_user.role.value, "estancias:ver_activos"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    scope = sucursal_scope(current_user)
+    canal = scope if scope is not None else CANAL_GLOBAL
+
+    await manager.connect(canal, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(canal, websocket)
+    except Exception:
+        logger.debug("Conexion WS de estancias cerrada con error", exc_info=True)
+        manager.disconnect(canal, websocket)
