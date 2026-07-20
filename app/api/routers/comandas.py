@@ -46,12 +46,16 @@ class CambioEstadoRequest(BaseModel):
 async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("restaurante:crear_pedido")),
+    current_user: TokenData = Depends(require_permission("restaurante:crear_pedido")),
 ) -> Any:
     """Crea una comanda nueva con sus detalles."""
     try:
-        comanda = await comanda_service.crear_comanda(conn, comanda_in)
+        comanda = await comanda_service.crear_comanda(conn, comanda_in, current_user)
         return asdict(comanda)
+    except HTTPException:
+        # Preserva el status code y el {code, message} estructurado de
+        # excepciones como StockInsuficienteError — no las aplana a 400 str().
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,7 +82,9 @@ async def cambiar_estado(
     current_user: TokenData = Depends(require_permission("restaurante:gestionar_cocina")),
 ) -> Any:
     """Actualiza el estado de una comanda."""
-    comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)
+    comanda = await comanda_service.cambiar_estado(
+        conn, comanda_id, data.estado_actual, current_user
+    )
     if comanda is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,7 +129,6 @@ async def comandas_ws(
     await manager.connect(canal, websocket)
     try:
         while True:
-
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(canal, websocket)

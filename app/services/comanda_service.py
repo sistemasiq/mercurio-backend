@@ -7,6 +7,7 @@ SAD §3.2: el service orquesta repositorios, nunca escribe SQL directamente.
 from __future__ import annotations
 
 from dataclasses import asdict
+from uuid import UUID
 
 import asyncpg
 
@@ -14,7 +15,8 @@ from app.core.ws_manager import manager
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository
 from app.schemas.auth import RoleEnum, TokenData
-from app.schemas.comanda import ComandaCreate
+from app.schemas.comanda import ComandaCreate, EstadoComanda
+from app.services import inventario_service
 
 VE_TODAS_LAS_SUCURSALES = None
 
@@ -32,9 +34,21 @@ def sucursal_scope(current_user: TokenData) -> str | None:
     return str(current_user.branch_id)
 
 
-async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate) -> Comanda:
-    """Crea una comanda con sus detalles y notifica a los clientes conectados."""
-    comanda = await comanda_repository.crear_comanda_con_detalles(conn, comanda_in)
+async def crear_comanda(
+    conn: asyncpg.Connection, comanda_in: ComandaCreate, current_user: TokenData
+) -> Comanda:
+    """Crea una comanda con sus detalles, descuenta el stock de los insumos
+    de la receta de cada producto vendido (aborta todo si alguno no alcanza)
+    y notifica a los clientes conectados."""
+    async with conn.transaction():
+        comanda = await comanda_repository.crear_comanda_con_detalles(conn, comanda_in)
+        await inventario_service.descontar_por_venta(
+            conn,
+            comanda_in.sucursal_id,
+            comanda_in.detalles_comanda,
+            comanda.id,
+            UUID(current_user.sub),
+        )
     await manager.broadcast(
         comanda.sucursal_id, {"type": "comanda_creada", "comanda": asdict(comanda)}
     )
@@ -52,12 +66,30 @@ async def cambiar_estado(
     conn: asyncpg.Connection,
     comanda_id: str,
     nuevo_estado: str,
+    current_user: TokenData,
 ) -> Comanda | None:
     """
     Actualiza el estado de una comanda y notifica a los clientes conectados.
-    Retorna None si la comanda no existe.
+    Retorna None si la comanda no existe. Si la transición es hacia CANCELADO
+    (y no lo estaba ya, para no revertir dos veces), revierte el stock que se
+    descontó al crearla.
     """
-    comanda = await comanda_repository.actualizar_estado_comanda(conn, comanda_id, nuevo_estado)
+    anterior = await comanda_repository.get_comanda_por_id(conn, comanda_id)
+    if anterior is None:
+        return None
+
+    es_cancelacion = (
+        nuevo_estado == EstadoComanda.CANCELADO.value
+        and anterior.estado_actual != EstadoComanda.CANCELADO.value
+    )
+
+    async with conn.transaction():
+        comanda = await comanda_repository.actualizar_estado_comanda(conn, comanda_id, nuevo_estado)
+        if comanda is not None and es_cancelacion:
+            await inventario_service.revertir_por_cancelacion(
+                conn, anterior.sucursal_id, anterior.detalles, comanda_id, UUID(current_user.sub)
+            )
+
     if comanda is not None:
         await manager.broadcast(
             comanda.sucursal_id, {"type": "comanda_actualizada", "comanda": asdict(comanda)}
