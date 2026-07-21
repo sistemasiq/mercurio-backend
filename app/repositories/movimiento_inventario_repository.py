@@ -7,6 +7,7 @@ SQL crudo con asyncpg. Regla 11.1 y 11.4 SAD. Tabla append-only: no hay
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -62,6 +63,23 @@ async def obtener(conn: asyncpg.Connection, movimiento_id: UUID) -> dict[str, An
     return dict(row) if row else None
 
 
-async def listar_por_insumo(conn: asyncpg.Connection, insumo_id: UUID) -> list[dict[str, Any]]:
-    rows = await conn.fetch(_SELECT + " WHERE mi.insumo_id = $1 ORDER BY mi.creado DESC", insumo_id)
+async def listar_por_insumo(
+    conn: asyncpg.Connection,
+    insumo_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> list[dict[str, Any]]:
+    """Historial de movimientos de un insumo (kardex), opcionalmente acotado
+    a un rango de fechas. `hasta` es inclusivo del día completo."""
+    conditions = ["mi.insumo_id = $1"]
+    params: list[Any] = [insumo_id]
+    if desde is not None:
+        params.append(desde)
+        conditions.append(f"mi.creado >= ${len(params)}")
+    if hasta is not None:
+        params.append(hasta)
+        conditions.append(f"mi.creado < ${len(params)}::date + interval '1 day'")
+
+    where_clause = " AND ".join(conditions)
+    rows = await conn.fetch(_SELECT + f" WHERE {where_clause} ORDER BY mi.creado DESC", *params)
     return [dict(r) for r in rows]

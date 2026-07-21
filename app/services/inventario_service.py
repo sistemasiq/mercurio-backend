@@ -7,6 +7,7 @@ escribe SQL directamente.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -118,7 +119,10 @@ async def registrar_ajuste_manual(
 
 
 async def listar_movimientos(
-    conn: asyncpg.Connection, insumo_id: UUID
+    conn: asyncpg.Connection,
+    insumo_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
 ) -> list[MovimientoInventarioOut]:
-    rows = await movimiento_inventario_repository.listar_por_insumo(conn, insumo_id)
+    rows = await movimiento_inventario_repository.listar_por_insumo(conn, insumo_id, desde, hasta)
     return [MovimientoInventarioOut.model_validate(r) for r in rows]

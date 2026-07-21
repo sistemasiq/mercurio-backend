@@ -7,6 +7,7 @@ criterio que producto_insumos.py respecto de productos.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -24,10 +25,14 @@ router = APIRouter(prefix="/api/insumos", tags=["Movimientos de Inventario"])
 @router.get("/{insumo_id}/movimientos", response_model=list[MovimientoInventarioOut])
 async def listar_movimientos(
     insumo_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("inventario:ver_movimientos")),
 ) -> list[MovimientoInventarioOut]:
-    return await inventario_service.listar_movimientos(conn, insumo_id)
+    """Historial de movimientos del insumo (kardex), opcionalmente acotado
+    a un rango de fechas con `desde`/`hasta` (YYYY-MM-DD)."""
+    return await inventario_service.listar_movimientos(conn, insumo_id, desde, hasta)
 
 
 @router.post(
