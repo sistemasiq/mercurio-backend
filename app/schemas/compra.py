@@ -2,14 +2,21 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class DetalleCompraItem(BaseModel):
     insumo_id: UUID
-    unidad_medida_id: UUID
+    unidad_medida_id: UUID | None = None
+    presentacion_id: UUID | None = None
     cantidad: Decimal = Field(..., gt=0)
     costo_unitario: Decimal = Field(..., ge=0)
+
+    @model_validator(mode="after")
+    def validar_una_unidad(self) -> "DetalleCompraItem":
+        if (self.unidad_medida_id is None) == (self.presentacion_id is None):
+            raise ValueError("Indica unidad_medida_id o presentacion_id, no ambos ni ninguno.")
+        return self
 
 
 class CompraCrear(BaseModel):
@@ -28,8 +35,10 @@ class DetalleCompraOut(BaseModel):
     id: UUID
     insumo_id: UUID
     insumo_nombre: str
-    unidad_medida_id: UUID
-    unidad_medida_codigo: str
+    unidad_medida_id: UUID | None
+    unidad_medida_codigo: str | None
+    presentacion_id: UUID | None
+    presentacion_nombre: str | None
     cantidad: Decimal
     costo_unitario: Decimal
     subtotal: Decimal

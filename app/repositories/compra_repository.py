@@ -27,12 +27,14 @@ _SELECT = f"""
 """
 
 _DETALLE_SELECT = """
-    SELECT dc.id, dc.compra_id, dc.insumo_id, dc.unidad_medida_id, dc.cantidad,
-           dc.costo_unitario, dc.subtotal,
-           i.nombre AS insumo_nombre, um.codigo AS unidad_medida_codigo
+    SELECT dc.id, dc.compra_id, dc.insumo_id, dc.unidad_medida_id, dc.presentacion_id,
+           dc.cantidad, dc.costo_unitario, dc.subtotal,
+           i.nombre AS insumo_nombre, um.codigo AS unidad_medida_codigo,
+           pi.nombre AS presentacion_nombre
     FROM public.detalle_compras dc
     JOIN public.insumos i ON i.id = dc.insumo_id
-    JOIN public.unidades_medida um ON um.id = dc.unidad_medida_id
+    LEFT JOIN public.unidades_medida um ON um.id = dc.unidad_medida_id
+    LEFT JOIN public.presentaciones_insumo pi ON pi.id = dc.presentacion_id
 """
 
 
@@ -62,12 +64,14 @@ async def crear_con_detalles(
             await conn.execute(
                 """
                 INSERT INTO public.detalle_compras
-                    (compra_id, insumo_id, unidad_medida_id, cantidad, costo_unitario)
-                VALUES ($1, $2, $3, $4, $5)
+                    (compra_id, insumo_id, unidad_medida_id, presentacion_id,
+                     cantidad, costo_unitario)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 """,
                 compra_id,
                 detalle.insumo_id,
                 detalle.unidad_medida_id,
+                detalle.presentacion_id,
                 detalle.cantidad,
                 detalle.costo_unitario,
             )

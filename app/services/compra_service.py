@@ -8,6 +8,7 @@ directamente.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from app.repositories import (
     compra_repository,
     insumo_repository,
     movimiento_inventario_repository,
+    presentacion_insumo_repository,
     proveedor_repository,
     unidad_medida_repository,
 )
@@ -42,6 +44,38 @@ async def _validar_unidad_compatible(
         )
 
 
+async def _validar_y_calcular_base(
+    conn: asyncpg.Connection,
+    insumo: dict[str, Any],
+    unidad_medida_id: UUID | None,
+    presentacion_id: UUID | None,
+    cantidad: Decimal,
+    costo_unitario: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Valida la línea y devuelve (cantidad_base, costo_base) expresados en
+    la unidad_base_id del insumo. Se bifurca según cuál campo trae la línea:
+    unidad_medida_id (factor global entre unidades) o presentacion_id
+    (equivalencia directa y específica del insumo, fase 7)."""
+    if presentacion_id is not None:
+        presentacion = await presentacion_insumo_repository.obtener(conn, presentacion_id)
+        if not presentacion:
+            raise DatosInvalidos("La presentación indicada no existe.")
+        if presentacion["insumo_id"] != insumo["id"] or not presentacion["activo"]:
+            raise DatosInvalidos(
+                f"La presentación indicada no pertenece a «{insumo['nombre']}» o está inactiva."
+            )
+        equivalencia = presentacion["equivalencia_base"]
+        return cantidad * equivalencia, costo_unitario / equivalencia
+
+    assert unidad_medida_id is not None
+    await _validar_unidad_compatible(conn, unidad_medida_id, insumo)
+    unidad_linea = await unidad_medida_repository.obtener(conn, unidad_medida_id)
+    unidad_base = await unidad_medida_repository.obtener(conn, insumo["unidad_base_id"])
+    assert unidad_linea is not None and unidad_base is not None
+    factor = unidad_linea["factor_a_base"] / unidad_base["factor_a_base"]
+    return cantidad * factor, costo_unitario / factor
+
+
 async def crear(conn: asyncpg.Connection, body: CompraCrear, creado_por: UUID) -> CompraOut:
     proveedor = await proveedor_repository.obtener(conn, body.proveedor_id)
     if not proveedor:
@@ -55,7 +89,14 @@ async def crear(conn: asyncpg.Connection, body: CompraCrear, creado_por: UUID) -
             raise NoEncontrado("Insumo")
         if insumo["sucursal_id"] != body.sucursal_id:
             raise DatosInvalidos("El insumo no pertenece a esta sucursal.")
-        await _validar_unidad_compatible(conn, detalle.unidad_medida_id, insumo)
+        await _validar_y_calcular_base(
+            conn,
+            insumo,
+            detalle.unidad_medida_id,
+            detalle.presentacion_id,
+            detalle.cantidad,
+            detalle.costo_unitario,
+        )
 
     compra_id = await compra_repository.crear_con_detalles(
         conn, body.sucursal_id, body.proveedor_id, body.notas, body.detalles, creado_por
@@ -97,14 +138,14 @@ async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -
             insumo = await insumo_repository.obtener(conn, detalle["insumo_id"])
             if not insumo:
                 raise NoEncontrado("Insumo")
-            await _validar_unidad_compatible(conn, detalle["unidad_medida_id"], insumo)
-
-            unidad_linea = await unidad_medida_repository.obtener(conn, detalle["unidad_medida_id"])
-            unidad_base = await unidad_medida_repository.obtener(conn, insumo["unidad_base_id"])
-            assert unidad_linea is not None and unidad_base is not None
-            factor = unidad_linea["factor_a_base"] / unidad_base["factor_a_base"]
-            cantidad_base = detalle["cantidad"] * factor
-            costo_base = detalle["costo_unitario"] / factor
+            cantidad_base, costo_base = await _validar_y_calcular_base(
+                conn,
+                insumo,
+                detalle["unidad_medida_id"],
+                detalle["presentacion_id"],
+                detalle["cantidad"],
+                detalle["costo_unitario"],
+            )
 
             nuevo_stock = await insumo_repository.ajustar_stock(
                 conn, detalle["insumo_id"], cantidad_base
