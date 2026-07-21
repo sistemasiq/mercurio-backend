@@ -10,6 +10,7 @@ from app.api.routers import (
     auth,
     branches,
     comandas,
+    compras,
     documentos,
     estancias,
     extras,
@@ -99,3 +100,4 @@ app.include_router(proveedores.router)
 app.include_router(insumos.router)
 app.include_router(producto_insumos.router)
 app.include_router(movimientos_inventario.router)
+app.include_router(compras.router)
