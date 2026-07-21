@@ -8,6 +8,7 @@ escribe SQL directamente.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -15,12 +16,55 @@ import asyncpg
 from app.exceptions import NoEncontrado, StockInsuficienteError
 from app.models.comanda import DetalleComanda
 from app.repositories import (
+    combo_repository,
     insumo_repository,
     movimiento_inventario_repository,
     producto_insumo_repository,
+    producto_repository,
 )
 from app.schemas.comanda import DetalleCreate
 from app.schemas.movimiento_inventario import MovimientoInventarioOut, MovimientoManualCreate
+
+
+async def _consumo_insumos(
+    conn: asyncpg.Connection,
+    producto_id: UUID,
+    cantidad_vendida: int,
+    tipo: str | None = None,
+) -> list[dict[str, Any]]:
+    """Insumos y cantidad a mover para vender/revertir `cantidad_vendida`
+    unidades de un producto. Los combos ('C') no tienen producto_insumos
+    propio — se expanden a los productos que lo integran (un solo nivel,
+    igual que _adjuntar_items_combo en comanda_service.py) y se suma la
+    receta de cada uno."""
+    if tipo is None:
+        producto = await producto_repository.obtener(conn, producto_id)
+        tipo = producto.tipo if producto else None
+
+    if tipo == "C":
+        resultado: list[dict[str, Any]] = []
+        for item in await combo_repository.obtener_items_de_combo(conn, producto_id):
+            sub_cantidad = item["cantidad"] * cantidad_vendida
+            for r in await producto_insumo_repository.listar_por_producto(
+                conn, item["producto_id"]
+            ):
+                resultado.append(
+                    {
+                        "insumo_id": r["insumo_id"],
+                        "insumo_nombre": r["insumo_nombre"],
+                        "consumo": r["cantidad"] * sub_cantidad,
+                    }
+                )
+        return resultado
+
+    return [
+        {
+            "insumo_id": r["insumo_id"],
+            "insumo_nombre": r["insumo_nombre"],
+            "consumo": r["cantidad"] * cantidad_vendida,
+        }
+        for r in await producto_insumo_repository.listar_por_producto(conn, producto_id)
+    ]
 
 
 async def descontar_por_venta(
@@ -30,14 +74,15 @@ async def descontar_por_venta(
     comanda_id: str,
     creado_por: UUID,
 ) -> None:
-    """Descuenta del stock los insumos de la receta de cada producto vendido.
-    Lanza StockInsuficienteError si algún insumo no alcanza — el llamador
-    debe envolver esto en una transacción para que aborte la comanda completa."""
+    """Descuenta del stock los insumos de la receta de cada producto vendido
+    (expandiendo combos a sus productos integrantes). Lanza
+    StockInsuficienteError si algún insumo no alcanza — el llamador debe
+    envolver esto en una transacción para que aborte la comanda completa."""
     for detalle in detalles:
-        receta = await producto_insumo_repository.listar_por_producto(conn, UUID(detalle.id))
-        for item in receta:
-            consumo = item["cantidad"] * detalle.cantidad
-            nuevo_stock = await insumo_repository.ajustar_stock(conn, item["insumo_id"], -consumo)
+        for item in await _consumo_insumos(conn, UUID(detalle.id), detalle.cantidad):
+            nuevo_stock = await insumo_repository.ajustar_stock(
+                conn, item["insumo_id"], -item["consumo"]
+            )
             if nuevo_stock is None:
                 raise StockInsuficienteError(item["insumo_nombre"], "completar la venta")
             await movimiento_inventario_repository.registrar(
@@ -45,7 +90,7 @@ async def descontar_por_venta(
                 sucursal_id=UUID(sucursal_id),
                 insumo_id=item["insumo_id"],
                 tipo="S",
-                cantidad=consumo,
+                cantidad=item["consumo"],
                 stock_resultante=nuevo_stock,
                 motivo="venta_comanda",
                 referencia_id=UUID(comanda_id),
@@ -63,12 +108,13 @@ async def revertir_por_cancelacion(
 ) -> None:
     """Revierte (suma de vuelta) el stock descontado por una comanda cancelada."""
     for detalle in detalles:
-        receta = await producto_insumo_repository.listar_por_producto(
-            conn, UUID(detalle.producto_id)
+        items = await _consumo_insumos(
+            conn, UUID(detalle.producto_id), detalle.cantidad, tipo=detalle.producto_tipo
         )
-        for item in receta:
-            consumo = item["cantidad"] * detalle.cantidad
-            nuevo_stock = await insumo_repository.ajustar_stock(conn, item["insumo_id"], consumo)
+        for item in items:
+            nuevo_stock = await insumo_repository.ajustar_stock(
+                conn, item["insumo_id"], item["consumo"]
+            )
             if nuevo_stock is None:
                 # No debería pasar (estamos sumando) — no bloquear la cancelación por esto.
                 continue
@@ -77,7 +123,7 @@ async def revertir_por_cancelacion(
                 sucursal_id=UUID(sucursal_id),
                 insumo_id=item["insumo_id"],
                 tipo="A",
-                cantidad=consumo,
+                cantidad=item["consumo"],
                 stock_resultante=nuevo_stock,
                 motivo="cancelacion_comanda",
                 referencia_id=UUID(comanda_id),
