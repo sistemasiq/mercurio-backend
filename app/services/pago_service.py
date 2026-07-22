@@ -113,9 +113,16 @@ async def obtener_historial(
     sucursal_id: UUID,
     filtro: str = "hoy",
     estado: str = "todos",
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
 ) -> list[HistorialOut]:
     desde = _calcular_desde(filtro)
-    rows = await pago_repository.historial(conn, sucursal_id, desde, estado)
+    hasta = None
+    if fecha_inicio:
+        desde = datetime.fromisoformat(fecha_inicio)
+    if fecha_fin:
+        hasta = datetime.fromisoformat(fecha_fin).replace(hour=23, minute=59, second=59)
+    rows = await pago_repository.historial(conn, sucursal_id, desde, estado, hasta)
     return [HistorialOut.model_validate(r) for r in rows]
 
 
@@ -133,9 +140,16 @@ async def obtener_estadisticas(
     conn: asyncpg.Connection,
     sucursal_id: UUID,
     filtro: str = "hoy",
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
 ) -> EstadisticasOut:
     desde = _calcular_desde(filtro)
-    data = await pago_repository.estadisticas(conn, sucursal_id, desde)
+    hasta = None
+    if fecha_inicio:
+        desde = datetime.fromisoformat(fecha_inicio)
+    if fecha_fin:
+        hasta = datetime.fromisoformat(fecha_fin).replace(hour=23, minute=59, second=59)
+    data = await pago_repository.estadisticas(conn, sucursal_id, desde, hasta)
     total_ventas = float(data["total_ventas"])
     total_ordenes = int(data["total_ordenes"])
     ticket_promedio = total_ventas / total_ordenes if total_ordenes > 0 else 0.0

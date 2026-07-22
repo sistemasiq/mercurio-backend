@@ -80,11 +80,13 @@ async def completar_pago(
 )
 async def listar_estadisticas(
     filtro: str = Query("hoy", regex="^(hoy|semana|mes)$"),
+    fecha_inicio: str | None = Query(None),
+    fecha_fin: str | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
 ) -> EstadisticasOut:
     sucursal_id = _get_active_branch(current_user)
-    return await svc.obtener_estadisticas(conn, sucursal_id, filtro)
+    return await svc.obtener_estadisticas(conn, sucursal_id, filtro, fecha_inicio, fecha_fin)
 
 
 @router.get(
@@ -123,8 +125,10 @@ async def obtener_detalle(
 async def listar_historial(
     filtro: str = Query("hoy", regex="^(hoy|semana|mes)$"),
     estado: str = Query("todos", regex="^(todos|pagado|cancelado)$"),
+    fecha_inicio: str | None = Query(None),
+    fecha_fin: str | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
 ) -> list[HistorialOut]:
     sucursal_id = _get_active_branch(current_user)
-    return await svc.obtener_historial(conn, sucursal_id, filtro, estado)
+    return await svc.obtener_historial(conn, sucursal_id, filtro, estado, fecha_inicio, fecha_fin)

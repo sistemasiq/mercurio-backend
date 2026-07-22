@@ -34,9 +34,18 @@ def sucursal_scope(current_user: TokenData) -> str | None:
 async def crear_comanda(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
-    creado_por: str | None = None,
+    creado_por: str,
 ) -> Comanda:
-    """Crea una comanda, la reexpande desde BD y notifica."""
+    """Crea una comanda, la reexpande desde BD y notifica.
+
+    ``creado_por`` es obligatorio — sin él la creación se rechaza para
+    preservar la integridad de auditoría.
+    """
+    if not creado_por:
+        raise ValueError(
+            "No se puede crear una comanda sin identificación del usuario "
+            "responsable (creado_por)."
+        )
 
     comanda = await comanda_repository.crear_comanda_con_detalles(
         conn, comanda_in, None, creado_por
@@ -62,12 +71,70 @@ async def cambiar_estado(
     conn: asyncpg.Connection,
     comanda_id: str,
     nuevo_estado: str,
+    usuario_id: str | None = None,
+    motivo_cancelacion: str | None = None,
 ) -> Comanda | None:
     """
     Actualiza el estado de una comanda y notifica a los clientes conectados.
+    Registra auditoría (modificado, modificado_por).
+    Si nuevo_estado == 'C', desactiva la comanda y requiere motivo_cancelacion.
     Retorna None si la comanda no existe.
     """
-    comanda = await comanda_repository.actualizar_estado_comanda(conn, comanda_id, nuevo_estado)
+    comanda = await comanda_repository.actualizar_estado_comanda(
+        conn, comanda_id, nuevo_estado, usuario_id,
+        motivo_cancelacion=motivo_cancelacion,
+        desactivar=(nuevo_estado == "C"),
+    )
+    if comanda is not None:
+        comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
+        await manager.broadcast(
+            comanda.sucursal_id, {"type": "comanda_actualizada", "comanda": asdict(comanda)}
+        )
+    return comanda
+
+
+async def modificar_comanda_parcial(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    detalles_ids_a_eliminar: list[str],
+    usuario_id: str | None = None,
+    motivo_cancelacion: str | None = None,
+) -> Comanda | None:
+    """Elimina productos de una comanda en estado 'P' y recalcula el total.
+
+    Si se eliminan todos los productos, cancela automáticamente la comanda
+    y requiere motivo_cancelacion.
+
+    Retorna None si la comanda no existe o no está en estado 'P'.
+    Notifica a cocina vía WebSocket después de la modificación.
+    """
+    comanda = await comanda_repository.modificar_comanda_parcial(
+        conn, comanda_id, detalles_ids_a_eliminar, usuario_id,
+        motivo_cancelacion,
+    )
+    if comanda is not None:
+        comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
+        await manager.broadcast(
+            comanda.sucursal_id, {"type": "comanda_actualizada", "comanda": asdict(comanda)}
+        )
+    return comanda
+
+
+async def cancelar_comanda(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    usuario_id: str | None = None,
+    motivo_cancelacion: str | None = None,
+) -> Comanda | None:
+    """Cancela una comanda (estado 'C') con auditoría.
+
+    Requiere motivo_cancelacion. Desactiva la comanda y preserva total_final.
+    Retorna None si la comanda no existe.
+    """
+    comanda = await comanda_repository.actualizar_estado_comanda(
+        conn, comanda_id, "C", usuario_id,
+        motivo_cancelacion=motivo_cancelacion, desactivar=True,
+    )
     if comanda is not None:
         await manager.broadcast(
             comanda.sucursal_id, {"type": "comanda_actualizada", "comanda": asdict(comanda)}

@@ -104,6 +104,7 @@ class HistorialOut(BaseModel):
 
 
 class DetalleProductoOut(BaseModel):
+    id: str
     producto_nombre: str
     cantidad: int
     precio_unitario: float
@@ -124,6 +125,7 @@ class DetalleOrdenOut(BaseModel):
     total_final: float
     estado_actual: str
     fecha_hora: str | None = None
+    motivo_cancelacion: str | None = None
     creado_por_nombre: str | None = None
     metodos_pago: list[MetodoPagoDetalle]
     detalles: list[DetalleProductoOut]

@@ -91,6 +91,10 @@ async def crear_comanda_con_detalles(
     Inserta comanda + detalles en una transacción.
     Regla 11.4: SQL solo en el repositorio.
     """
+    if not creado_por:
+        raise ValueError(
+            "crear_comanda_con_detalles requiere creado_por no nulo."
+        )
     comanda_id = str(uuid.uuid4())
     fecha = get_mexico_now()
 
@@ -153,21 +157,180 @@ async def actualizar_estado_comanda(
     conn: asyncpg.Connection,
     comanda_id: str,
     nuevo_estado: str,
+    usuario_id: str | None = None,
+    *,
+    motivo_cancelacion: str | None = None,
+    desactivar: bool = False,
 ) -> Comanda | None:
-    """Actualiza el estado de una comanda. Retorna None si no existe."""
+    """Actualiza el estado de una comanda con auditoría.
+
+    Parámetros opcionales (solo para cancelaciones):
+      - motivo_cancelacion: obligatorio cuando nuevo_estado == 'C'.
+      - desactivar: si True, pone activo = FALSE (cancelación).
+
+    Retorna None si no existe la comanda.
+    """
+    if nuevo_estado == "C" and desactivar and (not motivo_cancelacion or not motivo_cancelacion.strip()):
+        raise ValueError(
+            "El motivo de cancelación es obligatorio al cancelar una comanda."
+        )
+
     result = await conn.execute(
         """
         UPDATE public.comandas
-        SET estado_actual = $1
-        WHERE id = $2
+        SET estado_actual = $1,
+            activo = CASE WHEN $4 THEN FALSE ELSE activo END,
+            motivo_cancelacion = CASE WHEN $4 THEN $5 ELSE motivo_cancelacion END,
+            modificado = now(),
+            modificado_por = $2
+        WHERE id = $3
         """,
         nuevo_estado,
-        comanda_id,
+        uuid.UUID(usuario_id) if usuario_id else None,
+        uuid.UUID(comanda_id),
+        desactivar,
+        motivo_cancelacion.strip() if desactivar and motivo_cancelacion else None,
     )
     # asyncpg retorna 'UPDATE N' — si N=0, la comanda no existía
     if result == "UPDATE 0":
         return None
     return await get_comanda_por_id(conn, comanda_id)
+
+
+async def modificar_comanda_parcial(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    detalles_a_eliminar: list[str],
+    usuario_id: str | None = None,
+    motivo_cancelacion: str | None = None,
+) -> Comanda | None:
+    """Elimina productos específicos de una comanda en estado 'P'.
+
+    Si tras eliminar los productos seleccionados no quedan detalles activos,
+    cancela automáticamente la comanda (estado 'C', activo=False) en vez de
+    dejarla vacía.  En ese caso *requiere* motivo_cancelacion.
+
+    Para la cancelación total, los detalles restantes se desactivan
+    (activo=False) en vez de borrarse físicamente, preservando el historial.
+
+    Retorna None si la comanda no existe o no está en estado 'P'.
+    """
+    comanda = await get_comanda_por_id(conn, comanda_id)
+    if comanda is None or comanda.estado_actual != "P":
+        return None
+
+    uid = uuid.UUID(usuario_id) if usuario_id else None
+
+    async with conn.transaction():
+        # 1) Eliminar físicamente los detalles seleccionados
+        ids_validos: list[uuid.UUID] = []
+        for detalle_id in detalles_a_eliminar:
+            try:
+                parsed_id = uuid.UUID(detalle_id)
+            except (ValueError, AttributeError):
+                continue
+            ids_validos.append(parsed_id)
+
+        for parsed_id in ids_validos:
+            await conn.execute(
+                "DELETE FROM public.detalles_comanda WHERE id = $1 AND comanda_id = $2",
+                parsed_id,
+                uuid.UUID(comanda_id),
+            )
+
+        # 2) Contar detalles activos restantes
+        restantes = await conn.fetchval(
+            "SELECT COUNT(*)::int FROM public.detalles_comanda "
+            "WHERE comanda_id = $1 AND activo = TRUE",
+            uuid.UUID(comanda_id),
+        )
+
+        if restantes == 0:
+            # ── Autocancelación ──────────────────────────────────────
+            if not motivo_cancelacion or not motivo_cancelacion.strip():
+                raise ValueError(
+                    "El motivo de cancelación es obligatorio cuando se "
+                    "eliminan todos los productos de la comanda."
+                )
+
+            # Desactivar todos los detalles restantes (soft-delete)
+            await conn.execute(
+                """
+                UPDATE public.detalles_comanda
+                SET activo = FALSE,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE comanda_id = $1
+                """,
+                uuid.UUID(comanda_id),
+                uid,
+            )
+
+            # Cancelar la comanda (preservar total_final original)
+            await conn.execute(
+                """
+                UPDATE public.comandas
+                SET estado_actual = 'C',
+                    activo = FALSE,
+                    motivo_cancelacion = $1,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE id = $3
+                """,
+                motivo_cancelacion.strip(),
+                uid,
+                uuid.UUID(comanda_id),
+            )
+        else:
+            # ── Eliminación parcial (comportamiento original) ─────────
+            nuevo_total = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(importe), 0)
+                FROM public.detalles_comanda
+                WHERE comanda_id = $1
+                """,
+                uuid.UUID(comanda_id),
+            )
+
+            await conn.execute(
+                """
+                UPDATE public.comandas
+                SET total_final = $1,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE id = $3
+                """,
+                nuevo_total,
+                uid,
+                uuid.UUID(comanda_id),
+            )
+
+    return await get_comanda_por_id(conn, comanda_id)
+
+
+async def eliminar_detalle_comanda(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    detalle_id: str,
+) -> bool:
+    """Elimina un detalle específico de una comanda en estado 'P'.
+
+    Retorna True si se eliminó correctamente, False si la comanda no existe,
+    no está en pendiente o el detalle no pertenece a la comanda.
+    """
+    comanda = await get_comanda_por_id(conn, comanda_id)
+    if comanda is None or comanda.estado_actual != "P":
+        return False
+
+    result = await conn.execute(
+        """
+        DELETE FROM public.detalles_comanda
+        WHERE id = $1 AND comanda_id = $2
+        """,
+        uuid.UUID(detalle_id),
+        uuid.UUID(comanda_id),
+    )
+    return result != "DELETE 0"
 
 
 async def get_comandas_pendientes(

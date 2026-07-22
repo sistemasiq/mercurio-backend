@@ -23,11 +23,11 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user_ws, require_permission
+from app.api.deps import get_current_user_ws, require_permission, require_role
 from app.core.database import get_db
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
-from app.schemas.comanda import ComandaCreate
+from app.schemas.comanda import ComandaCreate, ComandaModifyRequest
 from app.services import comanda_service
 from app.services.permission_service import has_permission
 
@@ -38,6 +38,7 @@ router = APIRouter(prefix="/api/comandas", tags=["Comandas"])
 
 class CambioEstadoRequest(BaseModel):
     estado_actual: str
+    motivo_cancelacion: str | None = None
 
 def get_active_branch(current_user: TokenData) -> UUID:
     if current_user.branch_id is None:
@@ -82,10 +83,22 @@ async def cambiar_estado(
     comanda_id: str,
     data: CambioEstadoRequest,
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: TokenData = Depends(require_permission("restaurante:gestionar_cocina")),
+    current_user: TokenData = Depends(
+        require_role("AdministradorSistema", "Administrador", "Cajero", "Cocina")
+    ),
 ) -> Any:
-    """Actualiza el estado de una comanda."""
-    comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)
+    """Actualiza el estado de una comanda con auditoría."""
+    usuario_id = str(UUID(current_user.sub))
+    try:
+        comanda = await comanda_service.cambiar_estado(
+            conn, comanda_id, data.estado_actual, usuario_id,
+            motivo_cancelacion=data.motivo_cancelacion,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
     if comanda is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -97,7 +110,48 @@ async def cambiar_estado(
 
     await manager.broadcast(
         canal,
-        {"tipo": "comanda_actualizada", "comanda": asdict(comanda)},
+        {"type": "comanda_actualizada", "comanda": asdict(comanda)},
+    )
+
+    return asdict(comanda)
+
+
+@router.patch("/{comanda_id}/detalles")
+async def modificar_detalles(
+    comanda_id: str,
+    data: ComandaModifyRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> Any:
+    """Elimina productos de una comanda en estado Pendiente y recalcula el total.
+
+    Si se eliminan todos los productos, cancela automáticamente la comanda
+    y requiere motivo_cancelacion en el body.
+    """
+    usuario_id = str(UUID(current_user.sub))
+    try:
+        comanda = await comanda_service.modificar_comanda_parcial(
+            conn, comanda_id, data.detalles_ids_a_eliminar, usuario_id,
+            data.motivo_cancelacion,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+
+    if comanda is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La comanda no existe o no está en estado Pendiente.",
+        )
+
+    scope = comanda_service.sucursal_scope(current_user)
+    canal = scope if scope is not None else CANAL_GLOBAL
+
+    await manager.broadcast(
+        canal,
+        {"type": "comanda_actualizada", "comanda": asdict(comanda)},
     )
 
     return asdict(comanda)
