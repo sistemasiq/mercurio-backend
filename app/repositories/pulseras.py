@@ -51,15 +51,18 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> dict[str, Any] 
     return dict(row) if row else None
 
 
-async def crear(conn: asyncpg.Connection, sucursal_id: UUID, pulsera_rfid: str) -> dict[str, Any]:
+async def crear(
+    conn: asyncpg.Connection, sucursal_id: UUID, pulsera_rfid: str, creado_por: UUID
+) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid)
-        VALUES ($1, $2)
+        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, creado_por)
+        VALUES ($1, $2, $3)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
         pulsera_rfid,
+        creado_por,
     )
     return dict(row)
 

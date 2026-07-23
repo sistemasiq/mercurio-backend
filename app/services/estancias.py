@@ -1,4 +1,3 @@
-import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -7,7 +6,7 @@ from uuid import UUID, uuid4
 import asyncpg
 from fastapi import HTTPException, UploadFile
 
-from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -46,17 +45,17 @@ async def create_estancia(
 
         registro_id = uuid4()
 
-        # --- GUARDAR FOTOS FÍSICAMENTE ---
+        # --- GUARDAR FOTOS EN MINIO ---
         nombre_archivo = f"{registro_id}.jpg"
-        ruta_fisica_ine = IDENTIFICACIONES_DIR / nombre_archivo
-        ruta_fisica_llegada = LLEGADAS_DIR / nombre_archivo
 
-        await asyncio.to_thread(ruta_fisica_ine.write_bytes, await foto_ine.read())
-        await asyncio.to_thread(ruta_fisica_llegada.write_bytes, await foto_llegada.read())
+        data_ine = await validar_y_leer(foto_ine)
+        data_llegada = await validar_y_leer(foto_llegada)
 
-        # Rutas relativas para guardar en BD
-        ruta_bd_ine = f"uploads/identificaciones/{nombre_archivo}"
-        ruta_bd_llegada = f"uploads/llegadas/{nombre_archivo}"
+        ruta_bd_ine = f"{PREFIJOS['identificaciones']}/{nombre_archivo}"
+        ruta_bd_llegada = f"{PREFIJOS['llegadas']}/{nombre_archivo}"
+
+        await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
+        await upload_bytes(ruta_bd_llegada, data_llegada, "image/jpeg")
 
         # 2. registro (Un solo INSERT limpio)
         await registro_create(
