@@ -27,6 +27,7 @@ from app.api.routers import (
 )
 from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
+from app.core.object_storage import ensure_bucket
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.DEBUG)
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.services.permission_service import load_cache
 
         await load_cache(conn)
+    await ensure_bucket()
     yield
     await close_pool()
 

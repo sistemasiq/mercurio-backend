@@ -47,7 +47,7 @@ async def crear_pulsera(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("pulseras:crear")),
 ) -> PulseraOut:
-    return await pulseras_service.crear(conn, body, UUID(current_user.sub))
+    return await pulseras_service.crear(conn, body, current_user)
 
 
 @router.patch("/{pulsera_id}", response_model=PulseraOut)

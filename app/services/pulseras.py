@@ -6,6 +6,7 @@ import asyncpg
 from app.exceptions import Conflicto, NoEncontrado
 from app.repositories import pulseras as pulseras_repository
 from app.repositories.pulseras import get_pulseras_disponibles_por_sucursal
+from app.schemas.auth import TokenData
 from app.schemas.pulseras import PulseraCrear, PulseraOut, PulseraUpdate
 
 
@@ -27,7 +28,10 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> PulseraOut:
     return PulseraOut.model_validate(row)
 
 
-async def crear(conn: asyncpg.Connection, body: PulseraCrear, creado_por: UUID) -> PulseraOut:
+async def crear(
+    conn: asyncpg.Connection, body: PulseraCrear, current_user: TokenData
+) -> PulseraOut:
+    creado_por = UUID(current_user.sub)
     try:
         row = await pulseras_repository.crear(conn, body.sucursal_id, body.pulsera_rfid, creado_por)
     except asyncpg.UniqueViolationError as exc:
