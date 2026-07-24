@@ -24,3 +24,5 @@ uploads/identificaciones/*
 !uploads/identificaciones/.gitignore
 uploads/llegadas/*
 !uploads/llegadas/.gitignore
+uploads/productos/*
+!uploads/productos/.gitignore

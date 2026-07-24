@@ -1,8 +1,7 @@
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
-import uuid
 
 from pydantic import UUID4, BaseModel, Field, field_validator
 
@@ -38,7 +37,7 @@ class ComandaCreate(BaseModel):
     detalles_comanda: list[DetalleCreate]
     ticket_numero: str
     total_final: Decimal
-    sucursal_id: Optional[uuid.UUID] = None
+    sucursal_id: uuid.UUID | None = None
 
 
 # Esquema para cancelación parcial (eliminar productos de una comanda Pendiente)
@@ -55,10 +54,10 @@ class ComandaModifyRequest(BaseModel):
                 continue
             try:
                 uuid.UUID(raw.strip())
-            except ValueError:
+            except ValueError as exc:
                 raise ValueError(
                     f"ID de detalle inválido: '{raw}'. Se esperaba un UUID válido."
-                )
+                ) from exc
             validos.append(raw.strip())
         if not validos:
             raise ValueError("No se proporcionó ningún ID de detalle válido.")

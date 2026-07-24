@@ -6,6 +6,7 @@ from uuid import UUID
 import asyncpg
 
 from app.core.config import settings
+from app.core.roles import ROL_ADMINISTRADOR, ROL_SISTEMA
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -27,7 +28,6 @@ from app.schemas.auth import (
     BranchOption,
     BranchSelectionRequired,
     LoginResponse,
-    RoleEnum,
     UserOut,
 )
 from app.services.permission_service import get_permissions
@@ -57,11 +57,11 @@ async def login(
     if usuario is None or not verify_password(password, usuario["password_hash"]):
         raise InvalidCredentialsError
 
-    rol = RoleEnum(usuario["rol"])
-    permissions = get_permissions(rol.value)
+    rol = usuario["rol"]
+    permissions = get_permissions(rol)
 
     sucursal_efectiva: UUID | None = None
-    if rol == RoleEnum.administrador:
+    if rol == ROL_ADMINISTRADOR:
         # Un Administrador puede tener varias sucursales via usuarios_sucursal
         # (a diferencia de Cajero/Cocina, que siguen siendo 1:1 más abajo).
         sucursales_activas = await get_sucursal_ids_activas(conn, usuario["id"])
@@ -78,7 +78,7 @@ async def login(
             return BranchSelectionRequired(
                 sucursales=[BranchOption(id=o["id"], nombre=o["nombre"]) for o in opciones]
             )
-    elif rol != RoleEnum.administrador_sistema:
+    elif rol != ROL_SISTEMA:
         sucursal_en_bd = usuario["sucursal_id"]
         if sucursal_en_bd is None:
             raise SucursalNoAsignadaError
@@ -101,7 +101,7 @@ async def login(
         payload={
             "sub": str(usuario["id"]),
             "email": usuario["email"],
-            "role": rol.value,
+            "role": rol,
             "branch_id": str(sucursal_efectiva) if sucursal_efectiva else None,
             "permissions": permissions,
         },
@@ -151,28 +151,30 @@ async def refresh_access_token(
     if usuario is None or not usuario["activo"]:
         raise InvalidRefreshTokenError
 
-    rol = RoleEnum(usuario["rol"])
-    sucursales_activas = await get_sucursal_ids_activas(conn, usuario["id"])
-    if rol == RoleEnum.administrador_sistema:
+    rol = usuario["rol"]
+    if rol == ROL_SISTEMA:
         sucursal_efectiva: UUID | None = None
-    else:
+    elif rol == ROL_ADMINISTRADOR:
+        # Un Administrador puede tener varias sucursales via usuarios_sucursal;
+        # revalidamos que la guardada en el refresh token siga activa (pudo
+        # habérsele quitado esa sucursal desde el login).
+        sucursales_activas = await get_sucursal_ids_activas(conn, usuario["id"])
         if not sucursales_activas:
             raise InvalidRefreshTokenError
-
         sucursal_efectiva = record["sucursal_id"]
         if sucursal_efectiva not in sucursales_activas:
-            sucursal_efectiva = usuario["sucursal_id"]
+            sucursal_efectiva = sucursales_activas[0]
+    else:
+        # Cajero/Cocina siguen siendo 1:1 con una sola sucursal en el usuario.
+        sucursal_efectiva = usuario["sucursal_id"]
 
-        if sucursal_efectiva is None or sucursal_efectiva not in sucursales_activas:
-            raise InvalidRefreshTokenError
-
-    permissions = get_permissions(rol.value)
+    permissions = get_permissions(rol)
 
     token = create_access_token(
         payload={
             "sub": str(usuario["id"]),
             "email": usuario["email"],
-            "role": rol.value,
+            "role": rol,
             "branch_id": str(sucursal_efectiva) if sucursal_efectiva else None,
             "permissions": permissions,
         },

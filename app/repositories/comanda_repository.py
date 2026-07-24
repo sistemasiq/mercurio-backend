@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 
@@ -39,7 +39,9 @@ def _row_to_detalle(row: asyncpg.Record) -> DetalleComanda:
     )
 
 
-def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Comanda:
+def _row_to_comanda(
+    row: asyncpg.Record, detalles: list[DetalleComanda | dict[str, Any]]
+) -> Comanda:
     return Comanda(
         id=str(row["id"]),
         ticket_numero=row["ticket_numero"],
@@ -54,7 +56,7 @@ def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Coma
 # ── Queries ───────────────────────────────────────────────────────────────────
 
 
-def _campos_insercion_detalle(item) -> tuple:
+def _campos_insercion_detalle(item: Any) -> tuple[Any, ...]:
     if isinstance(item, dict):
         producto_id = str(item.get("producto_id") or item["id"])
         cantidad = item["cantidad"]
@@ -65,8 +67,14 @@ def _campos_insercion_detalle(item) -> tuple:
         es_hijo_de = str(item["es_hijo_de"]) if item.get("es_hijo_de") else None
         es_hijo_combo = bool(item.get("es_hijo_combo", False))
         return (
-            producto_id, cantidad, precio_unitario, importe,
-            notas, nombre_combo_padre, es_hijo_de, es_hijo_combo,
+            producto_id,
+            cantidad,
+            precio_unitario,
+            importe,
+            notas,
+            nombre_combo_padre,
+            es_hijo_de,
+            es_hijo_combo,
         )
 
     return (
@@ -84,7 +92,7 @@ def _campos_insercion_detalle(item) -> tuple:
 async def crear_comanda_con_detalles(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
-    detalles_procesados: list | None = None,
+    detalles_procesados: list[Any] | None = None,
     creado_por: str | None = None,
 ) -> Comanda:
     """
@@ -92,9 +100,7 @@ async def crear_comanda_con_detalles(
     Regla 11.4: SQL solo en el repositorio.
     """
     if not creado_por:
-        raise ValueError(
-            "crear_comanda_con_detalles requiere creado_por no nulo."
-        )
+        raise ValueError("crear_comanda_con_detalles requiere creado_por no nulo.")
     comanda_id = str(uuid.uuid4())
     fecha = get_mexico_now()
 
@@ -115,15 +121,19 @@ async def crear_comanda_con_detalles(
         )
 
         detalles = (
-            detalles_procesados
-            if detalles_procesados is not None
-            else comanda_in.detalles_comanda
+            detalles_procesados if detalles_procesados is not None else comanda_in.detalles_comanda
         )
 
         for item in detalles:
             (
-                producto_id, cantidad, precio_unitario, importe,
-                notas, nombre_combo_padre, es_hijo_de, es_hijo_combo,
+                producto_id,
+                cantidad,
+                precio_unitario,
+                importe,
+                notas,
+                nombre_combo_padre,
+                es_hijo_de,
+                es_hijo_combo,
             ) = _campos_insercion_detalle(item)
             await conn.execute(
                 """
@@ -170,10 +180,9 @@ async def actualizar_estado_comanda(
 
     Retorna None si no existe la comanda.
     """
-    if nuevo_estado == "C" and desactivar and (not motivo_cancelacion or not motivo_cancelacion.strip()):
-        raise ValueError(
-            "El motivo de cancelación es obligatorio al cancelar una comanda."
-        )
+    sin_motivo = not motivo_cancelacion or not motivo_cancelacion.strip()
+    if nuevo_estado == "C" and desactivar and sin_motivo:
+        raise ValueError("El motivo de cancelación es obligatorio al cancelar una comanda.")
 
     result = await conn.execute(
         """
@@ -330,7 +339,7 @@ async def eliminar_detalle_comanda(
         uuid.UUID(detalle_id),
         uuid.UUID(comanda_id),
     )
-    return result != "DELETE 0"
+    return bool(result != "DELETE 0")
 
 
 async def get_comandas_pendientes(

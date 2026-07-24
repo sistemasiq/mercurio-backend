@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -12,9 +13,9 @@ from app.schemas.pagos import (
     DetalleOrdenOut,
     EstadisticasOut,
     HistorialOut,
+    PagoCompletoRequest,
     PaymentOut,
     PaymentRequest,
-    PagoCompletoRequest,
 )
 
 router = APIRouter(prefix="/api/pagos", tags=["Pagos"])
@@ -62,7 +63,7 @@ async def completar_pago(
     body: PagoCompletoRequest,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
-) -> dict:
+) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
     sucursal_id = _get_active_branch(current_user)
     comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id)
@@ -74,8 +75,7 @@ async def completar_pago(
     response_model=EstadisticasOut,
     summary="Estadísticas de ventas del periodo",
     description=(
-        "Devuelve total de ventas, órdenes y ticket promedio "
-        "para el filtro temporal indicado."
+        "Devuelve total de ventas, órdenes y ticket promedio " "para el filtro temporal indicado."
     ),
 )
 async def listar_estadisticas(

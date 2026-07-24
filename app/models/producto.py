@@ -16,7 +16,7 @@ class Producto:
     id: str
     nombre: str
     precio_unitario: Decimal
-    tipo: str  # 'A' | 'B' | 'E' | 'S'
+    tipo: str  # 'A' | 'B' | 'E' | 'S' | 'C'
     sucursal_id: str
     activo: bool = True
     es_combo: bool = False

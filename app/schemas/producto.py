@@ -1,11 +1,16 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-TipoProducto = Literal["A", "B", "E", "S"]  # Alimento | Bebida | Estancia | Servicio
+TipoProducto = Literal["A", "B", "E", "S", "C"]  # Alimento | Bebida | Estancia | Servicio
+
+
+class ComboItem(BaseModel):
+    producto_id: UUID
+    cantidad: int = Field(..., ge=1)
 
 
 class ProductoBase(BaseModel):
@@ -18,7 +23,7 @@ class ProductoBase(BaseModel):
 
 class ProductoCrear(ProductoBase):
     sucursal_id: UUID
-    es_combo: bool = False
+    productos_combo: list[ComboItem] | None = None
 
 
 class ProductoUpdate(BaseModel):
@@ -28,17 +33,18 @@ class ProductoUpdate(BaseModel):
     descripcion: str | None = None
     imagen: str | None = None
     activo: bool | None = None
-    es_combo: bool | None = None
+    productos_combo: list[ComboItem] | None = None
 
 
 class ProductoOut(ProductoBase):
     id: UUID
     sucursal_id: UUID
     activo: bool
-    es_combo: bool = False
+    es_combo: bool
     creado: datetime | None
     creado_por: UUID | None
     modificado: datetime | None
     modificado_por: UUID | None
+    productos_combo: list[dict[str, Any]] | None = None
 
     model_config = {"from_attributes": True}

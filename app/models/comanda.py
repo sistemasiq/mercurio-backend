@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass
@@ -39,4 +40,6 @@ class Comanda:
     total_final: Decimal
     sucursal_id: str
     fecha_hora: datetime | None = None
-    detalles: list[DetalleComanda] = field(default_factory=list)
+    # expandir_detalles_comanda() reemplaza esta lista por dicts (uno por
+    # producto hijo cuando hay combos) — no siempre son DetalleComanda.
+    detalles: list[DetalleComanda | dict[str, Any]] = field(default_factory=list)

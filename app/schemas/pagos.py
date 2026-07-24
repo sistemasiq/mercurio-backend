@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer
 
-from app.schemas.comanda import DetalleCreate, EstadoComanda
+from app.schemas.comanda import DetalleCreate
 
 
 class PagoIn(BaseModel):

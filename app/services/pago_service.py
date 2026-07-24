@@ -13,9 +13,9 @@ from app.schemas.pagos import (
     DetalleOrdenOut,
     EstadisticasOut,
     HistorialOut,
+    PagoCompletoRequest,
     PaymentOut,
     PaymentRequest,
-    PagoCompletoRequest,
 )
 
 
@@ -24,7 +24,7 @@ async def procesar_pagos(
     body: PaymentRequest,
     usuario_id: UUID,
 ) -> list[PaymentOut]:
-    total_pagos: Decimal = sum(p.monto for p in body.pagos)
+    total_pagos: Decimal = sum((p.monto for p in body.pagos), Decimal(0))
 
     if total_pagos != body.total_esperado:
         raise DatosInvalidos(
@@ -58,7 +58,7 @@ async def completar_pago(
     from app.core.ws_manager import manager
     from app.services.comanda_service import expandir_detalles_comanda
 
-    total_pagos: Decimal = sum(p.monto for p in body.pagos)
+    total_pagos: Decimal = sum((p.monto for p in body.pagos), Decimal(0))
     if total_pagos < body.total_final:
         raise DatosInvalidos(
             f"El total de los pagos ({total_pagos}) es menor "
@@ -76,7 +76,10 @@ async def completar_pago(
 
     async with conn.transaction():
         comanda = await comanda_repository.crear_comanda_con_detalles(
-            conn, comanda_in, None, str(usuario_id),
+            conn,
+            comanda_in,
+            None,
+            str(usuario_id),
         )
         await pago_repository.crear_pagos(
             conn,
@@ -89,13 +92,11 @@ async def completar_pago(
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
 
     await manager.broadcast(
-        sucursal_id,
+        str(sucursal_id),
         {"type": "comanda_creada", "comanda": asdict(comanda)},
     )
 
     return comanda
-
-
 
 
 def _calcular_desde(filtro: str) -> datetime:
