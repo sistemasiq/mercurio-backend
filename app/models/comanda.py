@@ -23,11 +23,13 @@ class DetalleComanda:
     sucursal_id: str
     notas_especiales: str | None = None
     # Datos del producto (join opcional al leer)
+    nombre: str | None = None
     producto_nombre: str | None = None
     producto_tipo: str | None = None
-    # Desglose de items si producto_tipo == 'C' (combo), para que cocina sepa
-    # que preparar. Se llena aparte, no viene del JOIN base de detalles_comanda.
-    productos_combo: list[dict[str, Any]] | None = None
+    # Origen del combo — persistidos en BD para evitar ambigüedad
+    nombre_combo_padre: str | None = None
+    es_hijo_de: str | None = None
+    es_hijo_combo: bool = False
 
 
 @dataclass
@@ -38,4 +40,6 @@ class Comanda:
     total_final: Decimal
     sucursal_id: str
     fecha_hora: datetime | None = None
-    detalles: list[DetalleComanda] = field(default_factory=list)
+    # expandir_detalles_comanda() reemplaza esta lista por dicts (uno por
+    # producto hijo cuando hay combos) — no siempre son DetalleComanda.
+    detalles: list[DetalleComanda | dict[str, Any]] = field(default_factory=list)

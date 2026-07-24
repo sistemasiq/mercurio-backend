@@ -8,15 +8,17 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile, status
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.exceptions import NoEncontrado
 from app.models.producto import Producto
 from app.repositories import combo_repository, producto_repository
+from app.schemas.auth import TokenData
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
 
 
@@ -136,3 +138,36 @@ async def eliminar(
 ) -> None:
     await obtener(conn, producto_id)
     await producto_repository.eliminar(conn, producto_id, usuario_id=usuario_id)
+
+
+async def obtener_productos_para_cajero(
+    conn: asyncpg.Connection, current_user: TokenData
+) -> list[dict[str, Any]]:
+    if current_user.branch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "BRANCH_REQUIRED", "message": "Sucursal no especificada en el token."},
+        )
+    return await producto_repository.get_catalogo_venta_by_sucursal(conn, current_user.branch_id)
+
+
+async def obtener_hijos_combo(conn: asyncpg.Connection, combo_id: UUID) -> list[dict[str, object]]:
+    """Retorna los hijos de un combo con sus datos básicos para el carrito."""
+    es_combo = await producto_repository.es_producto_combo(conn, combo_id)
+    if not es_combo:
+        raise NoEncontrado("Combo")
+
+    hijos = await producto_repository.get_combo_hijos(conn, str(combo_id))
+    resultado: list[dict[str, object]] = []
+    for hijo in hijos:
+        producto = await producto_repository.get_by_id(conn, str(hijo["producto_id"]))
+        if producto:
+            resultado.append(
+                {
+                    "producto_id": str(hijo["producto_id"]),
+                    "nombre": producto["nombre"],
+                    "cantidad": hijo["cantidad"],
+                    "precio_unitario": float(producto["precio_unitario"]),
+                }
+            )
+    return resultado

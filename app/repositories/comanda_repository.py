@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 
@@ -31,11 +31,17 @@ def _row_to_detalle(row: asyncpg.Record) -> DetalleComanda:
         importe=Decimal(str(row["importe"])),
         sucursal_id=str(row["sucursal_id"]),
         notas_especiales=row.get("notas_especiales"),
+        nombre=row.get("nombre"),
         producto_nombre=row.get("nombre"),  # alias del JOIN
+        nombre_combo_padre=row.get("nombre_combo_padre"),
+        es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+        es_hijo_combo=bool(row.get("es_hijo_combo", False)),
     )
 
 
-def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Comanda:
+def _row_to_comanda(
+    row: asyncpg.Record, detalles: list[DetalleComanda | dict[str, Any]]
+) -> Comanda:
     return Comanda(
         id=str(row["id"]),
         ticket_numero=row["ticket_numero"],
@@ -50,14 +56,51 @@ def _row_to_comanda(row: asyncpg.Record, detalles: list[DetalleComanda]) -> Coma
 # ── Queries ───────────────────────────────────────────────────────────────────
 
 
+def _campos_insercion_detalle(item: Any) -> tuple[Any, ...]:
+    if isinstance(item, dict):
+        producto_id = str(item.get("producto_id") or item["id"])
+        cantidad = item["cantidad"]
+        precio_unitario = Decimal(str(item["precio_unitario"]))
+        importe = Decimal(str(item.get("subtotal", item.get("importe", 0))))
+        notas = item.get("notas_especiales")
+        nombre_combo_padre = item.get("nombre_combo_padre")
+        es_hijo_de = str(item["es_hijo_de"]) if item.get("es_hijo_de") else None
+        es_hijo_combo = bool(item.get("es_hijo_combo", False))
+        return (
+            producto_id,
+            cantidad,
+            precio_unitario,
+            importe,
+            notas,
+            nombre_combo_padre,
+            es_hijo_de,
+            es_hijo_combo,
+        )
+
+    return (
+        str(item.id),
+        item.cantidad,
+        item.precio_unitario,
+        item.subtotal,
+        item.notas_especiales,
+        getattr(item, "nombre_combo_padre", None),
+        str(item.es_hijo_de) if getattr(item, "es_hijo_de", None) else None,
+        bool(getattr(item, "es_hijo_combo", False)),
+    )
+
+
 async def crear_comanda_con_detalles(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
+    detalles_procesados: list[Any] | None = None,
+    creado_por: str | None = None,
 ) -> Comanda:
     """
     Inserta comanda + detalles en una transacción.
     Regla 11.4: SQL solo en el repositorio.
     """
+    if not creado_por:
+        raise ValueError("crear_comanda_con_detalles requiere creado_por no nulo.")
     comanda_id = str(uuid.uuid4())
     fecha = get_mexico_now()
 
@@ -65,8 +108,8 @@ async def crear_comanda_con_detalles(
         await conn.execute(
             """
             INSERT INTO public.comandas
-                (id, ticket_numero, estado_actual, total_final, sucursal_id, fecha_hora)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (id, ticket_numero, estado_actual, total_final, sucursal_id, fecha_hora, creado_por)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             """,
             comanda_id,
             comanda_in.ticket_numero,
@@ -74,24 +117,44 @@ async def crear_comanda_con_detalles(
             comanda_in.total_final,
             comanda_in.sucursal_id,
             fecha,
+            creado_por,
         )
 
-        for item in comanda_in.detalles_comanda:
+        detalles = (
+            detalles_procesados if detalles_procesados is not None else comanda_in.detalles_comanda
+        )
+
+        for item in detalles:
+            (
+                producto_id,
+                cantidad,
+                precio_unitario,
+                importe,
+                notas,
+                nombre_combo_padre,
+                es_hijo_de,
+                es_hijo_combo,
+            ) = _campos_insercion_detalle(item)
             await conn.execute(
                 """
                 INSERT INTO public.detalles_comanda
                     (id, comanda_id, producto_id, cantidad, precio_unitario, importe,
-                     sucursal_id, notas_especiales)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    sucursal_id, notas_especiales, nombre_combo_padre, es_hijo_de,
+                    es_hijo_combo, creado_por)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 """,
                 str(uuid.uuid4()),
                 comanda_id,
-                item.id,
-                item.cantidad,
-                item.precio_unitario,
-                item.subtotal,
+                producto_id,
+                cantidad,
+                precio_unitario,
+                importe,
                 comanda_in.sucursal_id,
-                item.notas_especiales,
+                notas,
+                nombre_combo_padre,
+                es_hijo_de,
+                es_hijo_combo,
+                creado_por,
             )
 
     # Releer para devolver el objeto completo
@@ -104,16 +167,38 @@ async def actualizar_estado_comanda(
     conn: asyncpg.Connection,
     comanda_id: str,
     nuevo_estado: str,
+    usuario_id: str | None = None,
+    *,
+    motivo_cancelacion: str | None = None,
+    desactivar: bool = False,
 ) -> Comanda | None:
-    """Actualiza el estado de una comanda. Retorna None si no existe."""
+    """Actualiza el estado de una comanda con auditoría.
+
+    Parámetros opcionales (solo para cancelaciones):
+      - motivo_cancelacion: obligatorio cuando nuevo_estado == 'C'.
+      - desactivar: si True, pone activo = FALSE (cancelación).
+
+    Retorna None si no existe la comanda.
+    """
+    sin_motivo = not motivo_cancelacion or not motivo_cancelacion.strip()
+    if nuevo_estado == "C" and desactivar and sin_motivo:
+        raise ValueError("El motivo de cancelación es obligatorio al cancelar una comanda.")
+
     result = await conn.execute(
         """
         UPDATE public.comandas
-        SET estado_actual = $1
-        WHERE id = $2
+        SET estado_actual = $1,
+            activo = CASE WHEN $4 THEN FALSE ELSE activo END,
+            motivo_cancelacion = CASE WHEN $4 THEN $5 ELSE motivo_cancelacion END,
+            modificado = now(),
+            modificado_por = $2
+        WHERE id = $3
         """,
         nuevo_estado,
-        comanda_id,
+        uuid.UUID(usuario_id) if usuario_id else None,
+        uuid.UUID(comanda_id),
+        desactivar,
+        motivo_cancelacion.strip() if desactivar and motivo_cancelacion else None,
     )
     # asyncpg retorna 'UPDATE N' — si N=0, la comanda no existía
     if result == "UPDATE 0":
@@ -121,31 +206,170 @@ async def actualizar_estado_comanda(
     return await get_comanda_por_id(conn, comanda_id)
 
 
+async def modificar_comanda_parcial(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    detalles_a_eliminar: list[str],
+    usuario_id: str | None = None,
+    motivo_cancelacion: str | None = None,
+) -> Comanda | None:
+    """Elimina productos específicos de una comanda en estado 'P'.
+
+    Si tras eliminar los productos seleccionados no quedan detalles activos,
+    cancela automáticamente la comanda (estado 'C', activo=False) en vez de
+    dejarla vacía.  En ese caso *requiere* motivo_cancelacion.
+
+    Para la cancelación total, los detalles restantes se desactivan
+    (activo=False) en vez de borrarse físicamente, preservando el historial.
+
+    Retorna None si la comanda no existe o no está en estado 'P'.
+    """
+    comanda = await get_comanda_por_id(conn, comanda_id)
+    if comanda is None or comanda.estado_actual != "P":
+        return None
+
+    uid = uuid.UUID(usuario_id) if usuario_id else None
+
+    async with conn.transaction():
+        # 1) Eliminar físicamente los detalles seleccionados
+        ids_validos: list[uuid.UUID] = []
+        for detalle_id in detalles_a_eliminar:
+            try:
+                parsed_id = uuid.UUID(detalle_id)
+            except (ValueError, AttributeError):
+                continue
+            ids_validos.append(parsed_id)
+
+        for parsed_id in ids_validos:
+            await conn.execute(
+                "DELETE FROM public.detalles_comanda WHERE id = $1 AND comanda_id = $2",
+                parsed_id,
+                uuid.UUID(comanda_id),
+            )
+
+        # 2) Contar detalles activos restantes
+        restantes = await conn.fetchval(
+            "SELECT COUNT(*)::int FROM public.detalles_comanda "
+            "WHERE comanda_id = $1 AND activo = TRUE",
+            uuid.UUID(comanda_id),
+        )
+
+        if restantes == 0:
+            # ── Autocancelación ──────────────────────────────────────
+            if not motivo_cancelacion or not motivo_cancelacion.strip():
+                raise ValueError(
+                    "El motivo de cancelación es obligatorio cuando se "
+                    "eliminan todos los productos de la comanda."
+                )
+
+            # Desactivar todos los detalles restantes (soft-delete)
+            await conn.execute(
+                """
+                UPDATE public.detalles_comanda
+                SET activo = FALSE,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE comanda_id = $1
+                """,
+                uuid.UUID(comanda_id),
+                uid,
+            )
+
+            # Cancelar la comanda (preservar total_final original)
+            await conn.execute(
+                """
+                UPDATE public.comandas
+                SET estado_actual = 'C',
+                    activo = FALSE,
+                    motivo_cancelacion = $1,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE id = $3
+                """,
+                motivo_cancelacion.strip(),
+                uid,
+                uuid.UUID(comanda_id),
+            )
+        else:
+            # ── Eliminación parcial (comportamiento original) ─────────
+            nuevo_total = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(importe), 0)
+                FROM public.detalles_comanda
+                WHERE comanda_id = $1
+                """,
+                uuid.UUID(comanda_id),
+            )
+
+            await conn.execute(
+                """
+                UPDATE public.comandas
+                SET total_final = $1,
+                    modificado = now(),
+                    modificado_por = $2
+                WHERE id = $3
+                """,
+                nuevo_total,
+                uid,
+                uuid.UUID(comanda_id),
+            )
+
+    return await get_comanda_por_id(conn, comanda_id)
+
+
+async def eliminar_detalle_comanda(
+    conn: asyncpg.Connection,
+    comanda_id: str,
+    detalle_id: str,
+) -> bool:
+    """Elimina un detalle específico de una comanda en estado 'P'.
+
+    Retorna True si se eliminó correctamente, False si la comanda no existe,
+    no está en pendiente o el detalle no pertenece a la comanda.
+    """
+    comanda = await get_comanda_por_id(conn, comanda_id)
+    if comanda is None or comanda.estado_actual != "P":
+        return False
+
+    result = await conn.execute(
+        """
+        DELETE FROM public.detalles_comanda
+        WHERE id = $1 AND comanda_id = $2
+        """,
+        uuid.UUID(detalle_id),
+        uuid.UUID(comanda_id),
+    )
+    return bool(result != "DELETE 0")
+
+
 async def get_comandas_pendientes(
     conn: asyncpg.Connection, sucursal_id: str | None = None
 ) -> list[Comanda]:
-    """Retorna comandas en estado P, E o L con sus detalles.
+    # 1. Fuerza el casteo en SQL: $1::uuid
+    filtro_sucursal = "AND c.sucursal_id = $1::uuid" if sucursal_id is not None else ""
 
-    Si sucursal_id es None no filtra por sucursal (uso exclusivo de
-    AdministradorSistema, que ve todas las sucursales)."""
-    filtro_sucursal = "AND c.sucursal_id = $1" if sucursal_id is not None else ""
-    params: list[str] = [sucursal_id] if sucursal_id is not None else []
+    # 2. Asegura que el parámetro sea string (asyncpg maneja UUID desde string)
+    params = [str(sucursal_id)] if sucursal_id is not None else []
+
     rows = await conn.fetch(
         f"""
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
             c.sucursal_id, c.fecha_hora,
-            dc.id              AS detalle_id,
+            dc.id AS detalle_id,
             dc.producto_id,
             dc.cantidad,
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
+            dc.nombre_combo_padre,
+            dc.es_hijo_de,
+            dc.es_hijo_combo,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
         LEFT JOIN public.detalles_comanda dc ON dc.comanda_id = c.id
-        LEFT JOIN public.productos        p  ON p.id = dc.producto_id
+        LEFT JOIN public.productos p ON p.id = dc.producto_id
         WHERE c.estado_actual IN ('P', 'E', 'L')
         {filtro_sucursal}
         ORDER BY c.fecha_hora ASC
@@ -178,8 +402,12 @@ async def get_comandas_pendientes(
                     importe=Decimal(str(row["importe"])),
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
+                    nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
+                    nombre_combo_padre=row.get("nombre_combo_padre"),
+                    es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+                    es_hijo_combo=bool(row.get("es_hijo_combo", False)),
                 )
             )
 
@@ -202,6 +430,9 @@ async def get_comanda_por_id(
             dc.precio_unitario,
             dc.importe,
             dc.notas_especiales,
+            dc.nombre_combo_padre,
+            dc.es_hijo_de,
+            dc.es_hijo_combo,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
@@ -237,8 +468,12 @@ async def get_comanda_por_id(
                     importe=Decimal(str(row["importe"])),
                     sucursal_id=str(row["sucursal_id"]),
                     notas_especiales=row.get("notas_especiales"),
+                    nombre=row.get("nombre"),
                     producto_nombre=row.get("nombre"),
                     producto_tipo=row.get("producto_tipo"),
+                    nombre_combo_padre=row.get("nombre_combo_padre"),
+                    es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
+                    es_hijo_combo=bool(row.get("es_hijo_combo", False)),
                 )
             )
 

@@ -19,10 +19,10 @@ class Producto:
     tipo: str  # 'A' | 'B' | 'E' | 'S' | 'C'
     sucursal_id: str
     activo: bool = True
+    es_combo: bool = False
     descripcion: str | None = None
     imagen: str | None = None
     creado: datetime | None = None
     creado_por: str | None = None
     modificado: datetime | None = None
     modificado_por: str | None = None
-    es_combo: bool = False
