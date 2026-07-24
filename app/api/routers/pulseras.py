@@ -1,4 +1,3 @@
-from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -24,7 +23,7 @@ async def get_pulseras_disponibles(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("estancias:checkin")),
-) -> list[dict[str, Any]]:
+) -> list[PulseraResponse]:
     return await get_pulseras_disponibles_by_sucursal_id(conn, sucursal_id)
 
 
@@ -45,9 +44,9 @@ async def listar_pulseras_admin(
 async def crear_pulsera(
     body: PulseraCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("pulseras:crear")),
+    current_user: TokenData = Depends(require_permission("pulseras:crear")),
 ) -> PulseraOut:
-    return await pulseras_service.crear(conn, body)
+    return await pulseras_service.crear(conn, body, current_user)
 
 
 @router.patch("/{pulsera_id}", response_model=PulseraOut)

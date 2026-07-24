@@ -5,7 +5,8 @@ INSERT INTO public.permisos (codigo, nombre, modulo) VALUES
     ('pulseras:listar',   'Listar todas las pulseras de una sucursal', 'pulseras'),
     ('pulseras:crear',    'Registrar pulseras',                        'pulseras'),
     ('pulseras:editar',   'Editar pulseras',                           'pulseras'),
-    ('pulseras:eliminar', 'Dar de baja pulseras',                      'pulseras');
+    ('pulseras:eliminar', 'Dar de baja pulseras',                      'pulseras')
+ON CONFLICT (codigo) DO NOTHING;
 
 -- AdministradorSistema (id=1): recibe todo lo nuevo que aún no tenga
 INSERT INTO public.rol_permisos (rol_id, permiso_id)
@@ -17,4 +18,5 @@ WHERE NOT EXISTS (
 
 -- Administrador (id=2): gestión completa del catálogo de pulseras de su sucursal
 INSERT INTO public.rol_permisos (rol_id, permiso_id)
-SELECT 2, id FROM public.permisos WHERE modulo = 'pulseras';
+SELECT 2, id FROM public.permisos WHERE modulo = 'pulseras'
+ON CONFLICT DO NOTHING;

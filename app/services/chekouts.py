@@ -13,7 +13,12 @@ from app.repositories.detalles_registro import (
     get_detalle_registro_by_id,
     put_hora_salida_by_id,
 )
-from app.repositories.registros import EstadoRegistro, get_guardian_bracelet_by_detalles_registro_id,change_registro_estado, registro_add_total
+from app.repositories.registros import (
+    EstadoRegistro,
+    change_registro_estado,
+    get_guardian_bracelet_by_detalles_registro_id,
+    registro_add_total,
+)
 
 EXTRA_GRACE_MINUTES = 5
 
@@ -36,11 +41,13 @@ async def create_chekout(
 
         if salida_esperada is None:
             raise HTTPException(400, "Detalle sin salida esperada")
-        
-        pulsera_tutor_id_db = await get_guardian_bracelet_by_detalles_registro_id(conn,detalle["registros_id"])
+
+        pulsera_tutor_id_db = await get_guardian_bracelet_by_detalles_registro_id(
+            conn, detalle["registros_id"]
+        )
 
         if pulsera_tutor_id_db is None or str(pulsera_tutor_id) != str(pulsera_tutor_id_db):
-            raise HTTPException(403,"La pulsera presentada no corresponde al tutor autorizado")
+            raise HTTPException(403, "La pulsera presentada no corresponde al tutor autorizado")
 
         minutos_extra = (now - salida_esperada).total_seconds() / 60
 
@@ -69,7 +76,9 @@ async def create_chekout(
         abiertos = await count_detalles_registro_abiertos(conn, detalle["registros_id"])
 
         if abiertos == 0:
-            await change_registro_estado(conn, EstadoRegistro.CERRADO, usuario_id, detalle["registros_id"])
+            await change_registro_estado(
+                conn, EstadoRegistro.CERRADO, usuario_id, detalle["registros_id"]
+            )
 
         resultado = {
             "detalleId": str(detalle_id),
@@ -79,7 +88,8 @@ async def create_chekout(
             "ninosRestantes": abiertos,
         }
 
-    # Se notifica ya fuera de la transacción, para no avisar a los clientes de datos que todavía podrían revertirse por un rollback.
+    # Se notifica ya fuera de la transacción, para no avisar a los clientes
+    # de datos que todavía podrían revertirse por un rollback.
     await manager.broadcast(
         str(detalle["sucursal_id"]),
         {

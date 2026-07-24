@@ -23,6 +23,7 @@ repos:
           - python-jose[cryptography]
           - passlib[bcrypt]
           - asyncpg
+          - boto3-stubs[s3]
         args: [--config-file=pyproject.toml]
         files: ^app/
 

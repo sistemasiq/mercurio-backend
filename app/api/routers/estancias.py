@@ -127,6 +127,7 @@ async def checkout(
 
     return await create_chekout(conn, detalle_id, body.pulseraTutorId, usuario_id)
 
+
 @router.get(
     "/productos/{sucursal_id}",
     response_model=list[ProductoResponse],
@@ -153,7 +154,7 @@ async def estancias_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    if not has_permission(current_user.role.value, "estancias:ver_activos"):
+    if not has_permission(current_user.role, "estancias:ver_activos"):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 

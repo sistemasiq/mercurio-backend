@@ -1,4 +1,3 @@
-import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -7,7 +6,8 @@ from uuid import UUID, uuid4
 import asyncpg
 from fastapi import HTTPException, UploadFile
 
-from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
+from app.core.roles import ROL_SISTEMA
 from app.core.ws_manager import manager
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
@@ -24,14 +24,14 @@ from app.repositories.registros import (
     registro_update_total,
 )
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.registros import OnboardingRequest
 
 VE_TODAS_LAS_SUCURSALES = None
 
 
 def sucursal_scope(current_user: TokenData) -> str | None:
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == ROL_SISTEMA:
         return VE_TODAS_LAS_SUCURSALES
     if current_user.branch_id is None:
         return "00000000-0000-0000-0000-000000000000"
@@ -58,21 +58,29 @@ async def create_estancia(
 
         registro_id = uuid4()
 
-        # --- GUARDAR FOTOS FÍSICAMENTE ---
+        # --- GUARDAR FOTOS EN MINIO ---
         nombre_archivo = f"{registro_id}.jpg"
-        ruta_fisica_ine = IDENTIFICACIONES_DIR / nombre_archivo
-        ruta_fisica_llegada = LLEGADAS_DIR / nombre_archivo
 
-        await asyncio.to_thread(ruta_fisica_ine.write_bytes, await foto_ine.read())
-        await asyncio.to_thread(ruta_fisica_llegada.write_bytes, await foto_llegada.read())
+        data_ine = await validar_y_leer(foto_ine)
+        data_llegada = await validar_y_leer(foto_llegada)
 
-        # Rutas relativas para guardar en BD
-        ruta_bd_ine = f"uploads/identificaciones/{nombre_archivo}"
-        ruta_bd_llegada = f"uploads/llegadas/{nombre_archivo}"
-            
+        ruta_bd_ine = f"{PREFIJOS['identificaciones']}/{nombre_archivo}"
+        ruta_bd_llegada = f"{PREFIJOS['llegadas']}/{nombre_archivo}"
+
+        await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
+        await upload_bytes(ruta_bd_llegada, data_llegada, "image/jpeg")
+
         # 2. registro (Un solo INSERT limpio)
         await registro_create(
-            conn, registro_id, data.sucursalId, tutor_id,data.pulseraTutorId, ruta_bd_ine, ruta_bd_llegada, usuario_id, data.nombreSegundoTutor
+            conn,
+            registro_id,
+            data.sucursalId,
+            tutor_id,
+            data.pulseraTutorId,
+            ruta_bd_ine,
+            ruta_bd_llegada,
+            usuario_id,
+            data.nombreSegundoTutor,
         )
 
         total = Decimal(0)
@@ -123,7 +131,7 @@ async def create_estancia(
 
         # 6. activar si ya pagó todo
         if total_pagado >= total:
-            await change_registro_estado(conn, EstadoRegistro.ACTIVO,usuario_id, registro_id)
+            await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
 
         resultado = {
             "registroId": registro_id,
