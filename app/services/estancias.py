@@ -7,6 +7,8 @@ import asyncpg
 from fastapi import HTTPException, UploadFile
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
+from app.core.roles import ROL_SISTEMA
+from app.core.ws_manager import manager
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -22,7 +24,18 @@ from app.repositories.registros import (
     registro_update_total,
 )
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
+from app.schemas.auth import TokenData
 from app.schemas.registros import OnboardingRequest
+
+VE_TODAS_LAS_SUCURSALES = None
+
+
+def sucursal_scope(current_user: TokenData) -> str | None:
+    if current_user.role == ROL_SISTEMA:
+        return VE_TODAS_LAS_SUCURSALES
+    if current_user.branch_id is None:
+        return "00000000-0000-0000-0000-000000000000"
+    return str(current_user.branch_id)
 
 
 async def create_estancia(
@@ -59,7 +72,15 @@ async def create_estancia(
 
         # 2. registro (Un solo INSERT limpio)
         await registro_create(
-            conn, registro_id, data.sucursalId, tutor_id, ruta_bd_ine, ruta_bd_llegada, usuario_id
+            conn,
+            registro_id,
+            data.sucursalId,
+            tutor_id,
+            data.pulseraTutorId,
+            ruta_bd_ine,
+            ruta_bd_llegada,
+            usuario_id,
+            data.nombreSegundoTutor,
         )
 
         total = Decimal(0)
@@ -106,18 +127,31 @@ async def create_estancia(
             total_pagado += p.monto
 
         # 5. actualizar total
-        await registro_update_total(conn, registro_id, total)
+        await registro_update_total(conn, usuario_id, registro_id, total)
 
         # 6. activar si ya pagó todo
         if total_pagado >= total:
-            await change_registro_estado(conn, EstadoRegistro.ACTIVO, registro_id)
+            await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
 
-        return {
+        resultado = {
             "registroId": registro_id,
             "total": total,
             "pagado": total_pagado,
             "estado": "A" if total_pagado >= total else "P",
         }
+
+    # Se notifica ya fuera de la transacción, para no avisar a los clientes
+    # de datos que todavía podrían revertirse por un rollback.
+    await manager.broadcast(
+        str(data.sucursalId),
+        {
+            "type": "estancia_creada",
+            "sucursalId": str(data.sucursalId),
+            "registroId": str(registro_id),
+        },
+    )
+
+    return resultado
 
 
 async def get_activos_estancia_by_sucursal_id(
