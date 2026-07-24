@@ -23,6 +23,7 @@ from app.api.routers import (
     reservacion_extras,
     reservaciones,
     tipos_evento,
+    turnos_caja,
     users,
 )
 from app.core.config import settings
@@ -89,3 +90,4 @@ app.include_router(tipos_evento.router)
 app.include_router(estancias.router)
 app.include_router(pulseras.router)
 app.include_router(documentos.router)
+app.include_router(turnos_caja.router)
