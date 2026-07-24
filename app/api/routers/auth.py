@@ -15,7 +15,6 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     RefreshRequest,
-    RoleEnum,
     TokenData,
     UserOut,
 )
@@ -71,7 +70,7 @@ async def me_endpoint(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "USER_NOT_FOUND", "message": "Usuario no encontrado o inactivo."},
         )
-    rol = RoleEnum(usuario["rol"])
+    rol = usuario["rol"]
     branch_name = (
         await get_sucursal_nombre(conn, current_user.branch_id) if current_user.branch_id else None
     )
@@ -82,7 +81,7 @@ async def me_endpoint(
         role=rol,
         branch_id=current_user.branch_id,
         branch_name=branch_name,
-        permissions=get_permissions(rol.value),
+        permissions=get_permissions(rol),
     )
 
 

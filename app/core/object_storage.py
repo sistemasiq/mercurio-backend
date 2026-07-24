@@ -64,7 +64,7 @@ async def upload_bytes(key: str, data: bytes, content_type: str) -> None:
 
 def _get_object(key: str) -> dict[str, Any]:
     try:
-        return _client.get_object(Bucket=BUCKET, Key=key)
+        return dict(_client.get_object(Bucket=BUCKET, Key=key))
     except ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code in ("NoSuchKey", "404"):

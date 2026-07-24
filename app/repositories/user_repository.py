@@ -5,6 +5,8 @@ from uuid import UUID
 
 import asyncpg
 
+from app.core.roles import ROLES_SIN_SUCURSAL_FIJA
+
 
 class UsuarioRecord(TypedDict):
     id: UUID
@@ -28,7 +30,13 @@ def _row_to_record(row: asyncpg.Record) -> UsuarioRecord:
     )
 
 
-_SELECT = """
+# AdministradorSistema no usa sucursal y Administrador se resuelve aparte
+# (puede tener varias, ver get_sucursal_ids_activas); cualquier otro rol
+# —incluidos los creados desde el Catálogo de Roles— opera en una sola
+# sucursal fija a través de este join. Debe reflejar ROLES_SIN_SUCURSAL_FIJA.
+_ROLES_EXCLUIDOS_SQL = ", ".join(f"'{rol}'" for rol in ROLES_SIN_SUCURSAL_FIJA)
+
+_SELECT = f"""
     SELECT
         u.id,
         u.email,
@@ -41,7 +49,7 @@ _SELECT = """
     JOIN public.roles r ON r.id = u.rol
     LEFT JOIN public.usuarios_sucursal us
            ON us.usuario_id = u.id AND us.activo = TRUE
-           AND r.nombre IN ('Cajero', 'Cocina')
+           AND r.nombre NOT IN ({_ROLES_EXCLUIDOS_SQL})
 """
 
 

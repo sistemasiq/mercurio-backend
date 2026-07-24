@@ -8,16 +8,17 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+
 import asyncpg
 
 _COLUMNS = "id, combo_id, producto_id, cantidad, activo, creado, creado_por"
 
 
 async def asociar_productos_a_combo(
-        conn: asyncpg.Connection,
-        combo_id: UUID,
-        items: list[dict[str, Any]],
-        usuario_id: UUID | None = None
+    conn: asyncpg.Connection,
+    combo_id: UUID,
+    items: list[dict[str, Any]],
+    usuario_id: UUID | None = None,
 ) -> None:
     """
     Inserta en lote (bulk insert) las relaciones del combo en producto_combo.
@@ -50,10 +51,7 @@ async def asociar_productos_a_combo(
     await conn.execute(sql, *argumentos)
 
 
-async def obtener_items_de_combo(
-        conn: asyncpg.Connection,
-        combo_id: UUID
-) -> list[dict[str, Any]]:
+async def obtener_items_de_combo(conn: asyncpg.Connection, combo_id: UUID) -> list[dict[str, Any]]:
     """
     Retorna la lista de productos que integran el combo junto con su detalle base
     para poder pintarlo de manera óptima en el Front-end.
@@ -75,9 +73,7 @@ async def obtener_items_de_combo(
 
 
 async def desasociar_todos_los_productos(
-        conn: asyncpg.Connection,
-        combo_id: UUID,
-        usuario_id: UUID | None = None
+    conn: asyncpg.Connection, combo_id: UUID, usuario_id: UUID | None = None
 ) -> None:
     """
     Desactiva lógicamente todos los productos de un combo.

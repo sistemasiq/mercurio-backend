@@ -55,9 +55,7 @@ async def get_productos_activos(
     return [_row_to_producto(r) for r in rows]
 
 
-async def listar_todos(
-    conn: asyncpg.Connection, sucursal_id: UUID | None = None
-) -> list[dict[str, Any]]:
+async def listar_todos(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[Producto]:
     """Lista productos (activos e inactivos) para la pantalla de administración."""
     if sucursal_id:
         rows = await conn.fetch(
@@ -83,7 +81,7 @@ async def crear(
     descripcion: str | None,
     imagen: str | None,
     usuario_id: UUID | None = None,
-) -> dict[str, Any]:
+) -> Producto:
     es_combo = True if tipo == "C" else False
 
     row = await conn.fetchrow(
@@ -102,12 +100,12 @@ async def crear(
         es_combo,
         usuario_id,
     )
-    return dict(row)
+    return _row_to_producto(row)
 
 
 async def actualizar(
     conn: asyncpg.Connection, producto_id: UUID, updates: dict[str, Any]
-) -> dict[str, Any] | None:
+) -> Producto | None:
     if not updates:
         return await obtener(conn, producto_id)
     set_parts = [f"{k} = ${i + 2}" for i, k in enumerate(updates)]
@@ -116,7 +114,7 @@ async def actualizar(
         f"UPDATE public.productos SET {', '.join(set_parts)} WHERE id = $1 " f"RETURNING {_COLUMNS}"
     )
     row = await conn.fetchrow(sql, producto_id, *updates.values())
-    return dict(row) if row else None
+    return _row_to_producto(row) if row else None
 
 
 async def eliminar(

@@ -26,4 +26,3 @@ class Producto:
     modificado: datetime | None = None
     modificado_por: str | None = None
     es_combo: bool = False
-

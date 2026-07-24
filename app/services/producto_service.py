@@ -49,7 +49,7 @@ async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> ProductoOut:
     if not row:
         raise NoEncontrado("Producto")
 
-    producto_dict = asdict(row) if hasattr(row, "__dataclass_fields__") else dict(row)
+    producto_dict = asdict(row)
 
     if producto_dict.get("tipo") == "C":
         items = await combo_repository.obtener_items_de_combo(conn, producto_id)
@@ -74,7 +74,7 @@ async def crear(
         imagen=body.imagen,
         usuario_id=usuario_id,
     )
-    row_dict = dict(row) if not hasattr(row, "__dataclass_fields__") else asdict(row)
+    row_dict = asdict(row)
 
     if imagen is not None:
         ruta_imagen = await _guardar_imagen(row_dict["id"], imagen)
@@ -112,7 +112,7 @@ async def actualizar(
     if not row:
         raise NoEncontrado("Producto")
 
-    row_dict = dict(row) if not hasattr(row, "__dataclass_fields__") else asdict(row)
+    row_dict = asdict(row)
 
     if row_dict.get("tipo") == "C" and productos_combo is not None:
         async with conn.transaction():
