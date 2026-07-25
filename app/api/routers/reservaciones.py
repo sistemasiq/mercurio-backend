@@ -14,10 +14,11 @@ router = APIRouter(prefix="/api/reservaciones", tags=["Reservaciones"])
 
 @router.get("", response_model=list[ReservacionesOut])
 async def listar_reservaciones(
+    sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("reservaciones:listar")),
 ) -> list[ReservacionesOut]:
-    return await svc.listar(conn)
+    return await svc.listar(conn, sucursal_id)
 
 
 @router.get("/{reservacion_id}", response_model=ReservacionesOut)
