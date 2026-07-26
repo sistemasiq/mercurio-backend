@@ -11,8 +11,23 @@ _SELECT = """
 """
 
 
-async def listar_todos(conn: asyncpg.Connection) -> list[dict[str, Any]]:
-    rows = await conn.fetch(_SELECT + " ORDER BY fecha_pago DESC")
+async def listar_todos(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[dict[str, Any]]:
+    if sucursal_id is not None:
+        rows = await conn.fetch(
+            """
+            SELECT pr.id, pr.reservacion_id, pr.metodo_pago_id, pr.monto, pr.fecha_pago,
+                   pr.notas, pr.creado_por
+            FROM pagos_reservacion pr
+            JOIN reservaciones r ON r.id = pr.reservacion_id
+            WHERE r.sucursal_id = $1
+            ORDER BY pr.fecha_pago DESC
+            """,
+            sucursal_id,
+        )
+    else:
+        rows = await conn.fetch(_SELECT + " ORDER BY fecha_pago DESC")
     return [dict(r) for r in rows]
 
 

@@ -19,6 +19,7 @@ from starlette import status
 
 from app.api.deps import get_current_user_ws, require_permission
 from app.core.database import get_db
+from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoIn
@@ -35,7 +36,6 @@ from app.services.estancias import (
     create_estancia,
     get_activos_estancia_by_sucursal_id,
     get_productos_estancia_by_id_sucursal,
-    sucursal_scope,
 )
 from app.services.pagos_estancia import pago_create_service
 from app.services.permission_service import has_permission
@@ -54,8 +54,14 @@ router = APIRouter(prefix="/api/estancias", tags=["Estancias"])
 async def get_activos(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("estancias:ver_activos")),
+    current_user: TokenData = Depends(require_permission("estancias:ver_activos")),
 ) -> list[dict[str, Any]]:
+    scope = sucursal_scope(current_user)
+    if scope is not None and str(sucursal_id) != scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puede consultar estancias de otra sucursal.",
+        )
     return await get_activos_estancia_by_sucursal_id(conn, sucursal_id)
 
 

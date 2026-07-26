@@ -7,7 +7,6 @@ import asyncpg
 from fastapi import HTTPException, UploadFile
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
-from app.core.roles import ROL_SISTEMA
 from app.core.ws_manager import manager
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
@@ -24,18 +23,7 @@ from app.repositories.registros import (
     registro_update_total,
 )
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
-from app.schemas.auth import TokenData
 from app.schemas.registros import OnboardingRequest
-
-VE_TODAS_LAS_SUCURSALES = None
-
-
-def sucursal_scope(current_user: TokenData) -> str | None:
-    if current_user.role == ROL_SISTEMA:
-        return VE_TODAS_LAS_SUCURSALES
-    if current_user.branch_id is None:
-        return "00000000-0000-0000-0000-000000000000"
-    return str(current_user.branch_id)
 
 
 async def create_estancia(

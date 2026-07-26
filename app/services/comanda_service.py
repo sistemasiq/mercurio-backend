@@ -12,28 +12,13 @@ from uuid import UUID
 
 import asyncpg
 
-from app.core.roles import ROL_SISTEMA
+from app.core.scope import sucursal_scope
 from app.core.ws_manager import manager
 from app.models.comanda import Comanda, DetalleComanda
 from app.repositories import comanda_repository, producto_repository
 from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
 from app.services import inventario_service
-
-VE_TODAS_LAS_SUCURSALES = None
-
-
-def sucursal_scope(current_user: TokenData) -> str | None:
-    """Sucursal a la que debe limitarse current_user, o VE_TODAS_LAS_SUCURSALES
-    (None) si el rol ve todas las sucursales (AdministradorSistema). Mismo
-    criterio que branch_service.list_branches. Si el usuario no es
-    AdministradorSistema y no tiene sucursal asignada, devuelve un id que no
-    existe para que el filtro no traiga nada, en vez de reventar."""
-    if current_user.role == ROL_SISTEMA:
-        return VE_TODAS_LAS_SUCURSALES
-    if current_user.branch_id is None:
-        return "00000000-0000-0000-0000-000000000000"
-    return str(current_user.branch_id)
 
 
 def _producto_id_de_detalle(item: Any) -> str:
