@@ -1,11 +1,13 @@
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 import app.services.metodos_pago as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoOut, MetodosPagoUpdate
 
@@ -15,9 +17,10 @@ router = APIRouter(prefix="/api/metodos-pago", tags=["Métodos de Pago"])
 @router.get("", response_model=list[MetodosPagoOut])
 async def listar_metodos_pago(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("metodos_pago:listar")),
+    current_user: TokenData = Depends(require_permission("metodos_pago:listar")),
 ) -> list[MetodosPagoOut]:
-    return await svc.listar(conn)
+    scope = sucursal_scope(current_user)
+    return await svc.listar(conn, UUID(scope) if scope is not None else None)
 
 
 @router.get("/{metodo_pago_id}", response_model=MetodosPagoOut)
@@ -33,8 +36,17 @@ async def obtener_metodo_pago(
 async def crear_metodo_pago(
     body: MetodosPagoCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("metodos_pago:crear")),
+    current_user: TokenData = Depends(require_permission("metodos_pago:crear")),
 ) -> MetodosPagoOut:
+    if (
+        current_user.role != ROL_SISTEMA
+        and body.sucursal_id is not None
+        and str(body.sucursal_id) != str(current_user.branch_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puede crear un método de pago para otra sucursal.",
+        )
     return await svc.crear(conn, body)
 
 

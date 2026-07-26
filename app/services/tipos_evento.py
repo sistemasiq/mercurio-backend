@@ -2,13 +2,13 @@ from uuid import UUID
 
 import asyncpg
 
-from app.exceptions import NoEncontrado
+from app.exceptions import Conflicto, NoEncontrado
 from app.repositories import tipos_evento_repository
 from app.schemas.tipos_evento import TiposEventoCreate, TiposEventoOut, TiposEventoUpdate
 
 
-async def listar(conn: asyncpg.Connection) -> list[TiposEventoOut]:
-    rows = await tipos_evento_repository.listar(conn)
+async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[TiposEventoOut]:
+    rows = await tipos_evento_repository.listar(conn, sucursal_id)
     return [TiposEventoOut.model_validate(r) for r in rows]
 
 
@@ -20,8 +20,10 @@ async def obtener(conn: asyncpg.Connection, tipo_evento_id: UUID) -> TiposEvento
 
 
 async def crear(conn: asyncpg.Connection, body: TiposEventoCreate) -> TiposEventoOut:
+    if await tipos_evento_repository.nombre_existe(conn, body.nombre, body.sucursal_id):
+        raise Conflicto(f"Ya existe un tipo de evento con el nombre '{body.nombre}'.")
     row = await tipos_evento_repository.crear(
-        conn, nombre=body.nombre, descripcion=body.descripcion
+        conn, sucursal_id=body.sucursal_id, nombre=body.nombre, descripcion=body.descripcion
     )
     return TiposEventoOut.model_validate(row)
 
