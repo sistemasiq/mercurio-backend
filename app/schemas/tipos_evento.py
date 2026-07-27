@@ -11,13 +11,16 @@ class TiposEventoBase(BaseModel):
 
 
 class TiposEventoCreate(TiposEventoBase):
-    sucursal_id: UUID | None = None  # None = tipo de evento global
+    # Solo relevante para AdministradorSistema (sin sucursal propia); para
+    # cualquier otro rol el router ignora este valor y usa siempre la
+    # sucursal del usuario autenticado. Ya no existe el concepto de tipo de
+    # evento "global" (sucursal_id NULL).
+    sucursal_id: UUID | None = None
 
 
 class TiposEventoUpdate(BaseModel):
     nombre: str | None = Field(None, max_length=100)
     descripcion: str | None = None
-    sucursal_id: UUID | None = None
     activo: bool | None = None
 
 

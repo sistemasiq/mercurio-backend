@@ -14,7 +14,11 @@ class ExtrasBase(BaseModel):
 
 
 class ExtrasCrear(ExtrasBase):
-    sucursal_id: UUID | None = None  # None = extra global
+    # Solo relevante para AdministradorSistema (sin sucursal propia); para
+    # cualquier otro rol el router ignora este valor y usa siempre la
+    # sucursal del usuario autenticado. Ya no existe el concepto de extra
+    # "global" (sucursal_id NULL).
+    sucursal_id: UUID | None = None
 
 
 class ExtrasUpdate(BaseModel):
@@ -22,7 +26,6 @@ class ExtrasUpdate(BaseModel):
     descripcion: str | None = None
     precio: Decimal | None = None
     unidad: Literal["evento", "persona", "hora"] | None = None
-    sucursal_id: UUID | None = None
     activo: bool | None = None
 
 
