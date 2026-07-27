@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 import asyncpg
@@ -70,12 +70,18 @@ async def otorgar_puntos(
     sucursal. total_pagado debe ser el monto neto ya cobrado (después de
     cualquier descuento por canje aplicado en la misma venta), para no
     otorgar puntos sobre dinero que el cliente no pagó. No-op (retorna 0) si
-    no hay configuración, está inactiva, o el cálculo da 0 puntos."""
+    no hay configuración, está inactiva, o el cálculo da 0 puntos.
+
+    Los puntos se escalan por valor_punto para no perder el cashback en
+    ventas chicas: con valor_punto=0.01 (1 punto = 1 centavo), $85 al 1%
+    ($0.85 de cashback) otorga 85 puntos en vez de truncarse a 0."""
     config = await lealtad_repository.obtener_configuracion(conn, sucursal_id)
     if not config or not config["activo"]:
         return 0
 
-    puntos = int(total_pagado * Decimal(str(config["porcentaje_retorno"])) / 100)
+    cashback = total_pagado * Decimal(str(config["porcentaje_retorno"])) / 100
+    valor_punto = Decimal(str(config["valor_punto"]))
+    puntos = int((cashback / valor_punto).to_integral_value(rounding=ROUND_HALF_UP))
     if puntos <= 0:
         return 0
 
