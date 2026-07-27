@@ -100,6 +100,36 @@ async def anular_lote(conn: asyncpg.Connection, lote_id: UUID) -> None:
     await conn.execute("UPDATE lotes_puntos SET puntos_disponibles = 0 WHERE id = $1", lote_id)
 
 
+async def lotes_vigentes_for_update(
+    conn: asyncpg.Connection, sucursal_id: UUID, celular: str
+) -> list[dict[str, Any]]:
+    """Lotes con saldo vigente, bloqueados para actualización (FOR UPDATE) y
+    ordenados por fecha de caducidad ascendente — el canje consume primero
+    el lote más próximo a vencer. El lock evita que dos redenciones
+    concurrentes del mismo celular sobre-consuman el mismo lote."""
+    rows = await conn.fetch(
+        """
+        SELECT id, puntos_disponibles, fecha_caducidad
+        FROM lotes_puntos
+        WHERE sucursal_id = $1 AND celular = $2
+          AND puntos_disponibles > 0 AND fecha_caducidad > NOW()
+        ORDER BY fecha_caducidad ASC
+        FOR UPDATE
+        """,
+        sucursal_id,
+        celular,
+    )
+    return [dict(r) for r in rows]
+
+
+async def descontar_lote(conn: asyncpg.Connection, lote_id: UUID, cantidad: int) -> None:
+    await conn.execute(
+        "UPDATE lotes_puntos SET puntos_disponibles = puntos_disponibles - $2 WHERE id = $1",
+        lote_id,
+        cantidad,
+    )
+
+
 async def calcular_saldo(conn: asyncpg.Connection, sucursal_id: UUID, celular: str) -> int:
     row = await conn.fetchrow(
         """

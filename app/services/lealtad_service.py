@@ -5,7 +5,7 @@ from uuid import UUID
 import asyncpg
 
 from app.core.roles import ROL_SISTEMA
-from app.exceptions import DatosInvalidos, NoEncontrado
+from app.exceptions import DatosInvalidos, NoEncontrado, SaldoInsuficienteError
 from app.repositories import lealtad_repository
 from app.schemas.auth import TokenData
 from app.schemas.lealtad import (
@@ -96,6 +96,53 @@ async def otorgar_puntos(
         usuario_id,
     )
     return puntos
+
+
+async def redimir_puntos(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    celular: str,
+    puntos: int,
+    comanda_id: UUID,
+    usuario_id: UUID,
+) -> Decimal:
+    """Consume `puntos` de los lotes vigentes del celular en esta sucursal,
+    FIFO por fecha de caducidad (primero el más próximo a vencer). Bloquea
+    las filas tocadas (FOR UPDATE) para que dos canjes concurrentes del
+    mismo celular no sobre-consuman. Retorna el descuento en pesos
+    (puntos * valor_punto vigente)."""
+    config = await lealtad_repository.obtener_configuracion(conn, sucursal_id)
+    if not config:
+        raise DatosInvalidos("No hay configuración de lealtad para esta sucursal.")
+
+    lotes = await lealtad_repository.lotes_vigentes_for_update(conn, sucursal_id, celular)
+    disponible = sum(lote["puntos_disponibles"] for lote in lotes)
+    if disponible < puntos:
+        raise SaldoInsuficienteError(disponible)
+
+    restante = puntos
+    saldo_actual = disponible
+    for lote in lotes:
+        if restante <= 0:
+            break
+        consumir = min(lote["puntos_disponibles"], restante)
+        await lealtad_repository.descontar_lote(conn, lote["id"], consumir)
+        restante -= consumir
+        saldo_actual -= consumir
+        await lealtad_repository.registrar_movimiento(
+            conn,
+            sucursal_id,
+            celular,
+            lote["id"],
+            comanda_id,
+            "R",
+            -consumir,
+            saldo_actual,
+            None,
+            usuario_id,
+        )
+
+    return puntos * Decimal(str(config["valor_punto"]))
 
 
 async def revertir_por_cancelacion(

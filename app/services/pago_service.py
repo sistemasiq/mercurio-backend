@@ -89,6 +89,23 @@ async def completar_pago(
             pagos=body.pagos,
             usuario_id=usuario_id,
         )
+        if body.puntos_a_redimir > 0:
+            # celular_cliente es obligatorio en este caso (validado en el schema).
+            descuento = await lealtad_service.redimir_puntos(
+                conn,
+                sucursal_id,
+                body.celular_cliente,  # type: ignore[arg-type]
+                body.puntos_a_redimir,
+                UUID(comanda.id),
+                usuario_id,
+            )
+            subtotal_bruto: Decimal = sum((d.subtotal for d in body.detalles_comanda), Decimal(0))
+            esperado = subtotal_bruto - descuento
+            if body.total_final != esperado:
+                raise DatosInvalidos(
+                    f"El total final ({body.total_final}) no coincide con el subtotal "
+                    f"menos el descuento por puntos canjeados ({esperado})."
+                )
         if body.celular_cliente:
             await lealtad_service.otorgar_puntos(
                 conn,
