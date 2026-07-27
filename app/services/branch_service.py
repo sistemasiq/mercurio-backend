@@ -40,6 +40,10 @@ class AdministradorInvalidoError(Exception):
     pass
 
 
+class TelefonoInvalidoError(Exception):
+    pass
+
+
 def _to_response(record: SucursalRecord) -> BranchResponse:
     return BranchResponse(
         id=record["id"],
@@ -94,15 +98,18 @@ async def create_branch(
         if admin_id is None:
             raise AdministradorInvalidoError
     async with conn.transaction():
-        sucursal_id = await create_sucursal(
-            conn,
-            nombre=data.nombre,
-            direccion=data.direccion,
-            telefono=data.telefono,
-            correo=data.correo,
-            clave=data.clave,
-            creado_por=creado_por,
-        )
+        try:
+            sucursal_id = await create_sucursal(
+                conn,
+                nombre=data.nombre,
+                direccion=data.direccion,
+                telefono=data.telefono,
+                correo=data.correo,
+                clave=data.clave,
+                creado_por=creado_por,
+            )
+        except asyncpg.StringDataRightTruncationError as exc:
+            raise TelefonoInvalidoError from exc
         if data.administrador_id is not None:
             await assign_usuario_a_sucursal_especifica(
                 conn, data.administrador_id, sucursal_id, creado_por
@@ -131,16 +138,19 @@ async def update_branch(
             raise AdministradorInvalidoError
     admin_anterior = record["administrador_id"]
     async with conn.transaction():
-        updated = await update_sucursal(
-            conn,
-            sucursal_id=branch_id,
-            clave=data.clave,
-            nombre=data.nombre,
-            direccion=data.direccion,
-            telefono=data.telefono,
-            correo=data.correo,
-            modificado_por=modificado_por,
-        )
+        try:
+            updated = await update_sucursal(
+                conn,
+                sucursal_id=branch_id,
+                clave=data.clave,
+                nombre=data.nombre,
+                direccion=data.direccion,
+                telefono=data.telefono,
+                correo=data.correo,
+                modificado_por=modificado_por,
+            )
+        except asyncpg.StringDataRightTruncationError as exc:
+            raise TelefonoInvalidoError from exc
         if not updated:
             raise BranchNotFoundError
         if admin_anterior != data.administrador_id:

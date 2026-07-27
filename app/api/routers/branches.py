@@ -14,6 +14,7 @@ from app.services.branch_service import (
     BranchNotFoundError,
     InsufficientPermissionsError,
     NombreAlreadyExistsError,
+    TelefonoInvalidoError,
     create_branch,
     deactivate_branch,
     get_branch,
@@ -43,6 +44,13 @@ _ADMINISTRADOR_INVALIDO = HTTPException(
         "message": "El usuario indicado no existe, está inactivo o no tiene rol Administrador.",
     },
 )
+_TELEFONO_INVALIDO = HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "TELEFONO_INVALIDO",
+        "message": "El teléfono excede la longitud máxima permitida (20 caracteres).",
+    },
+)
 
 
 @router.get("", response_model=list[BranchResponse])
@@ -65,6 +73,8 @@ async def post_branch(
         raise _CONFLICT from None
     except AdministradorInvalidoError:
         raise _ADMINISTRADOR_INVALIDO from None
+    except TelefonoInvalidoError:
+        raise _TELEFONO_INVALIDO from None
 
 
 @router.get("/{sucursal_id}", response_model=BranchResponse)
@@ -96,6 +106,8 @@ async def put_branch(
         raise _CONFLICT from None
     except AdministradorInvalidoError:
         raise _ADMINISTRADOR_INVALIDO from None
+    except TelefonoInvalidoError:
+        raise _TELEFONO_INVALIDO from None
 
 
 @router.patch("/{sucursal_id}/deactivate", status_code=status.HTTP_200_OK)
