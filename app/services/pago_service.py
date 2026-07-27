@@ -17,6 +17,7 @@ from app.schemas.pagos import (
     PaymentOut,
     PaymentRequest,
 )
+from app.services import lealtad_service
 
 
 async def procesar_pagos(
@@ -88,6 +89,15 @@ async def completar_pago(
             pagos=body.pagos,
             usuario_id=usuario_id,
         )
+        if body.celular_cliente:
+            await lealtad_service.otorgar_puntos(
+                conn,
+                sucursal_id,
+                body.celular_cliente,
+                UUID(comanda.id),
+                body.total_final,
+                usuario_id,
+            )
 
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
 

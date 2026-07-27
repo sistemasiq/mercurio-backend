@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from app.schemas.comanda import DetalleCreate
 
@@ -61,6 +61,16 @@ class PagoCompletoRequest(BaseModel):
     detalles_comanda: list[DetalleCreate]
     notas_generales: str | None = None
     pagos: list[PaymentItem] = Field(..., min_length=1)
+    celular_cliente: str | None = None
+
+    @field_validator("celular_cliente")
+    @staticmethod
+    def _validar_celular(v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        if not v.isdigit() or len(v) != 10:
+            raise ValueError("El celular debe tener exactamente 10 dígitos.")
+        return v
 
 
 # ---------------------------------------------------------------------------
