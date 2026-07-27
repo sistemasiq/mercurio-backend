@@ -15,6 +15,8 @@ from pydantic import ValidationError
 
 from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
 from app.services import producto_service
@@ -34,10 +36,21 @@ async def listar_productos_cajero(
 async def listar_productos_admin(
     sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:ver")),
+    current_user: TokenData = Depends(require_permission("inventario:ver")),
 ) -> list[ProductoOut]:
-    """Lista productos activos e inactivos, para la pantalla de catálogo."""
-    return await producto_service.listar_todos(conn, sucursal_id)
+    """Lista productos activos e inactivos, para la pantalla de catálogo.
+
+    El sucursal_id que manda el cliente solo se respeta para
+    AdministradorSistema (que puede filtrar por cualquier sucursal); para
+    el resto de roles el alcance siempre viene del JWT, sin importar lo que
+    mande el query param.
+    """
+    scope = sucursal_scope(current_user)
+    if current_user.role == ROL_SISTEMA:
+        filtro = sucursal_id
+    else:
+        filtro = UUID(scope) if scope is not None else None
+    return await producto_service.listar_todos(conn, filtro)
 
 
 @router.get("/{producto_id}/combo-hijos")
@@ -90,7 +103,7 @@ async def actualizar_producto(
 
     usuario_id = UUID(current_user.sub) if current_user.sub else None
     return await producto_service.actualizar(
-        conn, producto_id, body, usuario_id=usuario_id, imagen=imagen
+        conn, producto_id, body, usuario_id=usuario_id, imagen=imagen, current_user=current_user
     )
 
 

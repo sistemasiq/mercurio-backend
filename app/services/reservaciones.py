@@ -7,8 +7,8 @@ from app.repositories import reservaciones_repository
 from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
 
 
-async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[ReservacionesOut]:
-    rows = await reservaciones_repository.listar(conn, sucursal_id)
+async def listar(conn: asyncpg.Connection, scope: str | None = None) -> list[ReservacionesOut]:
+    rows = await reservaciones_repository.listar(conn, scope)
     return [ReservacionesOut.model_validate(r) for r in rows]
 
 

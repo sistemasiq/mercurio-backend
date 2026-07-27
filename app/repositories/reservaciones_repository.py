@@ -16,8 +16,8 @@ _COLUMNS = """
 _SELECT = f"SELECT {_COLUMNS} FROM reservaciones"
 
 
-async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[dict[str, Any]]:
-    if sucursal_id:
+async def listar(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[dict[str, Any]]:
+    if sucursal_id is not None:
         rows = await conn.fetch(
             _SELECT + " WHERE activo = TRUE AND sucursal_id = $1 ORDER BY fecha_evento",
             sucursal_id,

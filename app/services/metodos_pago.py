@@ -7,8 +7,8 @@ from app.repositories import metodos_pago_repository
 from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoOut, MetodosPagoUpdate
 
 
-async def listar(conn: asyncpg.Connection) -> list[MetodosPagoOut]:
-    rows = await metodos_pago_repository.listar(conn)
+async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[MetodosPagoOut]:
+    rows = await metodos_pago_repository.listar(conn, sucursal_id)
     return [MetodosPagoOut.model_validate(r) for r in rows]
 
 
@@ -20,10 +20,10 @@ async def obtener(conn: asyncpg.Connection, metodo_pago_id: UUID) -> MetodosPago
 
 
 async def crear(conn: asyncpg.Connection, body: MetodosPagoCreate) -> MetodosPagoOut:
-    if await metodos_pago_repository.nombre_existe(conn, body.nombre):
+    if await metodos_pago_repository.nombre_existe(conn, body.nombre, body.sucursal_id):
         raise Conflicto(f"Ya existe un método de pago con el nombre '{body.nombre}'.")
     row = await metodos_pago_repository.crear(
-        conn, nombre=body.nombre, descripcion=body.descripcion
+        conn, sucursal_id=body.sucursal_id, nombre=body.nombre, descripcion=body.descripcion
     )
     return MetodosPagoOut.model_validate(row)
 
