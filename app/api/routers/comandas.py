@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 from fastapi import (
@@ -22,11 +23,11 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user_ws, require_permission
+from app.api.deps import get_current_user_ws, require_permission, require_role
 from app.core.database import get_db
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
-from app.schemas.comanda import ComandaCreate
+from app.schemas.comanda import ComandaCreate, ComandaModifyRequest
 from app.services import comanda_service
 from app.services.permission_service import has_permission
 
@@ -37,6 +38,16 @@ router = APIRouter(prefix="/api/comandas", tags=["Comandas"])
 
 class CambioEstadoRequest(BaseModel):
     estado_actual: str
+    motivo_cancelacion: str | None = None
+
+
+def get_active_branch(current_user: TokenData) -> UUID:
+    if current_user.branch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La sesión no tiene una sucursal activa.",
+        )
+    return current_user.branch_id
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -46,12 +57,21 @@ class CambioEstadoRequest(BaseModel):
 async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("restaurante:crear_pedido")),
+    current_user: TokenData = Depends(require_permission("restaurante:crear_pedido")),
 ) -> Any:
     """Crea una comanda nueva con sus detalles."""
+    # Obtenemos la sucursal de forma centralizada y segura: nunca confiar en
+    # el sucursal_id que mande el cliente en el body.
+    active_branch_id = get_active_branch(current_user)
+    comanda_in = comanda_in.model_copy(update={"sucursal_id": active_branch_id})
+
     try:
-        comanda = await comanda_service.crear_comanda(conn, comanda_in)
+        comanda = await comanda_service.crear_comanda(conn, comanda_in, current_user)
         return asdict(comanda)
+    except HTTPException:
+        # Preserva el status code y el {code, message} estructurado de
+        # excepciones como StockInsuficienteError — no las aplana a 400 str().
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -75,10 +95,24 @@ async def cambiar_estado(
     comanda_id: str,
     data: CambioEstadoRequest,
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: TokenData = Depends(require_permission("restaurante:gestionar_cocina")),
+    current_user: TokenData = Depends(
+        require_role("AdministradorSistema", "Administrador", "Cajero", "Cocina")
+    ),
 ) -> Any:
-    """Actualiza el estado de una comanda."""
-    comanda = await comanda_service.cambiar_estado(conn, comanda_id, data.estado_actual)
+    """Actualiza el estado de una comanda con auditoría."""
+    try:
+        comanda = await comanda_service.cambiar_estado(
+            conn,
+            comanda_id,
+            data.estado_actual,
+            current_user,
+            motivo_cancelacion=data.motivo_cancelacion,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     if comanda is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -90,7 +124,51 @@ async def cambiar_estado(
 
     await manager.broadcast(
         canal,
-        {"tipo": "comanda_actualizada", "comanda": asdict(comanda)},
+        {"type": "comanda_actualizada", "comanda": asdict(comanda)},
+    )
+
+    return asdict(comanda)
+
+
+@router.patch("/{comanda_id}/detalles")
+async def modificar_detalles(
+    comanda_id: str,
+    data: ComandaModifyRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> Any:
+    """Elimina productos de una comanda en estado Pendiente y recalcula el total.
+
+    Si se eliminan todos los productos, cancela automáticamente la comanda
+    y requiere motivo_cancelacion en el body.
+    """
+    usuario_id = str(UUID(current_user.sub))
+    try:
+        comanda = await comanda_service.modificar_comanda_parcial(
+            conn,
+            comanda_id,
+            data.detalles_ids_a_eliminar,
+            usuario_id,
+            data.motivo_cancelacion,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    if comanda is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La comanda no existe o no está en estado Pendiente.",
+        )
+
+    scope = comanda_service.sucursal_scope(current_user)
+    canal = scope if scope is not None else CANAL_GLOBAL
+
+    await manager.broadcast(
+        canal,
+        {"type": "comanda_actualizada", "comanda": asdict(comanda)},
     )
 
     return asdict(comanda)
@@ -113,7 +191,7 @@ async def comandas_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    if not has_permission(current_user.role.value, "restaurante:ver_pedidos"):
+    if not has_permission(current_user.role, "restaurante:ver_pedidos"):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -123,7 +201,6 @@ async def comandas_ws(
     await manager.connect(canal, websocket)
     try:
         while True:
-
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(canal, websocket)

@@ -1,12 +1,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PulseraResponse(BaseModel):
     id: UUID
-    pulsera_rfid: str
+    pulseraRfid: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PulseraCrear(BaseModel):

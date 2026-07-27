@@ -15,7 +15,7 @@ import asyncpg
 from app.models.producto import Producto
 
 _COLUMNS = """
-    id, nombre, precio_unitario, tipo, sucursal_id, activo,
+    id, nombre, precio_unitario, tipo, sucursal_id, activo, es_combo,
     descripcion, imagen, creado, creado_por, modificado, modificado_por
 """
 
@@ -28,6 +28,7 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         tipo=row["tipo"],
         sucursal_id=str(row["sucursal_id"]),
         activo=row["activo"],
+        es_combo=row.get("es_combo", False),
         descripcion=row.get("descripcion"),
         imagen=row.get("imagen"),
         creado=row.get("creado"),
@@ -37,17 +38,24 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
     )
 
 
-async def get_productos_activos(conn: asyncpg.Connection) -> list[Producto]:
-    """Retorna todos los productos activos."""
-    rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.productos WHERE activo = TRUE ORDER BY nombre ASC"
-    )
+async def get_productos_activos(
+    conn: asyncpg.Connection, sucursal_id: UUID | None = None
+) -> list[Producto]:
+    """Retorna los productos activos, filtrados por sucursal si se indica."""
+    if sucursal_id:
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS} FROM public.productos "
+            "WHERE activo = TRUE AND sucursal_id = $1 ORDER BY nombre ASC",
+            sucursal_id,
+        )
+    else:
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS} FROM public.productos WHERE activo = TRUE ORDER BY nombre ASC"
+        )
     return [_row_to_producto(r) for r in rows]
 
 
-async def listar_todos(
-    conn: asyncpg.Connection, sucursal_id: UUID | None = None
-) -> list[dict[str, Any]]:
+async def listar_todos(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[Producto]:
     """Lista productos (activos e inactivos) para la pantalla de administración."""
     if sucursal_id:
         rows = await conn.fetch(
@@ -56,12 +64,12 @@ async def listar_todos(
         )
     else:
         rows = await conn.fetch(f"SELECT {_COLUMNS} FROM public.productos ORDER BY nombre ASC")
-    return [dict(r) for r in rows]
+    return [_row_to_producto(r) for r in rows]
 
 
-async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> dict[str, Any] | None:
+async def obtener(conn: asyncpg.Connection, producto_id: UUID) -> Producto | None:
     row = await conn.fetchrow(f"SELECT {_COLUMNS} FROM public.productos WHERE id = $1", producto_id)
-    return dict(row) if row else None
+    return _row_to_producto(row) if row else None
 
 
 async def crear(
@@ -72,12 +80,15 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
-) -> dict[str, Any]:
+    usuario_id: UUID | None = None,
+) -> Producto:
+    es_combo = True if tipo == "C" else False
+
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.productos
-            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING {_COLUMNS}
         """,
         nombre,
@@ -86,13 +97,15 @@ async def crear(
         sucursal_id,
         descripcion,
         imagen,
+        es_combo,
+        usuario_id,
     )
-    return dict(row)
+    return _row_to_producto(row)
 
 
 async def actualizar(
     conn: asyncpg.Connection, producto_id: UUID, updates: dict[str, Any]
-) -> dict[str, Any] | None:
+) -> Producto | None:
     if not updates:
         return await obtener(conn, producto_id)
     set_parts = [f"{k} = ${i + 2}" for i, k in enumerate(updates)]
@@ -101,13 +114,76 @@ async def actualizar(
         f"UPDATE public.productos SET {', '.join(set_parts)} WHERE id = $1 " f"RETURNING {_COLUMNS}"
     )
     row = await conn.fetchrow(sql, producto_id, *updates.values())
-    return dict(row) if row else None
+    return _row_to_producto(row) if row else None
 
 
-async def eliminar(conn: asyncpg.Connection, producto_id: UUID) -> bool:
+async def eliminar(
+    conn: asyncpg.Connection, producto_id: UUID, usuario_id: UUID | None = None
+) -> bool:
     result = await conn.execute(
-        "UPDATE public.productos SET activo = FALSE, modificado = NOW() "
+        "UPDATE public.productos SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
         "WHERE id = $1 AND activo = TRUE",
         producto_id,
+        usuario_id,
     )
     return bool(result == "UPDATE 1")
+
+
+async def get_catalogo_venta_by_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    sql_catalogo = """
+        SELECT id, nombre, precio_unitario, descripcion, tipo, imagen, es_combo
+        FROM productos
+        WHERE sucursal_id = $1
+          AND activo = TRUE
+          AND (tipo IN ('A', 'B') OR es_combo = TRUE)
+        ORDER BY es_combo ASC, nombre
+    """
+    rows = await conn.fetch(sql_catalogo, sucursal_id)
+    return [dict(r) for r in rows]
+
+
+async def es_producto_combo(conn: asyncpg.Connection, producto_id: str | UUID) -> bool:
+    """
+    Verifica si un producto está marcado como combo en la base de datos.
+    """
+    # Usamos fetchval porque solo esperamos un único valor booleano
+    query = "SELECT es_combo FROM productos WHERE id = $1"
+    result = await conn.fetchval(query, producto_id)
+
+    # Retornamos False si el resultado es None o False
+    return result is True
+
+
+async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[str, Any]]:
+    rows = await conn.fetch(
+        """
+        SELECT producto_id, cantidad
+        FROM public.producto_combo
+        WHERE combo_id = $1
+        """,
+        combo_id,
+    )
+    return [dict(row) for row in rows]
+
+
+async def get_hijos_a_padres_map(conn: asyncpg.Connection) -> dict[str, str]:
+    """Retorna un map {producto_hijo_id: nombre_combo_padre} para TODOS los combos.
+
+    ORDER BY garantiza que si un hijo pertenece a múltiples combos,
+    el nombre alfabéticamente menor se asigne de forma determinista.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT pc.producto_id AS hijo_id, p.nombre AS padre_nombre
+        FROM public.producto_combo pc
+        JOIN public.productos p ON p.id = pc.combo_id
+        ORDER BY p.nombre ASC
+        """
+    )
+    return {str(r["hijo_id"]): r["padre_nombre"] for r in rows}
+
+
+async def get_by_id(conn: asyncpg.Connection, producto_id: str) -> asyncpg.Record | None:
+    return await conn.fetchrow("SELECT * FROM productos WHERE id = $1", producto_id)

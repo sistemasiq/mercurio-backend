@@ -13,6 +13,7 @@ from app.services.user_service import (
     BranchRequiredError,
     EmailAlreadyExistsError,
     InsufficientPermissionsError,
+    RolInvalidoError,
     UserNotFoundError,
     create_user,
     delete_user,
@@ -49,6 +50,14 @@ def _handle_write_errors(exc: Exception) -> None:
         ) from exc
     if isinstance(exc, InsufficientPermissionsError):
         raise _FORBIDDEN from exc
+    if isinstance(exc, RolInvalidoError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "ROL_INVALIDO",
+                "message": "El rol indicado no existe o está inactivo.",
+            },
+        ) from exc
 
 
 @router.get("", response_model=list[UserResponse])
@@ -67,7 +76,12 @@ async def post_user(
 ) -> UserResponse:
     try:
         return await create_user(conn, body, current_user)
-    except (EmailAlreadyExistsError, BranchRequiredError, InsufficientPermissionsError) as exc:
+    except (
+        EmailAlreadyExistsError,
+        BranchRequiredError,
+        InsufficientPermissionsError,
+        RolInvalidoError,
+    ) as exc:
         _handle_write_errors(exc)
         raise  # unreachable, satisfies mypy
 
@@ -97,7 +111,12 @@ async def put_user(
         return await update_user(conn, usuario_id, body, current_user)
     except UserNotFoundError:
         raise _NOT_FOUND from None
-    except (EmailAlreadyExistsError, BranchRequiredError, InsufficientPermissionsError) as exc:
+    except (
+        EmailAlreadyExistsError,
+        BranchRequiredError,
+        InsufficientPermissionsError,
+        RolInvalidoError,
+    ) as exc:
         _handle_write_errors(exc)
         raise  # unreachable, satisfies mypy
 

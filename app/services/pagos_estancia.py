@@ -3,7 +3,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import HTTPException
 
-from app.repositories.pagos import pago_create
+from app.repositories.pagos_comanda import pago_create
 from app.repositories.registros import exists_registro
 from app.schemas.pagos import PagoIn
 

@@ -18,7 +18,7 @@ async def get_productos_estancia_by_sucursal_id(
        SELECT
            id,
            nombre,
-           precio_unitario,
+           precio_unitario AS "precioUnitario",
            descripcion
        FROM productos
        WHERE sucursal_id = $1
