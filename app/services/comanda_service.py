@@ -18,7 +18,7 @@ from app.models.comanda import Comanda, DetalleComanda
 from app.repositories import comanda_repository, producto_repository
 from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
-from app.services import inventario_service
+from app.services import inventario_service, lealtad_service
 
 
 def _producto_id_de_detalle(item: Any) -> str:
@@ -188,6 +188,9 @@ async def cambiar_estado(
             detalles_anteriores = cast(list[DetalleComanda], anterior.detalles)
             await inventario_service.revertir_por_cancelacion(
                 conn, anterior.sucursal_id, detalles_anteriores, comanda_id, UUID(current_user.sub)
+            )
+            await lealtad_service.revertir_por_cancelacion(
+                conn, UUID(comanda_id), UUID(current_user.sub)
             )
 
     if comanda is not None:
