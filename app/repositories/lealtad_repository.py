@@ -174,6 +174,32 @@ async def registrar_movimiento(
     )
 
 
+async def reporte_agregado(conn: asyncpg.Connection, sucursal_id: UUID) -> dict[str, Any]:
+    """KPIs agregados de todo el programa de lealtad en una sucursal (todos
+    los celulares juntos). `caducado` se calcula sobre `lotes_puntos`
+    porque la caducidad no se registra como movimiento (es una condición de
+    lectura, no un evento escrito)."""
+    row = await conn.fetchrow(
+        """
+        SELECT
+            COALESCE((SELECT SUM(puntos) FROM movimientos_puntos
+                      WHERE sucursal_id = $1 AND tipo = 'O'), 0) AS total_otorgado,
+            COALESCE((SELECT SUM(-puntos) FROM movimientos_puntos
+                      WHERE sucursal_id = $1 AND tipo = 'R'), 0) AS total_redimido,
+            COALESCE((SELECT SUM(puntos_disponibles) FROM lotes_puntos
+                      WHERE sucursal_id = $1 AND fecha_caducidad <= NOW()
+                        AND puntos_disponibles > 0), 0) AS total_caducado,
+            COALESCE((SELECT SUM(puntos_disponibles) FROM lotes_puntos
+                      WHERE sucursal_id = $1 AND fecha_caducidad > NOW()), 0) AS saldo_vigente,
+            COALESCE((SELECT COUNT(DISTINCT celular) FROM lotes_puntos
+                      WHERE sucursal_id = $1 AND fecha_caducidad > NOW()
+                        AND puntos_disponibles > 0), 0) AS clientes_con_saldo
+        """,
+        sucursal_id,
+    )
+    return dict(row) if row else {}
+
+
 async def listar_movimientos(
     conn: asyncpg.Connection,
     sucursal_id: UUID,

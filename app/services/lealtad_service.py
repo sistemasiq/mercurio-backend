@@ -12,6 +12,7 @@ from app.schemas.lealtad import (
     ConfiguracionLealtadBase,
     ConfiguracionLealtadOut,
     MovimientoPuntoOut,
+    ReporteLealtadOut,
     SaldoPuntosOut,
 )
 
@@ -208,3 +209,11 @@ async def listar_movimientos(
     scope = resolver_sucursal(current_user, sucursal_id)
     rows = await lealtad_repository.listar_movimientos(conn, scope, celular, desde, hasta)
     return [MovimientoPuntoOut.model_validate(r) for r in rows]
+
+
+async def obtener_reporte(
+    conn: asyncpg.Connection, current_user: TokenData, sucursal_id: UUID | None
+) -> ReporteLealtadOut:
+    scope = resolver_sucursal(current_user, sucursal_id)
+    data = await lealtad_repository.reporte_agregado(conn, scope)
+    return ReporteLealtadOut(sucursal_id=scope, **data)

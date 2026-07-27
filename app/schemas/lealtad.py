@@ -29,6 +29,15 @@ class SaldoPuntosOut(BaseModel):
     saldo: int
 
 
+class ReporteLealtadOut(BaseModel):
+    sucursal_id: UUID
+    total_otorgado: int
+    total_redimido: int
+    total_caducado: int
+    saldo_vigente: int
+    clientes_con_saldo: int
+
+
 class MovimientoPuntoOut(BaseModel):
     id: UUID
     sucursal_id: UUID

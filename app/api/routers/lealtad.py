@@ -13,6 +13,7 @@ from app.schemas.lealtad import (
     ConfiguracionLealtadBase,
     ConfiguracionLealtadOut,
     MovimientoPuntoOut,
+    ReporteLealtadOut,
     SaldoPuntosOut,
 )
 
@@ -58,3 +59,12 @@ async def listar_movimientos(
     current_user: TokenData = Depends(require_permission("lealtad:ver_saldo")),
 ) -> list[MovimientoPuntoOut]:
     return await svc.listar_movimientos(conn, current_user, sucursal_id, celular, desde, hasta)
+
+
+@router.get("/reporte", response_model=ReporteLealtadOut)
+async def obtener_reporte(
+    sucursal_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("lealtad:ver_reporte")),
+) -> ReporteLealtadOut:
+    return await svc.obtener_reporte(conn, current_user, sucursal_id)
