@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+CELULAR_PATTERN = r"^\d{10}$"
+
 
 class ConfiguracionLealtadBase(BaseModel):
     porcentaje_retorno: float = Field(0, ge=0, le=100)
@@ -17,5 +19,27 @@ class ConfiguracionLealtadOut(ConfiguracionLealtadBase):
     creado_por: UUID | None
     modificado: datetime | None
     modificado_por: UUID | None
+
+    model_config = {"from_attributes": True}
+
+
+class SaldoPuntosOut(BaseModel):
+    sucursal_id: UUID
+    celular: str
+    saldo: int
+
+
+class MovimientoPuntoOut(BaseModel):
+    id: UUID
+    sucursal_id: UUID
+    celular: str
+    lote_id: UUID | None
+    comanda_id: UUID | None
+    tipo: str
+    puntos: int
+    saldo_resultante: int
+    notas: str | None
+    creado: datetime
+    creado_por: UUID | None
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,7 +8,12 @@ from app.core.roles import ROL_SISTEMA
 from app.exceptions import DatosInvalidos, NoEncontrado
 from app.repositories import lealtad_repository
 from app.schemas.auth import TokenData
-from app.schemas.lealtad import ConfiguracionLealtadBase, ConfiguracionLealtadOut
+from app.schemas.lealtad import (
+    ConfiguracionLealtadBase,
+    ConfiguracionLealtadOut,
+    MovimientoPuntoOut,
+    SaldoPuntosOut,
+)
 
 
 def resolver_sucursal(current_user: TokenData, sucursal_id: UUID | None) -> UUID:
@@ -135,3 +140,24 @@ async def revertir_por_cancelacion(
         None,
         usuario_id,
     )
+
+
+async def consultar_saldo(
+    conn: asyncpg.Connection, current_user: TokenData, sucursal_id: UUID | None, celular: str
+) -> SaldoPuntosOut:
+    scope = resolver_sucursal(current_user, sucursal_id)
+    saldo = await lealtad_repository.calcular_saldo(conn, scope, celular)
+    return SaldoPuntosOut(sucursal_id=scope, celular=celular, saldo=saldo)
+
+
+async def listar_movimientos(
+    conn: asyncpg.Connection,
+    current_user: TokenData,
+    sucursal_id: UUID | None,
+    celular: str,
+    desde: date | None,
+    hasta: date | None,
+) -> list[MovimientoPuntoOut]:
+    scope = resolver_sucursal(current_user, sucursal_id)
+    rows = await lealtad_repository.listar_movimientos(conn, scope, celular, desde, hasta)
+    return [MovimientoPuntoOut.model_validate(r) for r in rows]

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -142,3 +142,36 @@ async def registrar_movimiento(
         notas,
         usuario_id,
     )
+
+
+async def listar_movimientos(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    celular: str,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> list[dict[str, Any]]:
+    """Historial de movimientos de puntos de un celular en una sucursal
+    (kardex), opcionalmente acotado a un rango de fechas. `hasta` es
+    inclusivo del día completo."""
+    conditions = ["sucursal_id = $1", "celular = $2"]
+    params: list[Any] = [sucursal_id, celular]
+    if desde is not None:
+        params.append(desde)
+        conditions.append(f"creado >= ${len(params)}")
+    if hasta is not None:
+        params.append(hasta)
+        conditions.append(f"creado < ${len(params)}::date + interval '1 day'")
+
+    where_clause = " AND ".join(conditions)
+    rows = await conn.fetch(
+        f"""
+        SELECT id, sucursal_id, celular, lote_id, comanda_id, tipo, puntos,
+               saldo_resultante, notas, creado, creado_por
+        FROM movimientos_puntos
+        WHERE {where_clause}
+        ORDER BY creado DESC
+        """,
+        *params,
+    )
+    return [dict(r) for r in rows]
