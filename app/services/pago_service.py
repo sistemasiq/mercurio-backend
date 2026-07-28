@@ -118,9 +118,9 @@ async def completar_pago(
                 conn,
                 sucursal_id,
                 body.celular_cliente,
-                UUID(comanda.id),
                 body.total_final,
                 usuario_id,
+                comanda_id=UUID(comanda.id),
             )
 
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
