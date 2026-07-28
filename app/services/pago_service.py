@@ -17,7 +17,7 @@ from app.schemas.pagos import (
     PaymentOut,
     PaymentRequest,
 )
-from app.services import lealtad_service
+from app.services import inventario_service, lealtad_service
 
 
 async def procesar_pagos(
@@ -81,6 +81,13 @@ async def completar_pago(
             comanda_in,
             None,
             str(usuario_id),
+        )
+        await inventario_service.descontar_por_venta(
+            conn,
+            str(sucursal_id),
+            body.detalles_comanda,
+            comanda.id,
+            usuario_id,
         )
         await pago_repository.crear_pagos(
             conn,
