@@ -11,13 +11,16 @@ class MetodosPagoBase(BaseModel):
 
 
 class MetodosPagoCreate(MetodosPagoBase):
-    sucursal_id: UUID | None = None  # None = método de pago global
+    # Solo relevante para AdministradorSistema (sin sucursal propia); para
+    # cualquier otro rol el router ignora este valor y usa siempre la
+    # sucursal del usuario autenticado. Ya no existe el concepto de método
+    # de pago "global" (sucursal_id NULL).
+    sucursal_id: UUID | None = None
 
 
 class MetodosPagoUpdate(BaseModel):
     nombre: str | None = Field(None, max_length=100)
     descripcion: str | None = None
-    sucursal_id: UUID | None = None
     activo: bool | None = None
 
 

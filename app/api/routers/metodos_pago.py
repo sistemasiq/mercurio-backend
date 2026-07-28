@@ -38,15 +38,17 @@ async def crear_metodo_pago(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("metodos_pago:crear")),
 ) -> MetodosPagoOut:
-    if (
-        current_user.role != ROL_SISTEMA
-        and body.sucursal_id is not None
-        and str(body.sucursal_id) != str(current_user.branch_id)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No puede crear un método de pago para otra sucursal.",
-        )
+    # sucursal_id siempre se deriva del usuario autenticado, nunca se confía
+    # en lo que mande el cliente -- ya no existe el concepto de método de
+    # pago "global" (sucursal_id NULL).
+    if current_user.role == ROL_SISTEMA:
+        if body.sucursal_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes indicar sucursal_id (AdministradorSistema ve todas).",
+            )
+    else:
+        body.sucursal_id = current_user.branch_id
     return await svc.crear(conn, body)
 
 
