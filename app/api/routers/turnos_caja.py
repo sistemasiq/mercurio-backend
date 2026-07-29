@@ -9,9 +9,9 @@ import asyncpg
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
-from app.schemas.auth import TokenData
+from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.caja import (
     AbrirTurnoPayload,
     TurnoActivoResponse,
@@ -25,8 +25,11 @@ from app.schemas.caja import (
     DetalleArqueoResponse,
     TurnoResponse,
     CajaResponse,
+    RetiroParcialCreate,
+    RetiroParcialResponse,
 )
 from app.services import turnos_caja_service
+from app.services.pdf_service import generar_pdf_arqueo
 
 router = APIRouter(prefix="/api/turnos-caja", tags=["Turnos de Caja"])
 
@@ -49,6 +52,7 @@ async def listar_turnos(
 )
 async def listar_cajas(
     sucursal_id: str | None = Query(None),
+    _: TokenData = Depends(require_permission("cajas:listar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[CajaResponse]:
     return await turnos_caja_service.obtener_cajas(conn, sucursal_id)
@@ -62,7 +66,7 @@ async def listar_cajas(
 )
 async def abrir_turno(
     payload: AbrirTurnoPayload,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:abrir")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
     branch_id = str(current_user.branch_id) if current_user.branch_id else None
@@ -80,7 +84,7 @@ async def abrir_turno(
     summary="Obtiene el turno de caja activo para el cajero",
 )
 async def obtener_activo(
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:ver_activo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
     return await turnos_caja_service.obtener_turno_activo(conn, current_user.sub)
@@ -93,7 +97,7 @@ async def obtener_activo(
 )
 async def iniciar_conteo(
     body: dict,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
     turno_id = body.get("turno_id", "")
@@ -107,7 +111,7 @@ async def iniciar_conteo(
 )
 async def enviar_conteo(
     payload: ConteoPayload,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
     return await turnos_caja_service.enviar_conteo(conn, current_user.sub, payload)
@@ -175,11 +179,38 @@ async def validar_pin_admin(
 )
 async def cancelar_conteo(
     body: dict,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:cancelar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
     turno_id = body.get("turno_id", "")
     return await turnos_caja_service.cancelar_conteo(conn, current_user.sub, turno_id)
+
+
+@router.post(
+    "/retiro",
+    response_model=RetiroParcialResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registra un retiro parcial sobre el turno activo (solo en estado OPERANDO)",
+)
+async def registrar_retiro(
+    payload: RetiroParcialCreate,
+    current_user: TokenData = Depends(require_permission("retiros_parciales:crear")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> RetiroParcialResponse:
+    return await turnos_caja_service.crear_retiro(conn, current_user.sub, payload)
+
+
+@router.get(
+    "/{turno_id}/retiros",
+    response_model=list[RetiroParcialResponse],
+    summary="Lista los retiros parciales registrados en el turno",
+)
+async def listar_retiros(
+    turno_id: str,
+    current_user: TokenData = Depends(require_permission("retiros_parciales:listar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[RetiroParcialResponse]:
+    return await turnos_caja_service.listar_retiros(conn, turno_id)
 
 
 @router.get(
@@ -194,11 +225,18 @@ async def listar_historial(
     fecha_hasta: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> HistorialArqueosResponse:
+    # Un Administrador de sucursal o Cajero solo puede ver su propia sucursal, sin importar
+    # qué sucursal_id se haya mandado por query param. Solo AdministradorSistema ve todas.
+    if current_user.role == RoleEnum.administrador_sistema:
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+
     filtros = FiltrosHistorial(
-        sucursal_id=sucursal_id or (str(current_user.branch_id) if current_user.branch_id else None),
+        sucursal_id=sucursal_efectiva,
         cajero_id=cajero_id,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
@@ -208,6 +246,13 @@ async def listar_historial(
     return await turnos_caja_service.listar_historial(conn, filtros)
 
 
+def _sucursal_restringida(current_user: TokenData) -> str | None:
+    """None para AdministradorSistema (acceso global); el branch_id propio para el resto."""
+    if current_user.role == RoleEnum.administrador_sistema:
+        return None
+    return str(current_user.branch_id) if current_user.branch_id else None
+
+
 @router.get(
     "/historial/{cierre_id}",
     response_model=DetalleArqueoResponse,
@@ -215,10 +260,12 @@ async def listar_historial(
 )
 async def obtener_detalle_arqueo(
     cierre_id: str,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> DetalleArqueoResponse:
-    return await turnos_caja_service.obtener_detalle(conn, cierre_id)
+    return await turnos_caja_service.obtener_detalle(
+        conn, cierre_id, sucursal_id=_sucursal_restringida(current_user)
+    )
 
 
 @router.get(
@@ -230,8 +277,10 @@ async def descargar_pdf(
     current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
-    # Contenido dummy PDF mínimo válido para la descarga
-    pdf_bytes = b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000115 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n185\n%%EOF"
+    detalle = await turnos_caja_service.obtener_detalle(
+        conn, cierre_id, sucursal_id=_sucursal_restringida(current_user)
+    )
+    pdf_bytes = generar_pdf_arqueo(detalle)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
