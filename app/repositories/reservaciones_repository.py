@@ -8,9 +8,9 @@ _COLUMNS = """
     nombre_cliente, apellidos_cliente, telefono_cliente, email_cliente, notas_cliente,
     nombre_festejado, edad_festejado,
     fecha_evento, hora_inicio, hora_fin,
-    numero_personas, precio_base, precio_personas_extra, precio_extras,
-    descuento, precio_total, anticipo, saldo_pendiente,
-    estado, notas, activo, creado, creado_por, modificado, modificado_por
+    numero_personas, precio_base, precio_personas_extra, horas_reservadas, precio_horas,
+    precio_productos, precio_extras, descuento, precio_total, anticipo, saldo_pendiente,
+    estado, notas, activo, comanda_enviada, creado, creado_por, modificado, modificado_por
 """
 
 _SELECT = f"SELECT {_COLUMNS} FROM reservaciones"
@@ -62,3 +62,28 @@ async def eliminar(conn: asyncpg.Connection, reservacion_id: UUID) -> bool:
         reservacion_id,
     )
     return bool(result == "UPDATE 1")
+
+
+async def listar_pendientes_de_comanda(
+    conn: asyncpg.Connection, minutos_anticipacion: int
+) -> list[dict[str, Any]]:
+    """Reservaciones confirmadas cuyo horario de inicio ya está dentro de la
+    ventana de anticipación para mandar sus alimentos a cocina, y que aún no
+    se les ha enviado la comanda."""
+    rows = await conn.fetch(
+        _SELECT
+        + """
+        WHERE activo = TRUE
+          AND estado = 'confirmada'
+          AND comanda_enviada = FALSE
+          AND (fecha_evento + hora_inicio) - (make_interval(mins => $1)) <= NOW()
+        """,
+        minutos_anticipacion,
+    )
+    return [dict(r) for r in rows]
+
+
+async def marcar_comanda_enviada(conn: asyncpg.Connection, reservacion_id: UUID) -> None:
+    await conn.execute(
+        "UPDATE reservaciones SET comanda_enviada = TRUE WHERE id = $1", reservacion_id
+    )
