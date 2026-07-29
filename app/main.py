@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -29,6 +30,7 @@ from app.api.routers import (
     proveedores,
     pulseras,
     reservacion_extras,
+    reservacion_productos,
     reservaciones,
     tipos_evento,
     unidades_medida,
@@ -37,6 +39,7 @@ from app.api.routers import (
 from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
 from app.core.object_storage import ensure_bucket
+from app.services.comanda_evento_scheduler import loop_comandas_eventos
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.INFO)
@@ -50,7 +53,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await load_cache(conn)
     await ensure_bucket()
+    scheduler_task = asyncio.create_task(loop_comandas_eventos())
     yield
+    scheduler_task.cancel()
     await close_pool()
 
 
@@ -87,6 +92,7 @@ app.include_router(paquetes.router)
 app.include_router(paquete_tipos_evento.router)
 app.include_router(reservaciones.router)
 app.include_router(reservacion_extras.router)
+app.include_router(reservacion_productos.router)
 app.include_router(tipos_evento.router)
 app.include_router(estancias.router)
 app.include_router(pulseras.router)
