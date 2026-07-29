@@ -51,6 +51,8 @@ class AbrirTurnoPayload(BaseModel):
     observaciones_apertura: str | None = None
     id_caja: str | None = None
     id_turno: str | None = None
+    # Solo relevante para AdministradorSistema, que no tiene sucursal propia en el JWT.
+    sucursal_id: str | None = None
 
 
 class MovimientoResumen(BaseModel):
@@ -184,6 +186,7 @@ class ArqueoResumen(BaseModel):
     tiene_observaciones: bool = False
     pdf_url: str | None = None
     admin_nombre: str | None = None
+    tipo_cierre: str = "NORMAL"
 
 
 class HistorialArqueosResponse(BaseModel):
