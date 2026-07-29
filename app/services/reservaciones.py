@@ -3,14 +3,24 @@ from uuid import UUID
 import asyncpg
 
 from app.exceptions import DatosInvalidos, NoEncontrado
-from app.repositories import reservaciones_repository
-from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
+from app.repositories import reservaciones_repository,registros
+from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate, EventoDelDiaOut
 
 
 async def listar(conn: asyncpg.Connection) -> list[ReservacionesOut]:
     rows = await reservaciones_repository.listar(conn)
     return [ReservacionesOut.model_validate(r) for r in rows]
 
+async def obtener_evento_cercano(conn: asyncpg.Connection, sucursal_id: UUID) -> EventoDelDiaOut | None:
+    row = await reservaciones_repository.obtener_evento_mas_cercano(conn, sucursal_id)
+    if not row:
+        return None
+
+    registro_existente = await registros.exists_registro_by_reservacion_id(conn, row["id"])
+    if registro_existente:
+        return None
+
+    return EventoDelDiaOut.model_validate(row)
 
 async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> ReservacionesOut:
     row = await reservaciones_repository.obtener(conn, reservacion_id)

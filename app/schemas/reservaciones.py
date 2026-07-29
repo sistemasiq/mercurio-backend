@@ -82,3 +82,17 @@ class ReservacionesOut(ReservacionesBase):
     modificado_por: UUID | None
 
     model_config = {"from_attributes": True}
+
+
+class EventoDelDiaOut(BaseModel):
+    id: UUID
+    nombre_cliente: str
+    apellidos_cliente: str | None
+    telefono_cliente: str
+    hora_inicio: time
+    hora_fin: time
+    numero_personas: int
+    fecha_evento: date
+ 
+    model_config = {"from_attributes": True}
+
