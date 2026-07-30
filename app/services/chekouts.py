@@ -30,7 +30,7 @@ EXTRA_GRACE_MINUTES = 5
 CENTAVO = 0.01
 
 
-def _calcular_cargo_extra(conn: asyncpg.Connection, detalle: dict[str, Any], now: datetime) -> tuple[int, float]:
+async def _calcular_cargo_extra(conn: asyncpg.Connection, detalle: dict[str, Any], now: datetime) -> tuple[int, float]:
     """Calcula horas extra y monto a cobrar por tiempo excedido, con la
     misma fórmula tanto para cotizar como para confirmar el checkout, así
     ninguna de las dos rutas se puede desincronizar de la otra."""
@@ -47,7 +47,7 @@ def _calcular_cargo_extra(conn: asyncpg.Connection, detalle: dict[str, Any], now
 
     productos = await get_productos_estancia_by_sucursal_id(conn, detalle["sucursal_id"])
     produto = productos[0]
-    total_extra = produto["precio"] * extra_horas
+    total_extra = produto["precioUnitario"] * extra_horas
     return extra_horas, total_extra
 
 
@@ -63,7 +63,7 @@ async def cotizar_checkout(conn: asyncpg.Connection, detalle_id: UUID) -> dict[s
         raise HTTPException(400, "El niño ya realizó checkout")
 
     now = datetime.now(UTC)
-    extra_horas, total_extra = _calcular_cargo_extra(conn, detalle, now)
+    extra_horas, total_extra = await _calcular_cargo_extra(conn, detalle, now)
 
     return {
         "detalleId": str(detalle_id),
@@ -99,7 +99,7 @@ async def create_chekout(
             raise HTTPException(403, "La pulsera presentada no corresponde al tutor autorizado")
 
         # Recalculado con la hora real de este instante
-        extra_horas, total_extra = _calcular_cargo_extra(conn, detalle, now)
+        extra_horas, total_extra = await _calcular_cargo_extra(conn, detalle, now)
 
         if total_extra > 0:
             monto_pagado = sum(Decimal(str(pago.monto)) for pago in pagos)
@@ -120,13 +120,14 @@ async def create_chekout(
         await put_hora_salida_by_id(conn, usuario_id, detalle_id)
 
         if extra_horas > 0:
+            precio_unitario = total_extra / extra_horas
             await make_extra_charge(
                 conn,
                 detalle["sucursal_id"],
                 detalle["registros_id"],
                 detalle_id,
                 extra_horas,
-                produto["precio"],
+                precio_unitario,
                 total_extra,
                 usuario_id,
             )

@@ -65,10 +65,14 @@ async def create_estancia(
             if tutor:
                 tutor_id = tutor["id"]
             else:
-                nombre = f"{evento.nombre_cliente} {evento.apellidos_cliente or ''}"
-                nombre_tutor_formato = nombre.rstrip()
+                if evento.apellidos_cliente:
+                    nombre = f"{evento.nombre_cliente} {evento.apellidos_cliente}"
+                    print(nombre)
+                else:
+                    nombre = evento.nombre_cliente
+                
                 tutor_id = await tutor_create(
-                    conn, data.sucursalId, nombre_tutor_formato, evento.telefono_cliente, usuario_id
+                    conn, data.sucursalId, nombre, evento.telefono_cliente, usuario_id
                 )
 
             registro_id = uuid4()
