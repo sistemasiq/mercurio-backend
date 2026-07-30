@@ -20,6 +20,18 @@ def _tutor_row(row: asyncpg.Record) -> TutorRecord:
     }
 
 
+async def get_tutor_by_id(conn: asyncpg.Connection, tutor_id: UUID) -> TutorRecord | None:
+    row = await conn.fetchrow(
+        """
+        SELECT id, nombre_completo AS "nombreCompleto", telefono
+        FROM tutores
+        WHERE id = $1 AND activo = TRUE
+        """,
+        tutor_id,
+    )
+    return _tutor_row(row) if row else None
+
+
 async def get_tutor_by_phone(
     conn: asyncpg.Connection, telefono: str, sucursal_id: UUID
 ) -> TutorRecord | None:
