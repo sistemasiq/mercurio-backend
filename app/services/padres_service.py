@@ -22,7 +22,7 @@ class TokenAccesoInvalido(Exception):
     pass
 
 
-async def _get_hijos_activos(
+async def _get_hijos_visita(
     conn: asyncpg.Connection, tutor_id: UUID
 ) -> list[dict[str, Any]]:
     rows = await conn.fetch(
@@ -31,11 +31,18 @@ async def _get_hijos_activos(
             n.id,
             n.nombre_completo AS "nombreCompleto",
             n.edad,
-            'activo' AS "estadoVisita",
+            CASE
+                WHEN dr.salida IS NULL THEN 'activo'
+                ELSE 'terminado'
+            END AS "estadoVisita",
             dr.entrada AS "horaEntrada",
             dr.salida_esperada AS "horaSalidaEsperada",
-            FLOOR(EXTRACT(EPOCH FROM (NOW() - dr.entrada)) / 60)::int
-                AS "minutosTranscurridos",
+            dr.salida AS "horaSalida",
+            CASE
+                WHEN dr.salida IS NULL
+                THEN FLOOR(EXTRACT(EPOCH FROM (NOW() - dr.entrada)) / 60)::int
+                ELSE FLOOR(EXTRACT(EPOCH FROM (dr.salida - dr.entrada)) / 60)::int
+            END AS "minutosTranscurridos",
             (dr.cantidad * 60)::int AS "minutosPagados",
             p.pulsera_rfid AS "pulsera"
         FROM detalles_registro dr
@@ -44,9 +51,10 @@ async def _get_hijos_activos(
         JOIN pulseras p ON p.id = dr.pulseras_id
         WHERE r.tutores_id = $1
           AND r.estado = 'A'
-          AND dr.salida IS NULL
           AND dr.activo = TRUE
-        ORDER BY dr.entrada
+        ORDER BY
+            CASE WHEN dr.salida IS NULL THEN 0 ELSE 1 END,
+            dr.entrada DESC
         """,
         tutor_id,
     )
@@ -73,7 +81,7 @@ async def get_padre_dashboard(
     if sucursal is None:
         raise TokenAccesoInvalido
 
-    hijos = await _get_hijos_activos(conn, tutor_id)
+    hijos = await _get_hijos_visita(conn, tutor_id)
 
     expires_delta = timedelta(hours=2)
     access_token = create_access_token(
@@ -105,6 +113,7 @@ async def get_padre_dashboard(
                 estadoVisita=h["estadoVisita"],
                 horaEntrada=h["horaEntrada"],
                 horaSalidaEsperada=h["horaSalidaEsperada"],
+                horaSalida=h["horaSalida"],
                 minutosTranscurridos=h["minutosTranscurridos"],
                 minutosPagados=h["minutosPagados"],
                 pulsera=h["pulsera"],

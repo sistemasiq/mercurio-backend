@@ -31,6 +31,7 @@ class NinoActivoResponse(BaseModel):
     estadoVisita: str  # noqa: N815
     horaEntrada: datetime | None  # noqa: N815
     horaSalidaEsperada: datetime | None  # noqa: N815
+    horaSalida: datetime | None  # noqa: N815
     minutosTranscurridos: int  # noqa: N815
     minutosPagados: int  # noqa: N815
     pulsera: str | None
