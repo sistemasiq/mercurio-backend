@@ -15,6 +15,7 @@ import asyncpg
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
+from app.core.roles import ROL_SISTEMA
 from app.exceptions import NoEncontrado
 from app.models.producto import Producto
 from app.repositories import combo_repository, producto_repository
@@ -98,8 +99,22 @@ async def actualizar(
     body: ProductoUpdate,
     usuario_id: UUID | None = None,  # <-- Recibimos usuario_id
     imagen: UploadFile | None = None,
+    current_user: TokenData | None = None,
 ) -> ProductoOut:
-    await obtener(conn, producto_id)
+    producto_actual = await obtener(conn, producto_id)
+
+    if (
+        current_user is not None
+        and current_user.role != ROL_SISTEMA
+        and str(producto_actual.sucursal_id) != str(current_user.branch_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN",
+                "message": "No puede modificar productos de otra sucursal.",
+            },
+        )
 
     updates = body.model_dump(exclude_unset=True)
     productos_combo = updates.pop("productos_combo", None)

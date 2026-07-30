@@ -1,9 +1,12 @@
 from uuid import UUID
 
 import asyncpg
+from fastapi import HTTPException, status
 
+from app.core.scope import sucursal_scope
 from app.exceptions import NoEncontrado
-from app.repositories import reservacion_extras_repository
+from app.repositories import reservacion_extras_repository, reservaciones_repository
+from app.schemas.auth import TokenData
 from app.schemas.reservacion_extras import (
     ReservacionExtrasCreate,
     ReservacionExtrasOut,
@@ -12,8 +15,19 @@ from app.schemas.reservacion_extras import (
 
 
 async def listar_por_reservacion(
-    conn: asyncpg.Connection, reservacion_id: UUID
+    conn: asyncpg.Connection, reservacion_id: UUID, current_user: TokenData
 ) -> list[ReservacionExtrasOut]:
+    reservacion = await reservaciones_repository.obtener(conn, reservacion_id)
+    if not reservacion:
+        raise NoEncontrado("Reservación")
+
+    scope = sucursal_scope(current_user)
+    if scope is not None and str(reservacion["sucursal_id"]) != scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puede consultar extras de reservaciones de otra sucursal.",
+        )
+
     rows = await reservacion_extras_repository.listar_por_reservacion(conn, reservacion_id)
     return [ReservacionExtrasOut.model_validate(r) for r in rows]
 

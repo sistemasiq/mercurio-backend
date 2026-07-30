@@ -20,9 +20,9 @@ router = APIRouter(prefix="/api/reservacion-extras", tags=["Reservación Extras"
 async def listar_por_reservacion(
     reservacion_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("reservaciones:gestionar_extras")),
+    current_user: TokenData = Depends(require_permission("reservaciones:gestionar_extras")),
 ) -> list[ReservacionExtrasOut]:
-    return await svc.listar_por_reservacion(conn, reservacion_id)
+    return await svc.listar_por_reservacion(conn, reservacion_id, current_user)
 
 
 @router.get("/{reservacion_extra_id}", response_model=ReservacionExtrasOut)
