@@ -21,8 +21,7 @@ class TutorInfo(BaseModel):
     id: UUID
     nombreCompleto: str  # noqa: N815
     telefono: str
-
-    model_config = ConfigDict(from_attributes=True)
+    sucursal: SucursalInfo
 
 
 class NinoActivoResponse(BaseModel):
