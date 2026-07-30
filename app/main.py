@@ -18,6 +18,7 @@ from app.api.routers import (
     lealtad,
     metodos_pago,
     movimientos_inventario,
+    padres,
     pagos,
     pagos_reservacion,
     paquete_tipos_evento,
@@ -97,5 +98,6 @@ app.include_router(insumos.router)
 app.include_router(presentaciones_insumo.router)
 app.include_router(producto_insumos.router)
 app.include_router(movimientos_inventario.router)
+app.include_router(padres.router)
 app.include_router(compras.router)
 app.include_router(lealtad.router)
