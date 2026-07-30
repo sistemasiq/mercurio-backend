@@ -92,6 +92,10 @@ async def get_padre_dashboard(
             id=tutor["id"],
             nombreCompleto=tutor["nombreCompleto"],
             telefono=tutor["telefono"],
+            sucursal=SucursalInfo(
+                id=sucursal["id"],
+                nombre=sucursal["nombre"],
+            ),
         ),
         ninosActivos=[
             NinoActivoResponse(
