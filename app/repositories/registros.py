@@ -132,6 +132,20 @@ async def exists_registro(
     )
     return bool(result)
 
+async def exists_registro_any(
+    conn: asyncpg.Connection,
+    registro_id: UUID,
+) -> bool:
+    result = await conn.fetchval(
+        """
+       SELECT 1
+       FROM registros
+       WHERE id=$1
+   """,
+        registro_id,
+    )
+    return bool(result)
+
 async def exists_registro_by_reservacion_id(
     conn: asyncpg.Connection,
     reservacion_id: UUID,
@@ -141,20 +155,6 @@ async def exists_registro_by_reservacion_id(
        SELECT 1
        FROM registros
        WHERE reservacion_id=$1 AND activo = TRUE
-   """,
-        reservacion_id,
-    )
-    return bool(result)
-
-async def exists_registro_by_reservacion_id_any(
-    conn: asyncpg.Connection,
-    reservacion_id: UUID,
-) -> bool:
-    result = await conn.fetchval(
-        """
-       SELECT 1
-       FROM registros
-       WHERE reservacion_id=$1
    """,
         reservacion_id,
     )

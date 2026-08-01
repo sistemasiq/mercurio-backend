@@ -20,7 +20,7 @@ from app.repositories.productos import (
 from app.repositories.registros import (
     EstadoRegistro,
     change_registro_estado,
-    exists_registro_by_reservacion_id_any,
+    exists_registro_any,
     registro_create,
     registro_update_total,
 )
@@ -66,7 +66,7 @@ async def create_estancia(
             
             # Agregar validacion para evitar que ya exista el uuid en la db
             registro_id = uuid4()
-            while await exists_registro_by_reservacion_id_any(conn, registro_id):
+            while await exists_registro_any(conn, registro_id):
                 registro_id = uuid4()
 
             # --- GUARDAR FOTOS FÍSICAMENTE ---
