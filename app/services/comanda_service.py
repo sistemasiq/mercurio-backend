@@ -13,6 +13,7 @@ import asyncpg
 from app.core.ws_manager import manager
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.schemas.auth import RoleEnum, TokenData
 from app.schemas.comanda import ComandaCreate
 
@@ -32,9 +33,24 @@ def sucursal_scope(current_user: TokenData) -> str | None:
     return str(current_user.branch_id)
 
 
-async def crear_comanda(conn: asyncpg.Connection, comanda_in: ComandaCreate) -> Comanda:
-    """Crea una comanda con sus detalles y notifica a los clientes conectados."""
+async def crear_comanda(
+    conn: asyncpg.Connection, comanda_in: ComandaCreate, apertura_caja_id: str
+) -> Comanda:
+    """Crea una comanda con sus detalles, registra el movimiento de venta en la
+    caja del turno activo, y notifica a los clientes conectados.
+
+    metodo_pago_id va en None temporalmente: el módulo de métodos de pago para
+    comandas todavía no está integrado (columna nullable a propósito mientras tanto).
+    """
     comanda = await comanda_repository.crear_comanda_con_detalles(conn, comanda_in)
+    await registrar_movimiento_caja(
+        conn,
+        id_apertura_caja=apertura_caja_id,
+        tipo_movimiento="O",
+        id_referencia=comanda.id,
+        id_metodo_pago=None,
+        monto=comanda.total_final,
+    )
     await manager.broadcast(
         comanda.sucursal_id, {"type": "comanda_creada", "comanda": asdict(comanda)}
     )

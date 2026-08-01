@@ -8,6 +8,7 @@ import asyncpg
 from fastapi import HTTPException, UploadFile
 
 from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -32,6 +33,7 @@ async def create_estancia(
     foto_ine: UploadFile,
     foto_llegada: UploadFile,
     usuario_id: UUID,
+    apertura_caja_id: str,
 ) -> dict[str, Any]:
     async with conn.transaction():
         # 1. tutor
@@ -103,6 +105,15 @@ async def create_estancia(
         for p in data.pagos:
             await pago_create(
                 conn, data.sucursalId, registro_id, p.metodoPagoId, p.monto, usuario_id
+            )
+            await registrar_movimiento_caja(
+                conn,
+                id_apertura_caja=apertura_caja_id,
+                tipo_movimiento="E",
+                id_referencia=str(registro_id),
+                id_metodo_pago=str(p.metodoPagoId),
+                monto=Decimal(str(p.monto)),
+                creado_por=str(usuario_id),
             )
             total_pagado += p.monto
 
