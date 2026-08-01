@@ -146,6 +146,20 @@ async def exists_registro_by_reservacion_id(
     )
     return bool(result)
 
+async def exists_registro_by_reservacion_id_any(
+    conn: asyncpg.Connection,
+    reservacion_id: UUID,
+) -> bool:
+    result = await conn.fetchval(
+        """
+       SELECT 1
+       FROM registros
+       WHERE reservacion_id=$1
+   """,
+        reservacion_id,
+    )
+    return bool(result)
+
 
 async def contar_ninos_registrados_por_reservacion(
     conn: asyncpg.Connection, reservacion_id: UUID
