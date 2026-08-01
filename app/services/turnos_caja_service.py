@@ -26,6 +26,7 @@ from app.repositories.caja_repository import (
     actualizar_admin_autorizacion,
     sumar_retiros_por_apertura,
     sumar_total_ventas_apertura,
+    sumar_ventas_efectivo_apertura,
     obtener_movimientos_por_metodo,
     crear_retiro_parcial,
     listar_retiros_por_apertura,
@@ -209,7 +210,17 @@ async def obtener_turno_activo(conn: asyncpg.Connection, user_id: str) -> TurnoA
         for r in movs_raw
     ]
 
-    estado_ui = "EN_CONTEO" if activa["estado"] == "EN_CORTE" else "OPERANDO"
+    # apertura_caja.estado solo distingue ABIERTA/EN_CORTE/CERRADA — el sub-estado real
+    # de EN_CORTE (¿el cajero ya envió su conteo y quedó congelado, o todavía lo está
+    # llenando?) se infiere de monto_declarado. Sin esto, recargar la página después de
+    # enviar el conteo mostraba otra vez el formulario vacío en vez del modal de espera
+    # del administrador, y un segundo "Enviar conteo" chocaba con el ya congelado.
+    if activa["estado"] != "EN_CORTE":
+        estado_ui = "OPERANDO"
+    elif activa["monto_declarado"] is None:
+        estado_ui = "EN_CONTEO"
+    else:
+        estado_ui = "ESPERANDO_REVISION"
 
     return TurnoActivoResponse(
         id=apertura_id,
@@ -266,6 +277,81 @@ async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoP
     res = await obtener_turno_activo(conn, user_id)
     res.estado = "ESPERANDO_REVISION"
     return res
+
+
+async def _calcular_balance(
+    conn: asyncpg.Connection, apertura: dict, turno_id: str
+) -> tuple[Decimal, Decimal, Decimal, list[FilaBalance]]:
+    """Balance real del cierre. El 'efectivo' es la única conciliación física (dinero
+    en el cajón): fondo inicial + ventas en efectivo (o sin método aún, ver
+    sumar_ventas_efectivo_apertura) - retiros, comparado contra lo que el cajero
+    contó físicamente (desglose_efectivo.total en conteo_json). Transferencia,
+    tarjeta u otros métodos NO representan dinero físico en caja — se muestran
+    aparte, comparando lo que el sistema registró contra lo que el cajero declaró
+    para ese método específico (ya no un valor inventado igual al esperado)."""
+    monto_inicial = Decimal(str(apertura["fondo_inicial"]))
+    total_retiros = await sumar_retiros_por_apertura(conn, turno_id)
+    total_esperado_efectivo = (
+        monto_inicial + await sumar_ventas_efectivo_apertura(conn, turno_id) - total_retiros
+    )
+
+    conteo = json.loads(apertura["conteo_json"]) if apertura["conteo_json"] else {}
+    declarado_efectivo = Decimal(str((conteo.get("desglose_efectivo") or {}).get("total", 0)))
+
+    declarados_por_metodo: dict[str, Decimal] = {}
+    for m in conteo.get("metodos_pago") or []:
+        nombre = str(m.get("metodo", "")).strip().lower()
+        if not nombre:
+            continue
+        monto = Decimal(str(m.get("monto", 0)))
+        declarados_por_metodo[nombre] = declarados_por_metodo.get(nombre, Decimal("0")) + monto
+
+    diferencia_neta = declarado_efectivo - total_esperado_efectivo
+
+    balance: list[FilaBalance] = [
+        FilaBalance(
+            metodo="efectivo",
+            label="Efectivo en Caja",
+            declarado=declarado_efectivo,
+            esperado=total_esperado_efectivo,
+            diferencia=diferencia_neta,
+        )
+    ]
+
+    movs = await obtener_movimientos_por_metodo(conn, turno_id)
+    vistos: set[str] = set()
+    for m in movs:
+        nombre_met = m["metodo_nombre"].lower()
+        if nombre_met == "efectivo":
+            continue
+        vistos.add(nombre_met)
+        esperado = Decimal(str(m["total_ventas"]))
+        declarado = declarados_por_metodo.get(nombre_met, Decimal("0"))
+        balance.append(
+            FilaBalance(
+                metodo=nombre_met,
+                label=m["metodo_nombre"],
+                declarado=declarado,
+                esperado=esperado,
+                diferencia=declarado - esperado,
+            )
+        )
+
+    # Métodos que el cajero declaró pero el sistema no tiene registrados para este turno.
+    for nombre_met, declarado in declarados_por_metodo.items():
+        if nombre_met in vistos or nombre_met == "efectivo":
+            continue
+        balance.append(
+            FilaBalance(
+                metodo=nombre_met,
+                label=nombre_met.capitalize(),
+                declarado=declarado,
+                esperado=Decimal("0"),
+                diferencia=declarado,
+            )
+        )
+
+    return total_esperado_efectivo, declarado_efectivo, diferencia_neta, balance
 
 
 async def autenticar_admin_revision(
@@ -327,44 +413,9 @@ async def autenticar_admin_revision(
     if apertura["monto_declarado"] is None:
         raise TransicionInvalidaError("El cajero aún no ha enviado su declaración de conteo.")
 
-    monto_inicial = Decimal(str(apertura["fondo_inicial"]))
-    total_declarado = Decimal(str(apertura["monto_declarado"]))
-    total_ventas = await sumar_total_ventas_apertura(conn, payload.turno_id)
-    total_retiros = await sumar_retiros_por_apertura(conn, payload.turno_id)
-
-    total_esperado = monto_inicial + total_ventas - total_retiros
-    diferencia_neta = total_declarado - total_esperado
-
-    # Obtener desglose dinámico por método de pago (solo informativo, no se compara por método)
-    movs = await obtener_movimientos_por_metodo(conn, payload.turno_id)
-    balance: list[FilaBalance] = []
-
-    # Fila de Efectivo
-    esperado_efectivo = monto_inicial + sum((Decimal(str(m["total_ventas"])) for m in movs if m["metodo_nombre"].lower() == "efectivo"), Decimal("0")) - total_retiros
-    balance.append(
-        FilaBalance(
-            metodo="efectivo",
-            label="Efectivo en Caja",
-            declarado=esperado_efectivo,
-            esperado=esperado_efectivo,
-            diferencia=Decimal("0"),
-        )
+    total_esperado, total_declarado, diferencia_neta, balance = await _calcular_balance(
+        conn, apertura, payload.turno_id
     )
-
-    for m in movs:
-        nombre_met = m["metodo_nombre"].lower()
-        if nombre_met == "efectivo":
-            continue
-        tot = Decimal(str(m["total_ventas"]))
-        balance.append(
-            FilaBalance(
-                metodo=nombre_met,
-                label=m["metodo_nombre"],
-                declarado=tot,
-                esperado=tot,
-                diferencia=Decimal("0"),
-            )
-        )
 
     await actualizar_admin_autorizacion(conn, payload.turno_id, str(admin_row["id"]))
 
@@ -506,6 +557,27 @@ async def cancelar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str)
     return await obtener_turno_activo(conn, user_id)
 
 
+async def obtener_apertura_operando_id(conn: asyncpg.Connection, user_id: str) -> str:
+    """RN-APE-005 / RN-CIE-001: sin turno de caja en OPERANDO (ABIERTA), no se permite
+    ninguna venta/cobro — ni sin apertura, ni durante conteo/revisión/cierre.
+    Devuelve el id de la apertura activa para que el llamador registre el movimiento."""
+    apertura = await get_apertura_activa_por_usuario(conn, user_id)
+    if not apertura or apertura["estado"] != "ABIERTA":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "TURNO_NO_ABIERTO",
+                "message": "Debes tener un turno de caja abierto (operando) para registrar ventas o pagos.",
+            },
+        )
+    return str(apertura["id"])
+
+
+async def verificar_turno_abierto(conn: asyncpg.Connection, user_id: str) -> None:
+    """Igual que obtener_apertura_operando_id, para llamadores que solo necesitan el bloqueo."""
+    await obtener_apertura_operando_id(conn, user_id)
+
+
 async def crear_retiro(
     conn: asyncpg.Connection, user_id: str, payload: RetiroParcialCreate
 ) -> RetiroParcialResponse:
@@ -572,16 +644,16 @@ async def confirmar_cierre(
     if apertura["token_admin_jti"] is None:
         raise TransicionInvalidaError("Aún no se ha autorizado la revisión de un administrador.")
 
-    monto_inicial = Decimal(str(apertura["fondo_inicial"]))
-    total_declarado = Decimal(str(apertura["monto_declarado"]))
     admin_id = str(apertura["token_admin_jti"])
-    total_ventas = await sumar_total_ventas_apertura(conn, payload.turno_id)
-    total_retiros = await sumar_retiros_por_apertura(conn, payload.turno_id)
-    total_esperado = monto_inicial + total_ventas - total_retiros
+    total_esperado, total_declarado, diferencia_neta, balance = await _calcular_balance(
+        conn, apertura, payload.turno_id
+    )
 
-    # RN-VAL-005: si hay diferencia, las observaciones son obligatorias (mínimo 15 caracteres).
-    # Se valida también en backend porque la API puede llamarse directo, sin pasar por el frontend.
-    if total_declarado != total_esperado:
+    # RN-VAL-005: si hay diferencia (en efectivo o en cualquier otro método declarado),
+    # las observaciones son obligatorias (mínimo 15 caracteres). Se valida también en
+    # backend porque la API puede llamarse directo, sin pasar por el frontend.
+    hay_diferencia = diferencia_neta != 0 or any(f.diferencia != 0 for f in balance)
+    if hay_diferencia:
         obs = (payload.observaciones or "").strip()
         if len(obs) < 15:
             raise HTTPException(
