@@ -387,10 +387,15 @@ async def registrar_movimiento_caja(
     id_apertura_caja: str,
     tipo_movimiento: str,
     id_referencia: str,
-    id_metodo_pago: str,
+    id_metodo_pago: str | None,
     monto: Decimal,
     creado_por: str | None = None,
 ) -> dict:
+    """
+    id_metodo_pago es temporalmente opcional: el módulo de ventas/comandas aún no integra
+    métodos de pago, así que puede registrar movimientos con metodo_pago_id=NULL mientras
+    tanto. Cuando esté integrado, volver a exigirlo (columna ya vuelta NOT NULL en BD).
+    """
     now = get_mexico_now()
     row = await conn.fetchrow(
         """
@@ -402,7 +407,7 @@ async def registrar_movimiento_caja(
         uuid.UUID(id_apertura_caja),
         tipo_movimiento,
         uuid.UUID(id_referencia),
-        uuid.UUID(id_metodo_pago),
+        uuid.UUID(id_metodo_pago) if id_metodo_pago else None,
         monto,
         now,
         uuid.UUID(creado_por) if creado_por else None,
@@ -433,6 +438,24 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, id_apertura_caja
         SELECT COALESCE(SUM(monto), 0)
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1
+        """,
+        uuid.UUID(id_apertura_caja),
+    )
+    return Decimal(str(val))
+
+
+async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, id_apertura_caja: str) -> Decimal:
+    """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón: movimientos
+    con método explícitamente 'Efectivo', o SIN método asignado todavía (comandas no
+    integra métodos de pago aún — mientras tanto se asume efectivo, es lo más común
+    para compras de mostrador). Transferencia/tarjeta NO son dinero físico en caja."""
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(m.monto), 0)
+        FROM public.movimientos_caja m
+        LEFT JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
+        WHERE m.apertura_caja_id = $1
+          AND (m.metodo_pago_id IS NULL OR lower(mp.nombre) = 'efectivo')
         """,
         uuid.UUID(id_apertura_caja),
     )
