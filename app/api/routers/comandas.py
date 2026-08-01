@@ -22,7 +22,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user_ws, require_permission
+from app.api.deps import apertura_operando_id, get_current_user_ws, require_permission
 from app.core.database import get_db
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
@@ -47,10 +47,11 @@ async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("restaurante:crear_pedido")),
+    apertura_id: str = Depends(apertura_operando_id),
 ) -> Any:
     """Crea una comanda nueva con sus detalles."""
     try:
-        comanda = await comanda_service.crear_comanda(conn, comanda_in)
+        comanda = await comanda_service.crear_comanda(conn, comanda_in, apertura_id)
         return asdict(comanda)
     except Exception as exc:
         raise HTTPException(
