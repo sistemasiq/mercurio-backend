@@ -47,7 +47,9 @@ class TurnoResponse(BaseModel):
 
 class AbrirTurnoPayload(BaseModel):
     fondo_inicial: Decimal = Field(..., ge=0)
-    terminal: str | None = "CAJA 01"
+    # max_length=20 coincide con cajas.codigo VARCHAR(20) en BD — sin esto, un valor
+    # más largo tronaba con un 500 crudo de Postgres en vez de un 422 limpio.
+    terminal: str | None = Field(default="CAJA 01", max_length=20)
     observaciones_apertura: str | None = None
     id_caja: str | None = None
     id_turno: str | None = None
