@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.caja import (
     AbrirTurnoPayload,
     TurnoActivoResponse,
@@ -230,7 +230,7 @@ async def listar_historial(
 ) -> HistorialArqueosResponse:
     # Un Administrador de sucursal o Cajero solo puede ver su propia sucursal, sin importar
     # qué sucursal_id se haya mandado por query param. Solo AdministradorSistema ve todas.
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == "AdministradorSistema":
         sucursal_efectiva = sucursal_id
     else:
         sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
@@ -248,7 +248,7 @@ async def listar_historial(
 
 def _sucursal_restringida(current_user: TokenData) -> str | None:
     """None para AdministradorSistema (acceso global); el branch_id propio para el resto."""
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == "AdministradorSistema":
         return None
     return str(current_user.branch_id) if current_user.branch_id else None
 
