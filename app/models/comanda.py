@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass
@@ -22,8 +23,13 @@ class DetalleComanda:
     sucursal_id: str
     notas_especiales: str | None = None
     # Datos del producto (join opcional al leer)
+    nombre: str | None = None
     producto_nombre: str | None = None
     producto_tipo: str | None = None
+    # Origen del combo — persistidos en BD para evitar ambigüedad
+    nombre_combo_padre: str | None = None
+    es_hijo_de: str | None = None
+    es_hijo_combo: bool = False
 
 
 @dataclass
@@ -34,4 +40,6 @@ class Comanda:
     total_final: Decimal
     sucursal_id: str
     fecha_hora: datetime | None = None
-    detalles: list[DetalleComanda] = field(default_factory=list)
+    # expandir_detalles_comanda() reemplaza esta lista por dicts (uno por
+    # producto hijo cuando hay combos) — no siempre son DetalleComanda.
+    detalles: list[DetalleComanda | dict[str, Any]] = field(default_factory=list)

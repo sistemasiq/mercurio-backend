@@ -4,7 +4,9 @@ from uuid import UUID
 
 import asyncpg
 
+from app.core.roles import ROL_ADMINISTRADOR, ROL_SISTEMA, ROLES_SIN_SUCURSAL_FIJA
 from app.core.security import hash_password
+from app.repositories.permission_repository import get_rol_by_nombre
 from app.repositories.user_repository import (
     UsuarioRecord,
     assign_usuario_to_branch,
@@ -17,7 +19,7 @@ from app.repositories.user_repository import (
     update_usuario,
     update_usuario_branch,
 )
-from app.schemas.auth import RoleEnum, TokenData
+from app.schemas.auth import TokenData
 from app.schemas.user import UserCreateRequest, UserResponse, UserUpdateRequest
 
 
@@ -37,8 +39,20 @@ class UserNotFoundError(Exception):
     pass
 
 
-def _roles_require_branch() -> tuple[RoleEnum, ...]:
-    return (RoleEnum.cajero, RoleEnum.cocina)
+class RolInvalidoError(Exception):
+    pass
+
+
+def _role_requires_branch(role: str) -> bool:
+    return role not in ROLES_SIN_SUCURSAL_FIJA
+
+
+async def _assert_role_valid(conn: asyncpg.Connection, role: str) -> None:
+    """Valida que el rol exista y esté activo (los roles ya no son un enum
+    cerrado: se crean/desactivan desde el Catálogo de Roles)."""
+    rol = await get_rol_by_nombre(conn, role)
+    if rol is None or not rol["activo"]:
+        raise RolInvalidoError
 
 
 def _to_response(record: UsuarioRecord) -> UserResponse:
@@ -46,7 +60,7 @@ def _to_response(record: UsuarioRecord) -> UserResponse:
         id=record["id"],
         full_name=record["nombre_completo"],
         email=record["email"],
-        role=RoleEnum(record["rol"]),
+        role=record["rol"],
         branch_id=record["sucursal_id"],
         is_active=record["activo"],
     )
@@ -54,15 +68,15 @@ def _to_response(record: UsuarioRecord) -> UserResponse:
 
 def _assert_admin_scope(current_user: TokenData, target: UsuarioRecord) -> None:
     """Valida que un Administrador solo opere sobre usuarios de su sucursal."""
-    if current_user.role == RoleEnum.administrador:
+    if current_user.role == ROL_ADMINISTRADOR:
         if target["sucursal_id"] != current_user.branch_id:
             raise InsufficientPermissionsError
-        if RoleEnum(target["rol"]) not in _roles_require_branch():
+        if not _role_requires_branch(target["rol"]):
             raise InsufficientPermissionsError
 
 
 async def list_users(conn: asyncpg.Connection, current_user: TokenData) -> list[UserResponse]:
-    if current_user.role == RoleEnum.administrador_sistema:
+    if current_user.role == ROL_SISTEMA:
         records = await get_all_usuarios(conn)
     else:
         if current_user.branch_id is None:
@@ -86,21 +100,22 @@ async def create_user(
     data: UserCreateRequest,
     current_user: TokenData,
 ) -> UserResponse:
-    if data.role == RoleEnum.administrador_sistema:
+    if data.role == ROL_SISTEMA:
         raise InsufficientPermissionsError
-    if current_user.role == RoleEnum.administrador:
-        if data.role not in _roles_require_branch():
+    await _assert_role_valid(conn, data.role)
+    if current_user.role == ROL_ADMINISTRADOR:
+        if not _role_requires_branch(data.role):
             raise InsufficientPermissionsError
         if data.branch_id != current_user.branch_id:
             raise InsufficientPermissionsError
-    if data.role in _roles_require_branch() and data.branch_id is None:
+    if _role_requires_branch(data.role) and data.branch_id is None:
         raise BranchRequiredError
     if await email_exists(conn, data.email):
         raise EmailAlreadyExistsError
 
     # Un Administrador se asigna a sucursales desde branch_service (puede
-    # tener varias); branch_id aquí solo aplica a Cajero/Cocina.
-    branch_id = data.branch_id if data.role != RoleEnum.administrador else None
+    # tener varias); branch_id aquí solo aplica a roles operativos.
+    branch_id = data.branch_id if data.role != ROL_ADMINISTRADOR else None
 
     creator_id = UUID(current_user.sub)
     async with conn.transaction():
@@ -109,7 +124,7 @@ async def create_user(
             email=data.email,
             password_hash=hash_password(data.password),
             nombre_completo=data.full_name,
-            rol=data.role.value,
+            rol=data.role,
             creado_por=creator_id,
         )
         if branch_id is not None:
@@ -132,19 +147,20 @@ async def update_user(
         raise UserNotFoundError
 
     # No se puede editar un AdministradorSistema por API
-    if RoleEnum(target["rol"]) == RoleEnum.administrador_sistema:
+    if target["rol"] == ROL_SISTEMA:
         raise InsufficientPermissionsError
 
     _assert_admin_scope(current_user, target)
 
-    if data.role == RoleEnum.administrador_sistema:
+    if data.role == ROL_SISTEMA:
         raise InsufficientPermissionsError
-    if current_user.role == RoleEnum.administrador:
-        if data.role not in _roles_require_branch():
+    await _assert_role_valid(conn, data.role)
+    if current_user.role == ROL_ADMINISTRADOR:
+        if not _role_requires_branch(data.role):
             raise InsufficientPermissionsError
         if data.branch_id != current_user.branch_id:
             raise InsufficientPermissionsError
-    if data.role in _roles_require_branch() and data.branch_id is None:
+    if _role_requires_branch(data.role) and data.branch_id is None:
         raise BranchRequiredError
     if data.email != target["email"] and await email_exists(conn, data.email):
         raise EmailAlreadyExistsError
@@ -154,8 +170,8 @@ async def update_user(
     # Un Administrador se reasigna a sucursales desde branch_service (puede
     # tener varias); este endpoint nunca debe tocar usuarios_sucursal para
     # ese rol, para no desactivar asignaciones hechas por ese otro camino.
-    branch_id = data.branch_id if data.role != RoleEnum.administrador else None
-    branch_changed = data.role != RoleEnum.administrador and branch_id != target["sucursal_id"]
+    branch_id = data.branch_id if data.role != ROL_ADMINISTRADOR else None
+    branch_changed = data.role != ROL_ADMINISTRADOR and branch_id != target["sucursal_id"]
 
     async with conn.transaction():
         updated = await update_usuario(
@@ -163,7 +179,7 @@ async def update_user(
             user_id=user_id,
             email=data.email,
             nombre_completo=data.full_name,
-            rol=data.role.value,
+            rol=data.role,
             password_hash=password_hash,
             modificado_por=editor_id,
         )
@@ -182,7 +198,7 @@ async def delete_user(conn: asyncpg.Connection, user_id: UUID, current_user: Tok
     target = await get_usuario_by_id(conn, user_id)
     if target is None:
         raise UserNotFoundError
-    if RoleEnum(target["rol"]) == RoleEnum.administrador_sistema:
+    if target["rol"] == ROL_SISTEMA:
         raise InsufficientPermissionsError
     _assert_admin_scope(current_user, target)
     deleted = await delete_usuario(conn, user_id, UUID(current_user.sub))

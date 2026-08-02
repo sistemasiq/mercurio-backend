@@ -11,17 +11,19 @@ class MetodosPagoBase(BaseModel):
 
 
 class MetodosPagoCreate(MetodosPagoBase):
-    pass
+    sucursal_id: UUID | None = None  # None = método de pago global
 
 
 class MetodosPagoUpdate(BaseModel):
     nombre: str | None = Field(None, max_length=100)
     descripcion: str | None = None
+    sucursal_id: UUID | None = None
     activo: bool | None = None
 
 
 class MetodosPagoOut(MetodosPagoBase):
     id: UUID
+    sucursal_id: UUID | None
     activo: bool
     creado: datetime
     creado_por: UUID | None

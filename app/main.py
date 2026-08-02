@@ -10,27 +10,37 @@ from app.api.routers import (
     auth,
     branches,
     comandas,
+    compras,
     documentos,
     estancias,
     extras,
+    insumos,
+    lealtad,
     metodos_pago,
+    movimientos_inventario,
+    pagos,
     pagos_reservacion,
     paquete_tipos_evento,
     paquetes,
     permissions,
+    presentaciones_insumo,
+    producto_insumos,
     productos,
+    proveedores,
     pulseras,
     reservacion_extras,
     reservaciones,
     tipos_evento,
     turnos_caja,
+    unidades_medida,
     users,
 )
 from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
+from app.core.object_storage import ensure_bucket
 
 logger = logging.getLogger("mercury.debug")
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -40,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.services.permission_service import load_cache
 
         await load_cache(conn)
+    await ensure_bucket()
     yield
     await close_pool()
 
@@ -57,18 +68,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> Response:
-    body = await request.body()
-    content_type = request.headers.get("content-type", "")
-
-    if "multipart/form-data" in content_type:
-        body_str = "<multipart form-data with files>"
-    else:
-        try:
-            body_str = body.decode("utf-8")
-        except UnicodeDecodeError:
-            body_str = "<binary data unreadable>"
-
-    logger.debug(">>> %s %s | body: %s", request.method, request.url.path, body_str)
+    # Logging de body deshabilitado (ver historial): request.body() consumía
+    # el stream y no había necesidad de loguear el payload en INFO.
     response = await call_next(request)
     return response
 
@@ -81,6 +82,7 @@ app.include_router(comandas.router)
 app.include_router(productos.router)
 app.include_router(extras.router)
 app.include_router(metodos_pago.router)
+app.include_router(pagos.router)
 app.include_router(pagos_reservacion.router)
 app.include_router(paquetes.router)
 app.include_router(paquete_tipos_evento.router)
@@ -91,3 +93,11 @@ app.include_router(estancias.router)
 app.include_router(pulseras.router)
 app.include_router(documentos.router)
 app.include_router(turnos_caja.router)
+app.include_router(unidades_medida.router)
+app.include_router(proveedores.router)
+app.include_router(insumos.router)
+app.include_router(presentaciones_insumo.router)
+app.include_router(producto_insumos.router)
+app.include_router(movimientos_inventario.router)
+app.include_router(compras.router)
+app.include_router(lealtad.router)

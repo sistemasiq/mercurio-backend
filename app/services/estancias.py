@@ -1,4 +1,3 @@
-import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -7,12 +6,13 @@ from uuid import UUID, uuid4
 import asyncpg
 from fastapi import HTTPException, UploadFile
 
-from app.core.storage import IDENTIFICACIONES_DIR, LLEGADAS_DIR
+from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
+from app.core.ws_manager import manager
 from app.repositories.caja_repository import registrar_movimiento_caja
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
-from app.repositories.pagos import pago_create
+from app.repositories.pagos_comanda import pago_create
 from app.repositories.productos import (
     get_precio_individual_by_id,
     get_productos_estancia_by_sucursal_id,
@@ -48,21 +48,29 @@ async def create_estancia(
 
         registro_id = uuid4()
 
-        # --- GUARDAR FOTOS FÍSICAMENTE ---
+        # --- GUARDAR FOTOS EN MINIO ---
         nombre_archivo = f"{registro_id}.jpg"
-        ruta_fisica_ine = IDENTIFICACIONES_DIR / nombre_archivo
-        ruta_fisica_llegada = LLEGADAS_DIR / nombre_archivo
 
-        await asyncio.to_thread(ruta_fisica_ine.write_bytes, await foto_ine.read())
-        await asyncio.to_thread(ruta_fisica_llegada.write_bytes, await foto_llegada.read())
+        data_ine = await validar_y_leer(foto_ine)
+        data_llegada = await validar_y_leer(foto_llegada)
 
-        # Rutas relativas para guardar en BD
-        ruta_bd_ine = f"uploads/identificaciones/{nombre_archivo}"
-        ruta_bd_llegada = f"uploads/llegadas/{nombre_archivo}"
+        ruta_bd_ine = f"{PREFIJOS['identificaciones']}/{nombre_archivo}"
+        ruta_bd_llegada = f"{PREFIJOS['llegadas']}/{nombre_archivo}"
+
+        await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
+        await upload_bytes(ruta_bd_llegada, data_llegada, "image/jpeg")
 
         # 2. registro (Un solo INSERT limpio)
         await registro_create(
-            conn, registro_id, data.sucursalId, tutor_id, ruta_bd_ine, ruta_bd_llegada, usuario_id
+            conn,
+            registro_id,
+            data.sucursalId,
+            tutor_id,
+            data.pulseraTutorId,
+            ruta_bd_ine,
+            ruta_bd_llegada,
+            usuario_id,
+            data.nombreSegundoTutor,
         )
 
         total = Decimal(0)
@@ -118,18 +126,31 @@ async def create_estancia(
             total_pagado += p.monto
 
         # 5. actualizar total
-        await registro_update_total(conn, registro_id, total)
+        await registro_update_total(conn, usuario_id, registro_id, total)
 
         # 6. activar si ya pagó todo
         if total_pagado >= total:
-            await change_registro_estado(conn, EstadoRegistro.ACTIVO, registro_id)
+            await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
 
-        return {
+        resultado = {
             "registroId": registro_id,
             "total": total,
             "pagado": total_pagado,
             "estado": "A" if total_pagado >= total else "P",
         }
+
+    # Se notifica ya fuera de la transacción, para no avisar a los clientes
+    # de datos que todavía podrían revertirse por un rollback.
+    await manager.broadcast(
+        str(data.sucursalId),
+        {
+            "type": "estancia_creada",
+            "sucursalId": str(data.sucursalId),
+            "registroId": str(registro_id),
+        },
+    )
+
+    return resultado
 
 
 async def get_activos_estancia_by_sucursal_id(

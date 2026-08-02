@@ -1,11 +1,13 @@
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 import app.services.tipos_evento as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.tipos_evento import TiposEventoCreate, TiposEventoOut, TiposEventoUpdate
 
@@ -15,9 +17,10 @@ router = APIRouter(prefix="/api/tipos-evento", tags=["Tipos de Evento"])
 @router.get("", response_model=list[TiposEventoOut])
 async def listar_tipos_evento(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("tipos_evento:listar")),
+    current_user: TokenData = Depends(require_permission("tipos_evento:listar")),
 ) -> list[TiposEventoOut]:
-    return await svc.listar(conn)
+    scope = sucursal_scope(current_user)
+    return await svc.listar(conn, UUID(scope) if scope is not None else None)
 
 
 @router.get("/{tipo_evento_id}", response_model=TiposEventoOut)
@@ -33,8 +36,17 @@ async def obtener_tipo_evento(
 async def crear_tipo_evento(
     body: TiposEventoCreate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("tipos_evento:crear")),
+    current_user: TokenData = Depends(require_permission("tipos_evento:crear")),
 ) -> TiposEventoOut:
+    if (
+        current_user.role != ROL_SISTEMA
+        and body.sucursal_id is not None
+        and str(body.sucursal_id) != str(current_user.branch_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puede crear un tipo de evento para otra sucursal.",
+        )
     return await svc.crear(conn, body)
 
 

@@ -17,6 +17,8 @@ class DetalleIn(BaseModel):
 class OnboardingRequest(BaseModel):
     sucursalId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     tutor: TutorIn
+    nombreSegundoTutor: str | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn]
@@ -27,6 +29,10 @@ class OnboardingResponse(BaseModel):
     total: float
     pagado: float
     estado: str
+
+
+class CheckoutRequest(BaseModel):
+    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class CheckoutResponse(BaseModel):
@@ -40,13 +46,16 @@ class CheckoutResponse(BaseModel):
 class ProductoResponse(BaseModel):
     id: UUID
     nombre: str
-    precio_unitario: float
+    precioUnitario: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     descripcion: str | None
 
 
 class DetalleActivoResponse(BaseModel):
-    registro_id: UUID
-    detalle_id: UUID
+    registroId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    nombreSegundoTutor: str | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    pulseraTutorRfid: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    detalleId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     nino: str
     notas: str | None
     edad: int
@@ -54,5 +63,5 @@ class DetalleActivoResponse(BaseModel):
     telefono: str
     parentesco: str
     pulsera: str
-    minutos_pagados: float
-    minutos_transcurridos: float
+    minutosPagados: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    minutosTranscurridos: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend

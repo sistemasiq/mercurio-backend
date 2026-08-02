@@ -13,8 +13,8 @@ async def nino_create(
 ) -> UUID:
     row = await conn.fetchrow(
         """
-       INSERT INTO ninos (sucursal_id, nombre_completo, edad, notas, creado_por)
-       VALUES ($1,$2,$3,$4,$5)
+       INSERT INTO ninos (sucursal_id, nombre_completo, edad, notas, creado, creado_por)
+       VALUES ($1,$2,$3,$4,NOW(),$5)
        RETURNING id
    """,
         sucursal_id,
