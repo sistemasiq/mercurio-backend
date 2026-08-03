@@ -26,12 +26,13 @@ from app.schemas.pagos import PagoIn
 from app.schemas.registros import (
     CheckoutRequest,
     CheckoutResponse,
+    CotizacionCheckoutResponse,
     DetalleActivoResponse,
     OnboardingRequest,
     OnboardingResponse,
     ProductoResponse,
 )
-from app.services.chekouts import create_chekout
+from app.services.chekouts import cotizar_checkout, create_chekout
 from app.services.estancias import (
     create_estancia,
     get_activos_estancia_by_sucursal_id,
@@ -56,6 +57,7 @@ async def get_activos(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:ver_activos")),
 ) -> list[dict[str, Any]]:
+
     scope = sucursal_scope(current_user)
     if scope is not None and str(sucursal_id) != scope:
         raise HTTPException(
@@ -112,6 +114,26 @@ async def pago_estancia_extra(
     return await pago_create_service(conn, pagos, sucursal_id, registro_id, usuario_id)
 
 
+# Endpoint para cotizar el checkout (solo lectura, no registra nada)
+@router.get(
+    "/{detalle_id}/checkout/cotizacion",
+    response_model=CotizacionCheckoutResponse,
+    summary="Cotizar cargo extra de checkout",
+    description=(
+        "Calcula cuánto se debería cobrar por tiempo excedido en este momento, "
+        "sin registrar la salida ni el cargo. Úsalo para mostrarle el monto al "
+        "cajero antes de cobrar (al entrar a la pantalla y de nuevo justo antes "
+        "de confirmar la salida, ya que el monto puede cambiar con el tiempo)."
+    ),
+)
+async def get_cotizacion_checkout(
+    detalle_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("estancias:checkout")),
+) -> dict[str, Any]:
+    return await cotizar_checkout(conn, detalle_id)
+
+
 # Endpoint para calcular checkout
 @router.post(
     "/{detalle_id}/checkout",
@@ -120,7 +142,9 @@ async def pago_estancia_extra(
     summary="Procesar salida del niño",
     description=(
         "Registra la salida, calcula cargos extra por tiempo y marca "
-        "el registro como finalizado si corresponde."
+        "el registro como finalizado si corresponde. Si hay cargo extra, "
+        "'pagos' debe cubrir exactamente el monto recalculado en este momento "
+        "(ver /checkout/cotizacion) o se rechaza con 409."
     ),
 )
 async def checkout(
@@ -131,7 +155,7 @@ async def checkout(
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
 
-    return await create_chekout(conn, detalle_id, body.pulseraTutorId, usuario_id)
+    return await create_chekout(conn, detalle_id, body.pulseraTutorId, usuario_id, body.pagos)
 
 
 @router.get(
@@ -154,6 +178,12 @@ async def estancias_ws(
     token: str = Query(...),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> None:
+    """Canal en tiempo real de estancias: emite estancia_creada/estancia_checkout
+    a los clientes de la sucursal correspondiente (ver app/core/ws_manager.py),
+    para refrescar Control de Acceso sin necesidad de polling.
+
+    El JWT viaja por query param porque el handshake WS nativo del navegador no
+    admite headers custom (no se puede reusar require_permission tal cual)."""
     try:
         current_user = await get_current_user_ws(token, conn)
     except HTTPException:
