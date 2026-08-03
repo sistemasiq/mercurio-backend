@@ -207,4 +207,5 @@ class DesgloseEfectivoDetalle(BaseModel):
 class DetalleArqueoResponse(ArqueoResumen):
     desglose_efectivo: DesgloseEfectivoDetalle | None = None
     balance_por_metodo: list[FilaBalance] = []
+    retiros: list[RetiroParcialResponse] = []
     observaciones: str | None = ""
