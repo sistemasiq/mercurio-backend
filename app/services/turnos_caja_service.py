@@ -30,6 +30,7 @@ from app.repositories.caja_repository import (
     obtener_movimientos_por_metodo,
     crear_retiro_parcial,
     listar_retiros_por_apertura,
+    registrar_movimiento_caja,
     crear_cierre_caja,
     listar_historial_cierres,
     contar_historial_cierres,
@@ -590,15 +591,29 @@ async def crear_retiro(
             "No se pueden registrar retiros mientras el turno está en conteo o cierre."
         )
 
-    row = await crear_retiro_parcial(
-        conn,
-        id_apertura_caja=payload.id_apertura_caja,
-        concepto=payload.concepto.value,
-        tipo_destinatario=payload.tipo_destinatario.value,
-        monto=payload.monto,
-        observaciones=payload.observaciones,
-        creado_por=user_id,
-    )
+    async with conn.transaction():
+        row = await crear_retiro_parcial(
+            conn,
+            id_apertura_caja=payload.id_apertura_caja,
+            concepto=payload.concepto.value,
+            tipo_destinatario=payload.tipo_destinatario.value,
+            monto=payload.monto,
+            observaciones=payload.observaciones,
+            creado_por=user_id,
+        )
+        # retiros_parciales.id es bigint, pero movimientos_caja.referencia_id es uuid —
+        # no hay forma de referenciar la fila del retiro directamente. Se usa el id de la
+        # apertura (siempre uuid válido); para ubicar el retiro exacto, cruzar por
+        # apertura_caja_id + tipo_movimiento='RP' + creado contra retiros_parciales.
+        await registrar_movimiento_caja(
+            conn,
+            id_apertura_caja=payload.id_apertura_caja,
+            tipo_movimiento="RP",
+            id_referencia=payload.id_apertura_caja,
+            id_metodo_pago=None,
+            monto=payload.monto,
+            creado_por=user_id,
+        )
     return RetiroParcialResponse(
         id=str(row["id"]),
         id_apertura_caja=str(row["apertura_caja_id"]),
@@ -649,20 +664,8 @@ async def confirmar_cierre(
         conn, apertura, payload.turno_id
     )
 
-    # RN-VAL-005: si hay diferencia (en efectivo o en cualquier otro método declarado),
-    # las observaciones son obligatorias (mínimo 15 caracteres). Se valida también en
-    # backend porque la API puede llamarse directo, sin pasar por el frontend.
-    hay_diferencia = diferencia_neta != 0 or any(f.diferencia != 0 for f in balance)
-    if hay_diferencia:
-        obs = (payload.observaciones or "").strip()
-        if len(obs) < 15:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": "OBSERVACIONES_REQUERIDAS",
-                    "message": "Las observaciones son obligatorias (mínimo 15 caracteres) cuando existe una diferencia en el balance.",
-                },
-            )
+    # Las observaciones son siempre opcionales, haya o no diferencia — el cajero/admin
+    # las agrega si quiere dejar contexto, pero el sistema no lo exige.
 
     # Crear el registro inmutable en cierre_caja
     cierre = await crear_cierre_caja(
@@ -744,6 +747,23 @@ async def obtener_detalle(
     if sucursal_id and str(cierre["sucursal_id"]) != sucursal_id:
         raise SucursalNoAutorizadaError()
 
+    apertura_caja_id = str(cierre["apertura_caja_id"])
+    apertura = await get_apertura_por_id(conn, apertura_caja_id)
+    _, _, _, balance = await _calcular_balance(conn, apertura, apertura_caja_id)
+    retiros_raw = await listar_retiros_por_apertura(conn, apertura_caja_id)
+    retiros = [
+        RetiroParcialResponse(
+            id=str(r["id"]),
+            id_apertura_caja=str(r["apertura_caja_id"]),
+            concepto=r["concepto"],
+            tipo_destinatario=r["tipo_destinatario"],
+            monto=Decimal(str(r["monto"])),
+            observaciones=r["observaciones"],
+            creado=r["creado"],
+        )
+        for r in retiros_raw
+    ]
+
     return DetalleArqueoResponse(
         id=str(cierre["id"]),
         cajero_nombre=cierre["cajero_nombre"] or "—",
@@ -761,5 +781,6 @@ async def obtener_detalle(
         tipo_cierre=cierre["tipo_cierre"],
         observaciones=cierre["observaciones"] or "",
         desglose_efectivo=DesgloseEfectivoDetalle(total=Decimal(str(cierre["total_declarado"]))),
-        balance_por_metodo=[],
+        balance_por_metodo=balance,
+        retiros=retiros,
     )
