@@ -24,6 +24,9 @@ async def get_activos_by_sucursal_id(
             p.pulsera_rfid AS "pulsera",
             (dr.cantidad * 60) AS "minutosPagados",
             FLOOR(
+                EXTRACT(EPOCH FROM (dr.salida_esperada - dr.entrada)) / 60
+            ) AS "minutosPagados",
+            FLOOR(
                 EXTRACT(EPOCH FROM (NOW() - dr.entrada)) / 60
             ) AS "minutosTranscurridos"
         FROM detalles_registro dr

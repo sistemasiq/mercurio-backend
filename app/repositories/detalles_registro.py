@@ -39,13 +39,13 @@ async def insert_detalle_registro(
     registro_id: UUID,
     nino_id: UUID,
     pulsera_id: UUID,
-    producto_id: UUID,
-    cantidad: int,
-    precio: Decimal,
     parentesco: str,
     entrada: datetime,
     salida_esperada: datetime,
     usuario_id: UUID,
+    cantidad: int = 0,
+    precio: Decimal = Decimal("0.0"),
+    producto_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
