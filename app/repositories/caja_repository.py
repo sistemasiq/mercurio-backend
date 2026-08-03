@@ -438,6 +438,7 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, id_apertura_caja
         SELECT COALESCE(SUM(monto), 0)
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1
+          AND tipo_movimiento <> 'RP'
         """,
         uuid.UUID(id_apertura_caja),
     )
@@ -448,13 +449,18 @@ async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, id_apertura_c
     """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón: movimientos
     con método explícitamente 'Efectivo', o SIN método asignado todavía (comandas no
     integra métodos de pago aún — mientras tanto se asume efectivo, es lo más común
-    para compras de mostrador). Transferencia/tarjeta NO son dinero físico en caja."""
+    para compras de mostrador). Transferencia/tarjeta NO son dinero físico en caja.
+    Los retiros (RP) se excluyen aquí a propósito: ya se registran también en
+    movimientos_caja para trazabilidad/auditoría (PDF, ledger completo), pero el único
+    lugar que los resta del esperado es sumar_retiros_por_apertura (retiros_parciales) —
+    contarlos aquí también los restaría dos veces."""
     val = await conn.fetchval(
         """
         SELECT COALESCE(SUM(m.monto), 0)
         FROM public.movimientos_caja m
         LEFT JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
         WHERE m.apertura_caja_id = $1
+          AND m.tipo_movimiento <> 'RP'
           AND (m.metodo_pago_id IS NULL OR lower(mp.nombre) = 'efectivo')
         """,
         uuid.UUID(id_apertura_caja),
