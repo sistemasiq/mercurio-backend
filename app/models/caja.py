@@ -43,6 +43,7 @@ class TipoMovimientoCaja(str, Enum):
     ESTANCIA = "E"
     ORDEN = "O"
     RESERVACION = "R"
+    RETIRO = "RP"
 
 
 @dataclass
