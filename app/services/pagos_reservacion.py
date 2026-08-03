@@ -49,7 +49,10 @@ async def obtener(conn: asyncpg.Connection, pago_id: UUID) -> PagosReservacionOu
 
 
 async def crear(
-    conn: asyncpg.Connection, body: PagosReservacionCreate, apertura_caja_id: str
+    conn: asyncpg.Connection,
+    body: PagosReservacionCreate,
+    apertura_caja_id: str,
+    creado_por: str | None = None,
 ) -> PagosReservacionOut:
     row = await pagos_reservacion_repository.crear(
         conn,
@@ -66,6 +69,7 @@ async def crear(
         id_referencia=str(row["id"]),
         id_metodo_pago=str(body.metodo_pago_id),
         monto=body.monto,
+        creado_por=creado_por,
     )
     return PagosReservacionOut.model_validate(row)
 
