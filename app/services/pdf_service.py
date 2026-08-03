@@ -106,6 +106,69 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
     c.line(margin, y, width - margin, y)
     y -= 10 * mm
 
+    # ── Desglose por método de pago ─────────────────────────────────────
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin, y, "Desglose por Método de Pago")
+    y -= 9 * mm
+
+    if detalle.balance_por_metodo:
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin, y, "Método")
+        c.drawString(margin + 70 * mm, y, "Esperado (sistema)")
+        c.drawString(margin + 115 * mm, y, "Declarado (cajero)")
+        y -= 6 * mm
+        c.setFont("Helvetica", 9)
+        for fila_balance in detalle.balance_por_metodo:
+            c.drawString(margin, y, fila_balance.label)
+            c.drawString(margin + 70 * mm, y, _fmt_moneda(fila_balance.esperado))
+            c.drawString(margin + 115 * mm, y, _fmt_moneda(fila_balance.declarado))
+            y -= 6 * mm
+    else:
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.grey)
+        c.drawString(margin, y, "Sin movimientos adicionales fuera de efectivo en este turno.")
+        c.setFillColor(colors.black)
+        y -= 6 * mm
+
+    y -= 4 * mm
+    c.line(margin, y, width - margin, y)
+    y -= 10 * mm
+
+    # ── Retiros parciales ────────────────────────────────────────────────
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(margin, y, "Retiros Parciales")
+    y -= 9 * mm
+
+    if detalle.retiros:
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin, y, "Concepto")
+        c.drawString(margin + 60 * mm, y, "Destinatario")
+        c.drawString(margin + 100 * mm, y, "Monto")
+        c.drawString(margin + 130 * mm, y, "Hora")
+        y -= 6 * mm
+        c.setFont("Helvetica", 9)
+        total_retiros = 0.0
+        for retiro in detalle.retiros:
+            c.drawString(margin, y, str(retiro.concepto))
+            c.drawString(margin + 60 * mm, y, str(retiro.tipo_destinatario))
+            c.drawString(margin + 100 * mm, y, _fmt_moneda(retiro.monto))
+            c.drawString(margin + 130 * mm, y, _fmt_fecha(str(retiro.creado)))
+            total_retiros += float(retiro.monto)
+            y -= 6 * mm
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin + 100 * mm, y, _fmt_moneda(total_retiros))
+        y -= 6 * mm
+    else:
+        c.setFont("Helvetica", 9)
+        c.setFillColor(colors.grey)
+        c.drawString(margin, y, "No se registraron retiros parciales en este turno.")
+        c.setFillColor(colors.black)
+        y -= 6 * mm
+
+    y -= 4 * mm
+    c.line(margin, y, width - margin, y)
+    y -= 10 * mm
+
     # ── Observaciones ────────────────────────────────────────────────────
     c.setFont("Helvetica-Bold", 12)
     c.drawString(margin, y, "Observaciones")
