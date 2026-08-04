@@ -5,24 +5,53 @@ from uuid import UUID
 import asyncpg
 
 _SELECT = """
-    SELECT id, sucursal_id, nombre, descripcion, personas_incluidas,
-           precio_base, precio_persona_extra, precio_hora, activo, creado, creado_por,
+    SELECT id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
+           precio_base, precio_pulsera, activo, creado, creado_por,
            modificado, modificado_por
     FROM paquetes
 """
 
 _RETURNING = """
-    id, sucursal_id, nombre, descripcion, personas_incluidas,
-    precio_base, precio_persona_extra, precio_hora, activo, creado, creado_por,
+    id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
+    precio_base, precio_pulsera, activo, creado, creado_por,
     modificado, modificado_por
 """
+
+# Igual que _SELECT pero agregando cuántas veces se ha contratado cada paquete.
+# Se cuentan solo reservaciones vigentes (no canceladas ni dadas de baja) para que
+# el conteo refleje contrataciones reales. 'ultima_contratacion' es la fecha en que
+# se levantó la reservación más reciente; sirve para desempatar paquetes con el mismo
+# número de contrataciones. Queda NULL si el paquete nunca se ha contratado.
+_SELECT_CON_CONTRATACIONES = """
+    SELECT p.id, p.sucursal_id, p.nombre, p.descripcion, p.min_invitados, p.max_invitados,
+           p.precio_base, p.precio_pulsera, p.activo,
+           p.creado, p.creado_por, p.modificado, p.modificado_por,
+           COUNT(r.id) AS contrataciones,
+           MAX(r.creado) AS ultima_contratacion
+    FROM paquetes p
+    LEFT JOIN reservaciones r
+           ON r.paquete_id = p.id
+          AND r.activo = TRUE
+          AND r.estado <> 'cancelada'
+"""
+
+
+# Orden estable: sin esto las tarjetas pueden reordenarse entre peticiones.
+_GROUP_ORDER = " GROUP BY p.id ORDER BY p.creado ASC, p.id ASC"
 
 
 async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[dict[str, Any]]:
     if sucursal_id:
-        rows = await conn.fetch(_SELECT + " WHERE activo = TRUE AND sucursal_id = $1", sucursal_id)
+        rows = await conn.fetch(
+            _SELECT_CON_CONTRATACIONES
+            + " WHERE p.activo = TRUE AND p.sucursal_id = $1"
+            + _GROUP_ORDER,
+            sucursal_id,
+        )
     else:
-        rows = await conn.fetch(_SELECT + " WHERE activo = TRUE")
+        rows = await conn.fetch(
+            _SELECT_CON_CONTRATACIONES + " WHERE p.activo = TRUE" + _GROUP_ORDER
+        )
     return [dict(r) for r in rows]
 
 
@@ -36,26 +65,26 @@ async def crear(
     sucursal_id: UUID,
     nombre: str,
     descripcion: str | None,
-    personas_incluidas: int,
+    min_invitados: int,
+    max_invitados: int,
     precio_base: Decimal,
-    precio_persona_extra: Decimal,
-    precio_hora: Decimal,
+    precio_pulsera: Decimal,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO paquetes
-            (sucursal_id, nombre, descripcion, personas_incluidas,
-             precio_base, precio_persona_extra, precio_hora)
+            (sucursal_id, nombre, descripcion, min_invitados, max_invitados,
+             precio_base, precio_pulsera)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_RETURNING}
         """,
         sucursal_id,
         nombre,
         descripcion,
-        personas_incluidas,
+        min_invitados,
+        max_invitados,
         precio_base,
-        precio_persona_extra,
-        precio_hora,
+        precio_pulsera,
     )
     return dict(row)
 
