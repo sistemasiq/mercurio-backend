@@ -148,6 +148,116 @@ async def get_primer_turno(conn: asyncpg.Connection) -> dict | None:
 
 # ── Apertura de Caja ──────────────────────────────────────────────────────────
 
+# ── Cajas: CRUD administrativo ───────────────────────────────────────────────
+
+async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT id, nombre, numero, activo
+        FROM public.cajas
+        WHERE sucursal_id = $1
+        ORDER BY numero ASC, nombre ASC
+        """,
+        uuid.UUID(sucursal_id),
+    )
+    return [{"id": str(r["id"]), "nombre": r["nombre"], "numero": r["numero"], "activo": r["activo"]} for r in rows]
+
+
+async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict | None:
+    row = await conn.fetchrow(
+        """
+        SELECT id, sucursal_id, nombre, numero, activo
+        FROM public.cajas
+        WHERE id = $1
+        """,
+        uuid.UUID(caja_id),
+    )
+    if row is None:
+        return None
+    return {"id": str(row["id"]), "sucursal_id": str(row["sucursal_id"]), "nombre": row["nombre"], "numero": row["numero"], "activo": row["activo"]}
+
+
+async def crear_caja_admin(
+    conn: asyncpg.Connection,
+    sucursal_id: str,
+    nombre: str,
+    numero: int,
+    creado_por: str | None = None,
+) -> dict:
+    now = get_mexico_now()
+    codigo = f"CAJA {numero:02d}"
+    row = await conn.fetchrow(
+        """
+        INSERT INTO public.cajas (id, sucursal_id, codigo, nombre, numero, activo, creado, creado_por)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, TRUE, $5, $6)
+        RETURNING id, nombre, numero, activo
+        """,
+        uuid.UUID(sucursal_id),
+        codigo,
+        nombre,
+        numero,
+        now,
+        uuid.UUID(creado_por) if creado_por else None,
+    )
+    return {"id": str(row["id"]), "nombre": row["nombre"], "numero": row["numero"], "activo": row["activo"]}
+
+
+async def actualizar_caja_admin(
+    conn: asyncpg.Connection,
+    caja_id: str,
+    nombre: str | None = None,
+    numero: int | None = None,
+    activo: bool | None = None,
+    modificado_por: str | None = None,
+) -> dict | None:
+    now = get_mexico_now()
+    row = await conn.fetchrow(
+        """
+        UPDATE public.cajas
+        SET
+            nombre     = COALESCE($2, nombre),
+            numero     = COALESCE($3, numero),
+            codigo     = CASE WHEN $3 IS NOT NULL THEN 'CAJA ' || LPAD($3::text, 2, '0') ELSE codigo END,
+            activo     = COALESCE($4, activo),
+            modificado = $5,
+            modificado_por = $6
+        WHERE id = $1
+        RETURNING id, nombre, numero, activo
+        """,
+        uuid.UUID(caja_id),
+        nombre,
+        numero,
+        activo,
+        now,
+        uuid.UUID(modificado_por) if modificado_por else None,
+    )
+    if row is None:
+        return None
+    return {"id": str(row["id"]), "nombre": row["nombre"], "numero": int(row["numero"]), "activo": row["activo"]}
+
+
+async def eliminar_caja_admin(
+    conn: asyncpg.Connection,
+    caja_id: str,
+    modificado_por: str | None = None,
+) -> bool:
+    """Borrado lógico: activo = FALSE. Devuelve True si la fila existía."""
+    now = get_mexico_now()
+    result = await conn.execute(
+        """
+        UPDATE public.cajas
+        SET activo = FALSE, modificado = $2, modificado_por = $3
+        WHERE id = $1
+        """,
+        uuid.UUID(caja_id),
+        now,
+        uuid.UUID(modificado_por) if modificado_por else None,
+    )
+    return result != "UPDATE 0"
+
+
+# ── Apertura de Caja ──────────────────────────────────────────────────────────
+
 async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, cajero_id: str) -> dict | None:
     row = await conn.fetchrow(
         """

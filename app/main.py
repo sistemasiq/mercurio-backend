@@ -9,11 +9,13 @@ from starlette.middleware.base import RequestResponseEndpoint
 from app.api.routers import (
     auth,
     branches,
+    cajas_admin,
     comandas,
     compras,
     documentos,
     estancias,
     extras,
+    horarios,
     insumos,
     metodos_pago,
     movimientos_inventario,
@@ -92,6 +94,8 @@ app.include_router(estancias.router)
 app.include_router(pulseras.router)
 app.include_router(documentos.router)
 app.include_router(turnos_caja.router)
+app.include_router(horarios.router)
+app.include_router(cajas_admin.router)
 app.include_router(unidades_medida.router)
 app.include_router(proveedores.router)
 app.include_router(insumos.router)
