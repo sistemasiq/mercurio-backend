@@ -14,7 +14,6 @@ import asyncpg
 
 from app.core.utils import get_mexico_now
 
-
 # ── Catálogos: Cajas y Turnos ─────────────────────────────────────────────────
 
 async def get_caja_por_codigo(conn: asyncpg.Connection, sucursal_id: str, codigo: str) -> dict | None:
@@ -258,7 +257,7 @@ async def eliminar_caja_admin(
 
 # ── Apertura de Caja ──────────────────────────────────────────────────────────
 
-async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, cajero_id: str) -> dict | None:
+async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, id_usuario: str) -> dict | None:
     row = await conn.fetchrow(
         """
         SELECT
@@ -268,9 +267,8 @@ async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, cajero_id: s
             a.turno_id,
             a.fondo_inicial,
             a.estado,
-            a.conteo_json,
             a.monto_declarado,
-            a.token_admin_jti,
+            a.conteo_json,
             a.creado AS fecha_apertura,
             c.nombre AS caja_nombre,
             c.codigo AS terminal,
@@ -285,7 +283,7 @@ async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, cajero_id: s
         ORDER BY a.creado DESC
         LIMIT 1
         """,
-        uuid.UUID(cajero_id),
+        uuid.UUID(id_usuario),
     )
     return dict(row) if row else None
 
@@ -300,6 +298,8 @@ async def get_apertura_activa_por_caja(conn: asyncpg.Connection, caja_id: str) -
             a.turno_id,
             a.fondo_inicial,
             a.estado,
+            a.monto_declarado,
+            a.conteo_json,
             a.creado AS fecha_apertura
         FROM public.apertura_caja a
         WHERE a.caja_id = $1 AND a.estado IN ('ABIERTA', 'EN_CORTE')
@@ -320,8 +320,8 @@ async def get_apertura_por_id(conn: asyncpg.Connection, apertura_id: str) -> dic
             a.turno_id,
             a.fondo_inicial,
             a.estado,
-            a.conteo_json,
             a.monto_declarado,
+            a.conteo_json,
             a.token_admin_jti,
             a.creado AS fecha_apertura,
             c.nombre AS caja_nombre,
@@ -438,6 +438,61 @@ async def invalidar_token_admin(conn: asyncpg.Connection, apertura_id: str) -> N
     )
 
 
+async def actualizar_conteo_apertura(
+    conn: asyncpg.Connection,
+    id_apertura: str,
+    monto_declarado: Decimal,
+    conteo_json: str,
+) -> None:
+    """Persiste la declaración física del cajero (blind count) sobre la apertura activa."""
+    now = get_mexico_now()
+    await conn.execute(
+        """
+        UPDATE public.apertura_caja
+        SET monto_declarado = $1, conteo_json = $2, modificado = $3
+        WHERE id = $4
+        """,
+        monto_declarado,
+        conteo_json,
+        now,
+        uuid.UUID(id_apertura),
+    )
+
+
+async def resetear_conteo_apertura(conn: asyncpg.Connection, id_apertura: str) -> None:
+    """Limpia el conteo declarado (usado al cancelar) para permitir un reintento limpio."""
+    now = get_mexico_now()
+    await conn.execute(
+        """
+        UPDATE public.apertura_caja
+        SET monto_declarado = NULL, conteo_json = NULL, modificado = $1
+        WHERE id = $2
+        """,
+        now,
+        uuid.UUID(id_apertura),
+    )
+
+
+async def actualizar_admin_autorizacion(conn: asyncpg.Connection, id_apertura: str, id_admin: str) -> None:
+    """Registra qué administrador autorizó la revisión de esta apertura.
+
+    Reutiliza la columna existente `token_admin_jti` (uuid, sin uso previo) para guardar
+    el id del administrador validado en /revision-admin, ya que ese dato nunca viajaba
+    hasta /confirmar y el cierre terminaba atribuyéndose al propio cajero.
+    """
+    now = get_mexico_now()
+    await conn.execute(
+        """
+        UPDATE public.apertura_caja
+        SET token_admin_jti = $1, modificado = $2
+        WHERE id = $3
+        """,
+        uuid.UUID(id_admin),
+        now,
+        uuid.UUID(id_apertura),
+    )
+
+
 # ── Retiros Parciales ─────────────────────────────────────────────────────────
 
 async def crear_retiro_parcial(
@@ -497,13 +552,18 @@ async def listar_retiros_por_apertura(conn: asyncpg.Connection, apertura_caja_id
 
 async def registrar_movimiento_caja(
     conn: asyncpg.Connection,
-    apertura_caja_id: str,
+    id_apertura_caja: str,
     tipo_movimiento: str,
-    referencia_id: str,
-    metodo_pago_id: str,
+    id_referencia: str,
+    id_metodo_pago: str | None,
     monto: Decimal,
     creado_por: str | None = None,
 ) -> dict:
+    """
+    id_metodo_pago es temporalmente opcional: el módulo de ventas/comandas aún no integra
+    métodos de pago, así que puede registrar movimientos con metodo_pago_id=NULL mientras
+    tanto. Cuando esté integrado, volver a exigirlo (columna ya vuelta NOT NULL en BD).
+    """
     now = get_mexico_now()
     row = await conn.fetchrow(
         """
@@ -512,10 +572,10 @@ async def registrar_movimiento_caja(
         VALUES ($1, $2::tipo_movimiento_caja, $3, $4, $5, $6, $7)
         RETURNING id, apertura_caja_id, tipo_movimiento, referencia_id, metodo_pago_id, monto, creado
         """,
-        uuid.UUID(apertura_caja_id),
+        uuid.UUID(id_apertura_caja),
         tipo_movimiento,
-        uuid.UUID(referencia_id),
-        uuid.UUID(metodo_pago_id),
+        uuid.UUID(id_referencia),
+        uuid.UUID(id_metodo_pago) if id_metodo_pago else None,
         monto,
         now,
         uuid.UUID(creado_por) if creado_por else None,
@@ -554,14 +614,38 @@ async def obtener_metodos_con_movimientos(conn: asyncpg.Connection, apertura_caj
     return [dict(r) for r in rows]
 
 
-async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+async def sumar_total_ventas_apertura(conn: asyncpg.Connection, id_apertura_caja: str) -> Decimal:
     val = await conn.fetchval(
         """
         SELECT COALESCE(SUM(monto), 0)
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1
+          AND tipo_movimiento <> 'RP'
         """,
-        uuid.UUID(apertura_caja_id),
+        uuid.UUID(id_apertura_caja),
+    )
+    return Decimal(str(val))
+
+
+async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, id_apertura_caja: str) -> Decimal:
+    """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón: movimientos
+    con método explícitamente 'Efectivo', o SIN método asignado todavía (comandas no
+    integra métodos de pago aún — mientras tanto se asume efectivo, es lo más común
+    para compras de mostrador). Transferencia/tarjeta NO son dinero físico en caja.
+    Los retiros (RP) se excluyen aquí a propósito: ya se registran también en
+    movimientos_caja para trazabilidad/auditoría (PDF, ledger completo), pero el único
+    lugar que los resta del esperado es sumar_retiros_por_apertura (retiros_parciales) —
+    contarlos aquí también los restaría dos veces."""
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(m.monto), 0)
+        FROM public.movimientos_caja m
+        LEFT JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
+        WHERE m.apertura_caja_id = $1
+          AND m.tipo_movimiento <> 'RP'
+          AND (m.metodo_pago_id IS NULL OR lower(mp.nombre) = 'efectivo')
+        """,
+        uuid.UUID(id_apertura_caja),
     )
     return Decimal(str(val))
 
@@ -635,6 +719,7 @@ async def listar_historial_cierres(
             cc.monto_cierre AS total_declarado,
             cc.monto_sistema AS total_esperado,
             (cc.monto_cierre - cc.monto_sistema) AS diferencia_neta,
+            cc.tipo_cierre,
             c.codigo AS terminal,
             COALESCE(s.nombre, 'Sucursal Central') AS sucursal_nombre,
             COALESCE(u_cajero.nombre_completo, u_cajero.email, 'Cajero') AS cajero_nombre,
@@ -731,7 +816,9 @@ async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> di
             cc.monto_cierre AS total_declarado,
             cc.monto_sistema AS total_esperado,
             (cc.monto_cierre - cc.monto_sistema) AS diferencia_neta,
+            cc.tipo_cierre,
             c.codigo AS terminal,
+            c.sucursal_id,
             COALESCE(s.nombre, 'Sucursal Central') AS sucursal_nombre,
             COALESCE(u_cajero.nombre_completo, u_cajero.email, 'Cajero') AS cajero_nombre,
             COALESCE(u_admin.nombre_completo, u_admin.email, 'Administrador') AS admin_nombre,

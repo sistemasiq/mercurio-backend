@@ -41,9 +41,9 @@ async def obtener_reservacion(
 async def crear_reservacion(
     body: ReservacionesCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("reservaciones:crear")),
+    current_user: TokenData = Depends(require_permission("reservaciones:crear")),
 ) -> ReservacionesOut:
-    return await svc.crear(conn, body)
+    return await svc.crear(conn, body, current_user.sub)
 
 
 @router.patch("/{reservacion_id}", response_model=ReservacionesOut)

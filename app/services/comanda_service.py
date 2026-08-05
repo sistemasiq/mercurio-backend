@@ -16,6 +16,7 @@ from app.core.scope import sucursal_scope
 from app.core.ws_manager import manager
 from app.models.comanda import Comanda, DetalleComanda
 from app.repositories import comanda_repository, producto_repository
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate
 from app.services import inventario_service, lealtad_service
@@ -116,11 +117,19 @@ async def expandir_detalles_comanda(
 
 
 async def crear_comanda(
-    conn: asyncpg.Connection, comanda_in: ComandaCreate, current_user: TokenData
+    conn: asyncpg.Connection,
+    comanda_in: ComandaCreate,
+    current_user: TokenData,
+    apertura_caja_id: str,
 ) -> Comanda:
     """Crea una comanda, descuenta el stock de los insumos de la receta de
-    cada producto vendido (aborta todo si alguno no alcanza), la reexpande
-    desde BD y notifica a los clientes conectados."""
+    cada producto vendido (aborta todo si alguno no alcanza), registra el
+    movimiento de venta en la caja del turno activo, la reexpande desde BD
+    y notifica a los clientes conectados.
+
+    metodo_pago_id va en None temporalmente: el módulo de métodos de pago para
+    comandas todavía no está integrado (columna nullable a propósito mientras tanto).
+    """
     creado_por = str(UUID(current_user.sub))
 
     async with conn.transaction():
@@ -133,6 +142,15 @@ async def crear_comanda(
             comanda_in.detalles_comanda,
             comanda.id,
             UUID(current_user.sub),
+        )
+        await registrar_movimiento_caja(
+            conn,
+            id_apertura_caja=apertura_caja_id,
+            tipo_movimiento="O",
+            id_referencia=comanda.id,
+            id_metodo_pago=None,
+            monto=comanda.total_final,
+            creado_por=creado_por,
         )
 
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)

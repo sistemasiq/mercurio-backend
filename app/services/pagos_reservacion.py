@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from app.core.scope import sucursal_scope
 from app.exceptions import NoEncontrado
 from app.repositories import pagos_reservacion_repository, reservaciones_repository
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.schemas.auth import TokenData
 from app.schemas.pagos_reservacion import (
     PagosReservacionCreate,
@@ -47,7 +48,12 @@ async def obtener(conn: asyncpg.Connection, pago_id: UUID) -> PagosReservacionOu
     return PagosReservacionOut.model_validate(row)
 
 
-async def crear(conn: asyncpg.Connection, body: PagosReservacionCreate) -> PagosReservacionOut:
+async def crear(
+    conn: asyncpg.Connection,
+    body: PagosReservacionCreate,
+    apertura_caja_id: str,
+    creado_por: str | None = None,
+) -> PagosReservacionOut:
     row = await pagos_reservacion_repository.crear(
         conn,
         reservacion_id=body.reservacion_id,
@@ -55,6 +61,15 @@ async def crear(conn: asyncpg.Connection, body: PagosReservacionCreate) -> Pagos
         monto=body.monto,
         fecha_pago=datetime.now(UTC),
         notas=body.notas,
+    )
+    await registrar_movimiento_caja(
+        conn,
+        id_apertura_caja=apertura_caja_id,
+        tipo_movimiento="R",
+        id_referencia=str(row["id"]),
+        id_metodo_pago=str(body.metodo_pago_id),
+        monto=body.monto,
+        creado_por=creado_por,
     )
     return PagosReservacionOut.model_validate(row)
 

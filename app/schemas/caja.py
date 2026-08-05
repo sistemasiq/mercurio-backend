@@ -10,24 +10,22 @@ from pydantic import BaseModel, Field
 
 from app.models.caja import (
     ConceptoRetiro,
-    EstadoAperturaCaja,
     TipoCierreEnum,
     TipoDestinatario,
-    TipoMovimientoCaja,
 )
 
 # ── Catálogos: Caja y Turno ─────────────────────────────────────────────────
 
 
 class CajaCreate(BaseModel):
-    sucursal_id: str
+    id_sucursal: str
     codigo: str
     nombre: str
 
 
 class CajaResponse(BaseModel):
     id: str
-    sucursal_id: str
+    id_sucursal: str
     codigo: str
     nombre: str
     creado: datetime | None = None
@@ -51,10 +49,14 @@ class TurnoResponse(BaseModel):
 
 class AbrirTurnoPayload(BaseModel):
     fondo_inicial: Decimal = Field(..., ge=0)
-    terminal: str | None = "CAJA 01"
+    # max_length=20 coincide con cajas.codigo VARCHAR(20) en BD — sin esto, un valor
+    # más largo tronaba con un 500 crudo de Postgres en vez de un 422 limpio.
+    terminal: str | None = Field(default="CAJA 01", max_length=20)
     observaciones_apertura: str | None = None
-    caja_id: str | None = None
-    turno_id: str | None = None
+    id_caja: str | None = None
+    id_turno: str | None = None
+    # Solo relevante para AdministradorSistema, que no tiene sucursal propia en el JWT.
+    sucursal_id: str | None = None
 
 
 class MovimientoResumen(BaseModel):
@@ -81,7 +83,7 @@ class TurnoActivoResponse(BaseModel):
 
 
 class RetiroParcialCreate(BaseModel):
-    apertura_caja_id: str
+    id_apertura_caja: str
     concepto: ConceptoRetiro = ConceptoRetiro.GASTOS_VARIOS
     tipo_destinatario: TipoDestinatario
     monto: Decimal = Field(..., gt=0)
@@ -90,7 +92,7 @@ class RetiroParcialCreate(BaseModel):
 
 class RetiroParcialResponse(BaseModel):
     id: str
-    apertura_caja_id: str
+    id_apertura_caja: str
     concepto: ConceptoRetiro
     tipo_destinatario: TipoDestinatario
     monto: Decimal
@@ -131,6 +133,7 @@ class RevisionAdminPayload(BaseModel):
     turno_id: str
     admin_email: str
     admin_password: str
+    pin_hash: str | None = None
 
 
 class FilaBalance(BaseModel):
@@ -148,7 +151,6 @@ class RevisionAdminResponse(BaseModel):
     total_declarado: Decimal
     diferencia_neta: Decimal
     balance_por_metodo: list[FilaBalance]
-    temporal_auth_token: str
 
 
 # ── Confirmación de Cierre ──────────────────────────────────────────────────
@@ -156,7 +158,6 @@ class RevisionAdminResponse(BaseModel):
 
 class ConfirmarCierrePayload(BaseModel):
     turno_id: str
-    admin_token: str
     observaciones: str | None = None
     tipo_cierre: TipoCierreEnum = TipoCierreEnum.NORMAL
 
@@ -194,6 +195,7 @@ class ArqueoResumen(BaseModel):
     tiene_observaciones: bool = False
     pdf_url: str | None = None
     admin_nombre: str | None = None
+    tipo_cierre: str = "NORMAL"
 
 
 class HistorialArqueosResponse(BaseModel):
@@ -212,6 +214,7 @@ class DesgloseEfectivoDetalle(BaseModel):
 class DetalleArqueoResponse(ArqueoResumen):
     desglose_efectivo: DesgloseEfectivoDetalle | None = None
     balance_por_metodo: list[FilaBalance] = []
+    retiros: list[RetiroParcialResponse] = []
     observaciones: str | None = ""
 
 
