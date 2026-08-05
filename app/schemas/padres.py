@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PadreAuthRequest(BaseModel):
-    token: str
+    code: str
 
 
 class SucursalInfo(BaseModel):

@@ -14,12 +14,12 @@ async def auth_padre(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> PadreDashboardResponse:
     try:
-        return await get_padre_dashboard(conn, body.token)
+        return await get_padre_dashboard(conn, body.code)
     except TokenAccesoInvalido:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": "TOKEN_INVALIDO",
-                "message": "El token de acceso no es válido o ha expirado.",
+                "message": "El token de acceso no es válido o está mal formado.",
             },
         )

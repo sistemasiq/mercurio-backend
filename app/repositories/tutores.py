@@ -10,6 +10,7 @@ class TutorRecord(TypedDict):
     id: UUID
     nombreCompleto: str
     telefono: str
+    sucursal_id: UUID
 
 
 def _tutor_row(row: asyncpg.Record) -> TutorRecord:
@@ -17,13 +18,14 @@ def _tutor_row(row: asyncpg.Record) -> TutorRecord:
         "id": row["id"],
         "nombreCompleto": row["nombreCompleto"],
         "telefono": row["telefono"],
+        "sucursal_id": row["sucursal_id"],
     }
 
 
 async def get_tutor_by_id(conn: asyncpg.Connection, tutor_id: UUID) -> TutorRecord | None:
     row = await conn.fetchrow(
         """
-        SELECT id, nombre_completo AS "nombreCompleto", telefono
+        SELECT id, nombre_completo AS "nombreCompleto", telefono, sucursal_id
         FROM tutores
         WHERE id = $1 AND activo = TRUE
         """,
@@ -37,7 +39,7 @@ async def get_tutor_by_phone(
 ) -> TutorRecord | None:
     row = await conn.fetchrow(
         """
-       SELECT id, nombre_completo AS "nombreCompleto", telefono
+       SELECT id, nombre_completo AS "nombreCompleto", telefono, sucursal_id
        FROM tutores
        WHERE telefono = $1 AND sucursal_id = $2 AND activo = TRUE
    """,
