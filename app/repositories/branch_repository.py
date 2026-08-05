@@ -160,7 +160,7 @@ async def update_sucursal(
         SET nombre = $1, direccion = $2, telefono = $3, correo = $4,
             clave = $5,
             modificado = NOW(), modificado_por = $6::uuid
-        WHERE id = $7::uuid AND activo = TRUE
+        WHERE id = $7::uuid
         """,
         nombre,  # $1
         direccion,  # $2

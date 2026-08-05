@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, status
 import app.services.reservaciones as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
-from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
+from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate, EventoDelDiaOut
 
 router = APIRouter(prefix="/api/reservaciones", tags=["Reservaciones"])
 
@@ -15,10 +16,17 @@ router = APIRouter(prefix="/api/reservaciones", tags=["Reservaciones"])
 @router.get("", response_model=list[ReservacionesOut])
 async def listar_reservaciones(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("reservaciones:listar")),
+    current_user: TokenData = Depends(require_permission("reservaciones:listar")),
 ) -> list[ReservacionesOut]:
-    return await svc.listar(conn)
+    return await svc.listar(conn, sucursal_scope(current_user))
 
+@router.get("/evento-cercano/{sucursal_id}", response_model=EventoDelDiaOut | None)
+async def obtener_evento_cercano(
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reservaciones:ver")),
+) -> EventoDelDiaOut:
+    return await svc.obtener_evento_cercano(conn, sucursal_id)
 
 @router.get("/{reservacion_id}", response_model=ReservacionesOut)
 async def obtener_reservacion(

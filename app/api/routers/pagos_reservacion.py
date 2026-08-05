@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, status
 import app.services.pagos_reservacion as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.pagos_reservacion import (
     PagosReservacionCreate,
@@ -19,18 +20,18 @@ router = APIRouter(prefix="/api/pagos-reservacion", tags=["Pagos de Reservación
 @router.get("", response_model=list[PagosReservacionOut])
 async def listar_pagos(
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
+    current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> list[PagosReservacionOut]:
-    return await svc.listar_todos(conn)
+    return await svc.listar_todos(conn, sucursal_scope(current_user))
 
 
 @router.get("/reservacion/{reservacion_id}", response_model=list[PagosReservacionOut])
 async def listar_pagos_reservacion(
     reservacion_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
+    current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
 ) -> list[PagosReservacionOut]:
-    return await svc.listar_por_reservacion(conn, reservacion_id)
+    return await svc.listar_por_reservacion(conn, reservacion_id, current_user)
 
 
 @router.get("/{pago_id}", response_model=PagosReservacionOut)

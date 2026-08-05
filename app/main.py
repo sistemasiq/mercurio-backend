@@ -17,6 +17,7 @@ from app.api.routers import (
     extras,
     horarios,
     insumos,
+    lealtad,
     metodos_pago,
     movimientos_inventario,
     pagos,
@@ -103,3 +104,4 @@ app.include_router(presentaciones_insumo.router)
 app.include_router(producto_insumos.router)
 app.include_router(movimientos_inventario.router)
 app.include_router(compras.router)
+app.include_router(lealtad.router)

@@ -2,9 +2,12 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
+from fastapi import HTTPException, status
 
+from app.core.scope import sucursal_scope
 from app.exceptions import NoEncontrado
-from app.repositories import pagos_reservacion_repository
+from app.repositories import pagos_reservacion_repository, reservaciones_repository
+from app.schemas.auth import TokenData
 from app.schemas.pagos_reservacion import (
     PagosReservacionCreate,
     PagosReservacionOut,
@@ -12,14 +15,27 @@ from app.schemas.pagos_reservacion import (
 )
 
 
-async def listar_todos(conn: asyncpg.Connection) -> list[PagosReservacionOut]:
-    rows = await pagos_reservacion_repository.listar_todos(conn)
+async def listar_todos(
+    conn: asyncpg.Connection, scope: str | None = None
+) -> list[PagosReservacionOut]:
+    rows = await pagos_reservacion_repository.listar_todos(conn, scope)
     return [PagosReservacionOut.model_validate(r) for r in rows]
 
 
 async def listar_por_reservacion(
-    conn: asyncpg.Connection, reservacion_id: UUID
+    conn: asyncpg.Connection, reservacion_id: UUID, current_user: TokenData
 ) -> list[PagosReservacionOut]:
+    reservacion = await reservaciones_repository.obtener(conn, reservacion_id)
+    if not reservacion:
+        raise NoEncontrado("Reservación")
+
+    scope = sucursal_scope(current_user)
+    if scope is not None and str(reservacion["sucursal_id"]) != scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puede consultar pagos de reservaciones de otra sucursal.",
+        )
+
     rows = await pagos_reservacion_repository.listar_por_reservacion(conn, reservacion_id)
     return [PagosReservacionOut.model_validate(r) for r in rows]
 

@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user_ws, require_permission, require_role
 from app.core.database import get_db
+from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
 from app.schemas.comanda import ComandaCreate, ComandaModifyRequest
@@ -119,7 +120,7 @@ async def cambiar_estado(
             detail="Comanda no encontrada",
         )
 
-    scope = comanda_service.sucursal_scope(current_user)
+    scope = sucursal_scope(current_user)
     canal = scope if scope is not None else CANAL_GLOBAL
 
     await manager.broadcast(
@@ -163,7 +164,7 @@ async def modificar_detalles(
             detail="La comanda no existe o no está en estado Pendiente.",
         )
 
-    scope = comanda_service.sucursal_scope(current_user)
+    scope = sucursal_scope(current_user)
     canal = scope if scope is not None else CANAL_GLOBAL
 
     await manager.broadcast(
@@ -195,7 +196,7 @@ async def comandas_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    scope = comanda_service.sucursal_scope(current_user)
+    scope = sucursal_scope(current_user)
     canal = scope if scope is not None else CANAL_GLOBAL
 
     await manager.connect(canal, websocket)
