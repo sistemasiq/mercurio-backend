@@ -20,6 +20,6 @@ async def auth_padre(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": "TOKEN_INVALIDO",
-                "message": "El token de acceso no es válido o está mal formado.",
+                "message": "El código de acceso no es válido o está mal formado.",
             },
         )

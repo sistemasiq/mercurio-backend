@@ -15,6 +15,7 @@ from app.schemas.padres import (
     SucursalInfo,
     TutorInfo,
 )
+from app.services.permission_service import get_permissions
 
 
 class TokenAccesoInvalido(Exception):
@@ -39,7 +40,7 @@ async def _get_hijos_visita(
             dr.salida AT TIME ZONE 'America/Mexico_City' AS "horaSalida",
             CASE
                 WHEN dr.salida IS NULL
-                THEN FLOOR(EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'America/Mexico_City' - dr.entrada)) / 60)::int
+                THEN FLOOR(EXTRACT(EPOCH FROM (NOW() - dr.entrada)) / 60)::int
                 ELSE FLOOR(EXTRACT(EPOCH FROM (dr.salida - dr.entrada)) / 60)::int
             END AS "minutosTranscurridos",
             (dr.cantidad * 60)::int AS "minutosPagados",
@@ -96,9 +97,11 @@ async def get_padre_dashboard(
     access_token = create_access_token(
         payload={
             "sub": str(registro_id),
+            "email": f"{tutor['telefono']}@tutor.woowkids.local",
             "tutor_id": str(tutor["id"]),
-            "sucursal_id": str(sucursal["id"]),
+            "branch_id": str(sucursal["id"]),
             "role": "PadreVisor",
+            "permissions": get_permissions("PadreVisor"),
         },
         expires_delta=expires_delta,
     )
