@@ -154,11 +154,13 @@ async def checkout(
     body: CheckoutRequest,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:checkout")),
-    __: str = Depends(apertura_operando_id),
+    apertura_id: str = Depends(apertura_operando_id),
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
 
-    return await create_chekout(conn, detalle_id, body.pulseraTutorId, usuario_id, body.pagos)
+    return await create_chekout(
+        conn, detalle_id, body.pulseraTutorId, usuario_id, body.pagos, apertura_id
+    )
 
 
 @router.get(

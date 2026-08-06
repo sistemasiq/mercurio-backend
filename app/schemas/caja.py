@@ -18,14 +18,14 @@ from app.models.caja import (
 
 
 class CajaCreate(BaseModel):
-    id_sucursal: str
+    sucursal_id: str
     codigo: str
     nombre: str
 
 
 class CajaResponse(BaseModel):
     id: str
-    id_sucursal: str
+    sucursal_id: str
     codigo: str
     nombre: str
     creado: datetime | None = None
@@ -53,8 +53,8 @@ class AbrirTurnoPayload(BaseModel):
     # más largo tronaba con un 500 crudo de Postgres en vez de un 422 limpio.
     terminal: str | None = Field(default="CAJA 01", max_length=20)
     observaciones_apertura: str | None = None
-    id_caja: str | None = None
-    id_turno: str | None = None
+    caja_id: str | None = None
+    turno_id: str | None = None
     # Solo relevante para AdministradorSistema, que no tiene sucursal propia en el JWT.
     sucursal_id: str | None = None
 
@@ -83,7 +83,7 @@ class TurnoActivoResponse(BaseModel):
 
 
 class RetiroParcialCreate(BaseModel):
-    id_apertura_caja: str
+    apertura_caja_id: str
     concepto: ConceptoRetiro = ConceptoRetiro.GASTOS_VARIOS
     tipo_destinatario: TipoDestinatario
     monto: Decimal = Field(..., gt=0)
@@ -92,7 +92,7 @@ class RetiroParcialCreate(BaseModel):
 
 class RetiroParcialResponse(BaseModel):
     id: str
-    id_apertura_caja: str
+    apertura_caja_id: str
     concepto: ConceptoRetiro
     tipo_destinatario: TipoDestinatario
     monto: Decimal

@@ -64,10 +64,10 @@ async def crear(
     )
     await registrar_movimiento_caja(
         conn,
-        id_apertura_caja=apertura_caja_id,
+        apertura_caja_id=apertura_caja_id,
         tipo_movimiento="R",
-        id_referencia=str(row["id"]),
-        id_metodo_pago=str(body.metodo_pago_id),
+        referencia_id=str(row["id"]),
+        metodo_pago_id=str(body.metodo_pago_id),
         monto=body.monto,
         creado_por=creado_por,
     )

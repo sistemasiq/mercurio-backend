@@ -8,6 +8,7 @@ import asyncpg
 from fastapi import HTTPException
 
 from app.core.ws_manager import manager
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.repositories.cargos_extra_estancia import make_extra_charge
 from app.repositories.detalles_registro import (
     count_detalles_registro_abiertos,
@@ -79,6 +80,7 @@ async def create_chekout(
     pulsera_tutor_id: UUID,
     usuario_id: UUID,
     pagos: list[PagoIn],
+    apertura_caja_id: str,
 ) -> dict[str, Any]:
     async with conn.transaction():
         now = datetime.now(UTC)
@@ -141,6 +143,15 @@ async def create_chekout(
                     pago.metodoPagoId,
                     pago.monto,
                     usuario_id,
+                )
+                await registrar_movimiento_caja(
+                    conn,
+                    apertura_caja_id=apertura_caja_id,
+                    tipo_movimiento="E",
+                    referencia_id=str(detalle["registros_id"]),
+                    metodo_pago_id=str(pago.metodoPagoId),
+                    monto=Decimal(str(pago.monto)),
+                    creado_por=str(usuario_id),
                 )
 
         abiertos = await count_detalles_registro_abiertos(conn, detalle["registros_id"])

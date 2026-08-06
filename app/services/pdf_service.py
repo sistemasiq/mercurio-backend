@@ -6,8 +6,10 @@ a partir del detalle ya consolidado de un cierre_caja.
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 
+import pytz
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import mm
@@ -15,14 +17,24 @@ from reportlab.pdfgen import canvas
 
 from app.schemas.caja import DetalleArqueoResponse
 
+_MEXICO_TZ = pytz.timezone("America/Mexico_City")
+
 
 def _fmt_moneda(valor) -> str:
     return f"$ {float(valor):,.2f}"
 
 
 def _fmt_fecha(valor: str) -> str:
-    # Los timestamps llegan como string "YYYY-MM-DD HH:MM:SS.ffffff+00:00" desde asyncpg/str()
-    return valor.split(".")[0].replace("T", " ") if valor else "—"
+    # Los timestamps llegan como string "YYYY-MM-DD HH:MM:SS.ffffff+00:00" (UTC) desde
+    # asyncpg/str(). Antes solo se recortaban los microsegundos sin convertir de zona
+    # horaria, así que el PDF mostraba la hora en UTC en vez de hora de México — 6 horas
+    # adelantada respecto a la tabla de arqueos (que sí convierte al renderizar en el navegador).
+    if not valor:
+        return "—"
+    dt = datetime.fromisoformat(valor)
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(_MEXICO_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
@@ -149,8 +161,8 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         c.setFont("Helvetica", 9)
         total_retiros = 0.0
         for retiro in detalle.retiros:
-            c.drawString(margin, y, str(retiro.concepto))
-            c.drawString(margin + 60 * mm, y, str(retiro.tipo_destinatario))
+            c.drawString(margin, y, retiro.concepto.value)
+            c.drawString(margin + 60 * mm, y, retiro.tipo_destinatario.value)
             c.drawString(margin + 100 * mm, y, _fmt_moneda(retiro.monto))
             c.drawString(margin + 130 * mm, y, _fmt_fecha(str(retiro.creado)))
             total_retiros += float(retiro.monto)

@@ -32,10 +32,10 @@ async def pago_create_service(
             )
             await registrar_movimiento_caja(
                 conn,
-                id_apertura_caja=apertura_caja_id,
+                apertura_caja_id=apertura_caja_id,
                 tipo_movimiento="E",
-                id_referencia=str(registro_id),
-                id_metodo_pago=str(pago.metodoPagoId),
+                referencia_id=str(registro_id),
+                metodo_pago_id=str(pago.metodoPagoId),
                 monto=Decimal(str(pago.monto)),
                 creado_por=str(usuario_id),
             )

@@ -145,10 +145,10 @@ async def crear_comanda(
         )
         await registrar_movimiento_caja(
             conn,
-            id_apertura_caja=apertura_caja_id,
+            apertura_caja_id=apertura_caja_id,
             tipo_movimiento="O",
-            id_referencia=comanda.id,
-            id_metodo_pago=None,
+            referencia_id=comanda.id,
+            metodo_pago_id=None,
             monto=comanda.total_final,
             creado_por=creado_por,
         )

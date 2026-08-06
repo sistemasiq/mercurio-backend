@@ -94,10 +94,10 @@ async def completar_pago(
         for pago in body.pagos:
             await registrar_movimiento_caja(
                 conn,
-                id_apertura_caja=apertura_caja_id,
+                apertura_caja_id=apertura_caja_id,
                 tipo_movimiento="O",
-                id_referencia=comanda.id,
-                id_metodo_pago=str(pago.metodo_pago_id),
+                referencia_id=comanda.id,
+                metodo_pago_id=str(pago.metodo_pago_id),
                 monto=pago.monto,
                 creado_por=str(usuario_id),
             )

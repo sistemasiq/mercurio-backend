@@ -104,7 +104,7 @@ async def obtener_cajas(conn: asyncpg.Connection, sucursal_id: str | None = None
     return [
         CajaResponse(
             id=str(r["id"]),
-            id_sucursal=str(r["sucursal_id"]),
+            sucursal_id=str(r["sucursal_id"]),
             codigo=r["codigo"],
             nombre=r["nombre"],
             creado=r.get("creado"),
@@ -163,9 +163,9 @@ async def abrir_turno(
             detail={"code": "CAJA_OCUPADA", "message": "La caja física seleccionada ya cuenta con un turno activo."},
         )
 
-    # Obtener el turno (usar el id_turno enviado si existe)
-    if payload.id_turno:
-        turno_id = payload.id_turno
+    # Obtener el turno (usar el turno_id enviado si existe)
+    if payload.turno_id:
+        turno_id = payload.turno_id
     else:
         turno = await get_primer_turno(conn)
         assert turno is not None
@@ -174,10 +174,10 @@ async def abrir_turno(
     # Crear la apertura
     nueva = await crear_apertura_caja(
         conn,
-        id_caja=caja_id,
-        id_usuario=user_id,
-        id_turno=turno_id,
-        monto_inicial=payload.fondo_inicial,
+        caja_id=caja_id,
+        cajero_id=user_id,
+        turno_id=turno_id,
+        fondo_inicial=payload.fondo_inicial,
         creado_por=user_id,
     )
 
@@ -284,13 +284,18 @@ async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoP
 async def _calcular_balance(
     conn: asyncpg.Connection, apertura: dict, turno_id: str
 ) -> tuple[Decimal, Decimal, Decimal, list[FilaBalance]]:
-    """Balance real del cierre. El 'efectivo' es la única conciliación física (dinero
-    en el cajón): fondo inicial + ventas en efectivo (o sin método aún, ver
-    sumar_ventas_efectivo_apertura) - retiros, comparado contra lo que el cajero
-    contó físicamente (desglose_efectivo.total en conteo_json). Transferencia,
-    tarjeta u otros métodos NO representan dinero físico en caja — se muestran
-    aparte, comparando lo que el sistema registró contra lo que el cajero declaró
-    para ese método específico (ya no un valor inventado igual al esperado)."""
+    """Balance real del cierre. Devuelve dos vistas distintas:
+    - `balance` (por método): el renglón "efectivo" compara el dinero físico —
+      fondo inicial + ventas en efectivo (o sin método aún, ver
+      sumar_ventas_efectivo_apertura) - retiros — contra lo que el cajero contó
+      físicamente (desglose_efectivo.total en conteo_json). Cada otro método
+      compara lo que el sistema registró contra lo que el cajero declaró para
+      ese método específico.
+    - Totales generales (esperado/declarado/diferencia): todos los métodos de
+      pago cuentan como dinero real del sistema (cupones, lealtad, vouchers
+      incluidos) — es la suma de todos los movimientos del turno + fondo
+      inicial - retiros, comparada contra la suma de todo lo que el cajero
+      declaró, independientemente del método."""
     monto_inicial = Decimal(str(apertura["fondo_inicial"]))
     total_retiros = await sumar_retiros_por_apertura(conn, turno_id)
     total_esperado_efectivo = (
@@ -308,7 +313,7 @@ async def _calcular_balance(
         monto = Decimal(str(m.get("monto", 0)))
         declarados_por_metodo[nombre] = declarados_por_metodo.get(nombre, Decimal("0")) + monto
 
-    diferencia_neta = declarado_efectivo - total_esperado_efectivo
+    diferencia_neta_efectivo = declarado_efectivo - total_esperado_efectivo
 
     balance: list[FilaBalance] = [
         FilaBalance(
@@ -316,7 +321,7 @@ async def _calcular_balance(
             label="Efectivo en Caja",
             declarado=declarado_efectivo,
             esperado=total_esperado_efectivo,
-            diferencia=diferencia_neta,
+            diferencia=diferencia_neta_efectivo,
         )
     ]
 
@@ -353,7 +358,20 @@ async def _calcular_balance(
             )
         )
 
-    return total_esperado_efectivo, declarado_efectivo, diferencia_neta, balance
+    # Totales generales (a diferencia del renglón "efectivo" de arriba, que sigue
+    # comparando solo lo físico): a petición de Emilio, todo método de pago cuenta como
+    # dinero real del sistema — cupones, lealtad y vouchers también son dinero — así que
+    # el total esperado/declarado/diferencia que ve el administrador para autorizar suma
+    # todos los métodos con movimientos en el turno, no solo efectivo.
+    total_esperado_general = (
+        monto_inicial + await sumar_total_ventas_apertura(conn, turno_id) - total_retiros
+    )
+    total_declarado_general = declarado_efectivo + sum(
+        declarados_por_metodo.values(), Decimal("0")
+    )
+    diferencia_neta_general = total_declarado_general - total_esperado_general
+
+    return total_esperado_general, total_declarado_general, diferencia_neta_general, balance
 
 
 async def autenticar_admin_revision(
@@ -583,7 +601,7 @@ async def verificar_turno_abierto(conn: asyncpg.Connection, user_id: str) -> Non
 async def crear_retiro(
     conn: asyncpg.Connection, user_id: str, payload: RetiroParcialCreate
 ) -> RetiroParcialResponse:
-    apertura = await get_apertura_por_id(conn, payload.id_apertura_caja)
+    apertura = await get_apertura_por_id(conn, payload.apertura_caja_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
 
@@ -595,7 +613,7 @@ async def crear_retiro(
     async with conn.transaction():
         row = await crear_retiro_parcial(
             conn,
-            id_apertura_caja=payload.id_apertura_caja,
+            apertura_caja_id=payload.apertura_caja_id,
             concepto=payload.concepto.value,
             tipo_destinatario=payload.tipo_destinatario.value,
             monto=payload.monto,
@@ -608,16 +626,16 @@ async def crear_retiro(
         # apertura_caja_id + tipo_movimiento='RP' + creado contra retiros_parciales.
         await registrar_movimiento_caja(
             conn,
-            id_apertura_caja=payload.id_apertura_caja,
+            apertura_caja_id=payload.apertura_caja_id,
             tipo_movimiento="RP",
-            id_referencia=payload.id_apertura_caja,
-            id_metodo_pago=None,
+            referencia_id=payload.apertura_caja_id,
+            metodo_pago_id=None,
             monto=payload.monto,
             creado_por=user_id,
         )
     return RetiroParcialResponse(
         id=str(row["id"]),
-        id_apertura_caja=str(row["apertura_caja_id"]),
+        apertura_caja_id=str(row["apertura_caja_id"]),
         concepto=row["concepto"],
         tipo_destinatario=row["tipo_destinatario"],
         monto=Decimal(str(row["monto"])),
@@ -631,7 +649,7 @@ async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[Retiro
     return [
         RetiroParcialResponse(
             id=str(r["id"]),
-            id_apertura_caja=str(r["apertura_caja_id"]),
+            apertura_caja_id=str(r["apertura_caja_id"]),
             concepto=r["concepto"],
             tipo_destinatario=r["tipo_destinatario"],
             monto=Decimal(str(r["monto"])),
@@ -671,12 +689,12 @@ async def confirmar_cierre(
     # Crear el registro inmutable en cierre_caja
     cierre = await crear_cierre_caja(
         conn,
-        id_apertura_caja=payload.turno_id,
+        apertura_caja_id=payload.turno_id,
         tipo_cierre=payload.tipo_cierre.value,
         monto_sistema=total_esperado,
         monto_cierre=total_declarado,
-        id_usuario_cajero=str(apertura["cajero_id"]),
-        id_usuario_admin=admin_id,
+        cajero_id=str(apertura["cajero_id"]),
+        administrador_id=admin_id,
         observaciones=payload.observaciones,
         creado_por=user_id,
     )
@@ -766,7 +784,7 @@ async def obtener_detalle(
     retiros = [
         RetiroParcialResponse(
             id=str(r["id"]),
-            id_apertura_caja=str(r["apertura_caja_id"]),
+            apertura_caja_id=str(r["apertura_caja_id"]),
             concepto=r["concepto"],
             tipo_destinatario=r["tipo_destinatario"],
             monto=Decimal(str(r["monto"])),

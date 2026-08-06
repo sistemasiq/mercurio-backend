@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.caja import (
@@ -133,11 +133,11 @@ async def enviar_conteo(
 @router.post(
     "/revision-admin",
     response_model=RevisionAdminResponse,
-    summary="Valida credenciales del administrador y devuelve el balance real + token temporal",
+    summary="Valida credenciales del administrador y revela el balance real",
 )
 async def autenticar_revision_admin(
     payload: RevisionAdminPayload,
-    current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
+    current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> RevisionAdminResponse:
     return await turnos_caja_service.autenticar_admin_revision(conn, current_user.sub, payload)
@@ -150,7 +150,7 @@ async def autenticar_revision_admin(
 )
 async def confirmar_cierre(
     payload: ConfirmarCierrePayload,
-    current_user: TokenData = Depends(require_permission("turnos_caja:confirmar")),
+    current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> ConfirmarCierreResponse:
     return await turnos_caja_service.confirmar_cierre(conn, current_user.sub, payload)
@@ -162,7 +162,7 @@ async def confirmar_cierre(
 )
 async def validar_pin_cajero(
     body: dict,
-    current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
+    current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict:
     turno_id = body.get("turno_id", "")
@@ -176,7 +176,7 @@ async def validar_pin_cajero(
 )
 async def validar_pin_admin(
     body: dict,
-    current_user: TokenData = Depends(require_permission("turnos_caja:revision_admin")),
+    current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> dict:
     turno_id = body.get("turno_id", "")
@@ -287,7 +287,7 @@ async def obtener_detalle_arqueo(
 )
 async def descargar_pdf(
     cierre_id: str,
-    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
+    current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> Response:
     detalle = await turnos_caja_service.obtener_detalle(
