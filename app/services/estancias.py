@@ -1,5 +1,4 @@
-import asyncio
-from datetime import UTC, time, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -9,6 +8,7 @@ from fastapi import HTTPException, UploadFile
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.core.ws_manager import manager
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -25,7 +25,6 @@ from app.repositories.registros import (
     registro_update_total,
 )
 from app.repositories.reservaciones_repository import obtener_evento_mas_cercano
-
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
 from app.schemas.registros import OnboardingRequest
 from app.schemas.reservaciones import EventoDelDiaOut
@@ -37,6 +36,7 @@ async def create_estancia(
     foto_ine: UploadFile,
     foto_llegada: UploadFile,
     usuario_id: UUID,
+    apertura_caja_id: str,
 ) -> dict[str, Any]:
     async with conn.transaction():
 
@@ -124,7 +124,7 @@ async def create_estancia(
 
             # 5. actualizar total
             await registro_update_total(conn, usuario_id, registro_id, total)
-            
+
             await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
 
             resultado = {
@@ -204,6 +204,15 @@ async def create_estancia(
             for p in data.pagos:
                 await pago_create(
                     conn, data.sucursalId, registro_id, p.metodoPagoId, p.monto, usuario_id
+                )
+                await registrar_movimiento_caja(
+                    conn,
+                    apertura_caja_id=apertura_caja_id,
+                    tipo_movimiento="E",
+                    referencia_id=str(registro_id),
+                    metodo_pago_id=str(p.metodoPagoId),
+                    monto=Decimal(str(p.monto)),
+                    creado_por=str(usuario_id),
                 )
                 total_pagado += p.monto
 

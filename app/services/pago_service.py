@@ -8,6 +8,7 @@ import asyncpg
 from app.exceptions import DatosInvalidos
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository, pago_repository
+from app.repositories.caja_repository import registrar_movimiento_caja
 from app.schemas.comanda import ComandaCreate, EstadoComanda
 from app.schemas.pagos import (
     DetalleOrdenOut,
@@ -49,12 +50,13 @@ async def completar_pago(
     body: PagoCompletoRequest,
     usuario_id: UUID,
     sucursal_id: UUID,
+    apertura_caja_id: str,
 ) -> Comanda:
-    """Crea la comanda y registra los pagos en una única transacción.
-
-    Si falla cualquiera de los dos, nada se persiste (rollback automático).
-    Después del commit, expande los detalles de combos y notifica a cocina
-    vía WebSocket.
+    """Crea la comanda, registra los pagos y el movimiento de caja de cada uno
+    (multimodal: una comanda puede pagarse con varios métodos) en una única
+    transacción. Si falla cualquiera de los dos, nada se persiste (rollback
+    automático). Después del commit, expande los detalles de combos y
+    notifica a cocina vía WebSocket.
     """
     from app.core.ws_manager import manager
     from app.services.comanda_service import expandir_detalles_comanda
@@ -89,6 +91,16 @@ async def completar_pago(
             pagos=body.pagos,
             usuario_id=usuario_id,
         )
+        for pago in body.pagos:
+            await registrar_movimiento_caja(
+                conn,
+                apertura_caja_id=apertura_caja_id,
+                tipo_movimiento="O",
+                referencia_id=comanda.id,
+                metodo_pago_id=str(pago.metodo_pago_id),
+                monto=pago.monto,
+                creado_por=str(usuario_id),
+            )
         if body.puntos_a_redimir > 0:
             # celular_cliente es obligatorio en este caso (validado en el schema).
             descuento = await lealtad_service.redimir_puntos(

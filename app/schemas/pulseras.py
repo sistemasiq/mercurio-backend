@@ -13,11 +13,13 @@ class PulseraResponse(BaseModel):
 
 class PulseraCrear(BaseModel):
     sucursal_id: UUID
-    pulsera_rfid: str = Field(..., max_length=10)
+    pulsera_rfid: str = Field(..., max_length=50)
+    activo: bool = True
+    numero_lote: str | None = Field(None, max_length=50)
 
 
 class PulseraUpdate(BaseModel):
-    pulsera_rfid: str | None = Field(None, max_length=10)
+    pulsera_rfid: str | None = Field(None, max_length=50)
     activo: bool | None = None
 
 
@@ -26,6 +28,7 @@ class PulseraOut(BaseModel):
     sucursal_id: UUID
     pulsera_rfid: str
     activo: bool
+    numero_lote: str | None = None
     creado: datetime | None
     creado_por: UUID | None
     modificado: datetime | None

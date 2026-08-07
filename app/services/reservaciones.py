@@ -29,7 +29,17 @@ async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> Reservacion
     return ReservacionesOut.model_validate(row)
 
 
-async def crear(conn: asyncpg.Connection, body: ReservacionesCrear) -> ReservacionesOut:
+async def crear(conn: asyncpg.Connection, body: ReservacionesCrear, user_id: str) -> ReservacionesOut:
+    # RN-CIE-001: si la reservación trae un anticipo (dinero que se cobra en el momento),
+    # exige turno abierto igual que cualquier otra venta — de lo contrario el paso
+    # siguiente (POST /pagos-reservacion) rechaza el cobro y la reservación queda
+    # "confirmada" con un anticipo que nunca se registró como dinero real.
+    # Agendar sin cobrar nada (anticipo=0) no requiere turno.
+    if body.anticipo > 0:
+        from app.services.turnos_caja_service import verificar_turno_abierto
+
+        await verificar_turno_abierto(conn, user_id)
+
     data = body.model_dump()
     row = await reservaciones_repository.crear(conn, data)
     return ReservacionesOut.model_validate(row)
