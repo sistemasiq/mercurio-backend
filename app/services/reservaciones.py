@@ -3,14 +3,24 @@ from uuid import UUID
 import asyncpg
 
 from app.exceptions import DatosInvalidos, NoEncontrado
-from app.repositories import reservaciones_repository
-from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate
+from app.repositories import reservaciones_repository,registros
+from app.schemas.reservaciones import ReservacionesCrear, ReservacionesOut, ReservacionesUpdate, EventoDelDiaOut
 
 
 async def listar(conn: asyncpg.Connection, scope: str | None = None) -> list[ReservacionesOut]:
     rows = await reservaciones_repository.listar(conn, scope)
     return [ReservacionesOut.model_validate(r) for r in rows]
 
+async def obtener_evento_cercano(conn: asyncpg.Connection, sucursal_id: UUID) -> EventoDelDiaOut | None:
+    row = await reservaciones_repository.obtener_evento_mas_cercano(conn, sucursal_id)
+    if not row:
+        return None
+
+    registro_existente = await registros.exists_registro_by_reservacion_id(conn, row["id"])
+    if registro_existente:
+        return None
+
+    return EventoDelDiaOut.model_validate(row)
 
 async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> ReservacionesOut:
     row = await reservaciones_repository.obtener(conn, reservacion_id)
@@ -19,7 +29,17 @@ async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> Reservacion
     return ReservacionesOut.model_validate(row)
 
 
-async def crear(conn: asyncpg.Connection, body: ReservacionesCrear) -> ReservacionesOut:
+async def crear(conn: asyncpg.Connection, body: ReservacionesCrear, user_id: str) -> ReservacionesOut:
+    # RN-CIE-001: si la reservación trae un anticipo (dinero que se cobra en el momento),
+    # exige turno abierto igual que cualquier otra venta — de lo contrario el paso
+    # siguiente (POST /pagos-reservacion) rechaza el cobro y la reservación queda
+    # "confirmada" con un anticipo que nunca se registró como dinero real.
+    # Agendar sin cobrar nada (anticipo=0) no requiere turno.
+    if body.anticipo > 0:
+        from app.services.turnos_caja_service import verificar_turno_abierto
+
+        await verificar_turno_abierto(conn, user_id)
+
     data = body.model_dump()
     row = await reservaciones_repository.crear(conn, data)
     return ReservacionesOut.model_validate(row)

@@ -23,7 +23,12 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user_ws, require_permission, require_role
+from app.api.deps import (
+    apertura_operando_id,
+    get_current_user_ws,
+    require_permission,
+    require_role,
+)
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
@@ -59,6 +64,7 @@ async def crear_comanda(
     comanda_in: ComandaCreate,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:crear_pedido")),
+    apertura_id: str = Depends(apertura_operando_id),
 ) -> Any:
     """Crea una comanda nueva con sus detalles."""
     # Obtenemos la sucursal de forma centralizada y segura: nunca confiar en
@@ -67,7 +73,7 @@ async def crear_comanda(
     comanda_in = comanda_in.model_copy(update={"sucursal_id": active_branch_id})
 
     try:
-        comanda = await comanda_service.crear_comanda(conn, comanda_in, current_user)
+        comanda = await comanda_service.crear_comanda(conn, comanda_in, current_user, apertura_id)
         return asdict(comanda)
     except HTTPException:
         # Preserva el status code y el {code, message} estructurado de

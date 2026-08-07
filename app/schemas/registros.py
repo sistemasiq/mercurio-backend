@@ -9,8 +9,8 @@ from app.schemas.tutores import TutorIn
 
 class DetalleIn(BaseModel):
     nino: NinoIn
-    productoId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-    cantidad: int = Field(gt=0)
+    productoId: UUID | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    cantidad: int = Field(default=0, ge=0)
     pulseraId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
@@ -21,7 +21,8 @@ class OnboardingRequest(BaseModel):
     pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     parentesco: str
     detalles: list[DetalleIn]
-    pagos: list[PagoIn]
+    pagos: list[PagoIn] | None = None
+    reservacionId: UUID | None = None
 
 
 class OnboardingResponse(BaseModel):
@@ -33,7 +34,7 @@ class OnboardingResponse(BaseModel):
 
 class CheckoutRequest(BaseModel):
     pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-
+    pagos: list[PagoIn] = []
 
 class CheckoutResponse(BaseModel):
     detalleId: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
@@ -41,6 +42,13 @@ class CheckoutResponse(BaseModel):
     horasExtra: int  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     totalExtra: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     ninosRestantes: int  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+
+
+class CotizacionCheckoutResponse(BaseModel):
+    detalleId: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    horasExtra: int  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    totalExtra: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    cotizadoEn: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class ProductoResponse(BaseModel):

@@ -35,6 +35,7 @@ async def registro_create(
     foto_llegada: str,
     usuario_id: UUID,
     nombre_segundo_tutor: str | None = None,
+    reservacion_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
@@ -49,9 +50,10 @@ async def registro_create(
            total,
            estado,
            creado,
-           creado_por
+           creado_por,
+           reservacion_id
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',NOW(),$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',NOW(),$8,$9)
    """,
         registro_id,
         sucursal_id,
@@ -61,6 +63,7 @@ async def registro_create(
         foto_ine,
         foto_llegada,
         usuario_id,
+        reservacion_id,
     )
 
 
@@ -128,3 +131,46 @@ async def exists_registro(
         registro_id,
     )
     return bool(result)
+
+async def exists_registro_any(
+    conn: asyncpg.Connection,
+    registro_id: UUID,
+) -> bool:
+    result = await conn.fetchval(
+        """
+       SELECT 1
+       FROM registros
+       WHERE id=$1
+   """,
+        registro_id,
+    )
+    return bool(result)
+
+async def exists_registro_by_reservacion_id(
+    conn: asyncpg.Connection,
+    reservacion_id: UUID,
+) -> bool:
+    result = await conn.fetchval(
+        """
+       SELECT 1
+       FROM registros
+       WHERE reservacion_id=$1 AND activo = TRUE
+   """,
+        reservacion_id,
+    )
+    return bool(result)
+
+
+async def contar_ninos_registrados_por_reservacion(
+    conn: asyncpg.Connection, reservacion_id: UUID
+) -> int:
+    total = await conn.fetchval(
+        """
+        SELECT COUNT(dr.id)
+        FROM detalles_registro dr
+        JOIN registros r ON r.id = dr.registros_id
+        WHERE r.reservacion_id = $1 AND dr.activo = TRUE AND r.activo = TRUE
+        """,
+        reservacion_id,
+    )
+    return int(total or 0)

@@ -6,7 +6,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import app.services.pago_service as svc
-from app.api.deps import require_permission
+from app.api.deps import apertura_operando_id, require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pagos import (
@@ -63,10 +63,11 @@ async def completar_pago(
     body: PagoCompletoRequest,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+    apertura_id: str = Depends(apertura_operando_id),
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
     sucursal_id = _get_active_branch(current_user)
-    comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id)
+    comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id, apertura_id)
     return asdict(comanda)
 
 
