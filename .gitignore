@@ -20,6 +20,8 @@ backups/
 
 CLAUDE.md
 
+.ruff_cache/
+
 .idea
 
 # Archivos para almacenar fotos

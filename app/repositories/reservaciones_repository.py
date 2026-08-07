@@ -3,6 +3,8 @@ from uuid import UUID
 
 import asyncpg
 
+TIME_FOR_CHECK_RESERVATIONS = "15 minutes"
+
 _COLUMNS = """
     id, sucursal_id, tipo_evento_id, paquete_id,
     nombre_cliente, apellidos_cliente, telefono_cliente, email_cliente, notas_cliente,
@@ -13,7 +15,23 @@ _COLUMNS = """
     estado, notas, activo, comanda_enviada, creado, creado_por, modificado, modificado_por
 """
 
+_COLUMNAS_NECESARIAS_PARA_ESTANCIA = """
+   id,nombre_cliente,apellidos_cliente,telefono_cliente,hora_inicio,
+   hora_fin,numero_personas,fecha_evento
+"""
+
 _SELECT = f"SELECT {_COLUMNS} FROM reservaciones"
+
+_SELECT_ESTANCIA = (
+    f"SELECT {_COLUMNAS_NECESARIAS_PARA_ESTANCIA} "
+    "FROM reservaciones "
+    "WHERE fecha_evento = CURRENT_DATE "
+    "AND hora_inicio < ((CURRENT_TIME AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::time "
+    f"+ INTERVAL '{TIME_FOR_CHECK_RESERVATIONS}') "
+    "AND hora_fin > (CURRENT_TIME AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City')::time "
+    "AND saldo_pendiente = 0 "
+    "AND activo = TRUE"
+)
 
 
 async def listar(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[dict[str, Any]]:
@@ -29,6 +47,13 @@ async def listar(conn: asyncpg.Connection, sucursal_id: str | None = None) -> li
 
 async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> dict[str, Any] | None:
     row = await conn.fetchrow(_SELECT + " WHERE id = $1", reservacion_id)
+    return dict(row) if row else None
+
+
+async def obtener_evento_mas_cercano(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(_SELECT_ESTANCIA + " AND sucursal_id = $1", sucursal_id)
     return dict(row) if row else None
 
 

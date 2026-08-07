@@ -60,7 +60,9 @@ async def _obtener_token_sistema(conn: asyncpg.Connection) -> TokenData:
     return _token_sistema
 
 
-async def _armar_detalles(conn: asyncpg.Connection, reservacion: dict[str, Any]) -> list[DetalleCreate]:
+async def _armar_detalles(
+    conn: asyncpg.Connection, reservacion: dict[str, Any]
+) -> list[DetalleCreate]:
     items_paquete = await paquetes_repository.obtener_items_de_paquete(
         conn, reservacion["paquete_id"]
     )
@@ -74,7 +76,7 @@ async def _armar_detalles(conn: asyncpg.Connection, reservacion: dict[str, Any])
         cantidad = int(item["cantidad"])
         detalles.append(
             DetalleCreate(
-                producto_id=str(item["producto_id"]),
+                id=str(item["producto_id"]),
                 nombre=item["nombre"],
                 cantidad=cantidad,
                 precio_unitario=precio,
@@ -87,7 +89,7 @@ async def _armar_detalles(conn: asyncpg.Connection, reservacion: dict[str, Any])
         cantidad = int(item["cantidad"])
         detalles.append(
             DetalleCreate(
-                producto_id=str(item["producto_id"]),
+                id=str(item["producto_id"]),
                 nombre=item["nombre"],
                 cantidad=cantidad,
                 precio_unitario=precio,

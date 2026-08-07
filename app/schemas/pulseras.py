@@ -13,11 +13,11 @@ class PulseraResponse(BaseModel):
 
 class PulseraCrear(BaseModel):
     sucursal_id: UUID
-    pulsera_rfid: str = Field(..., max_length=50)
+    pulsera_rfid: str = Field(..., max_length=10)
 
 
 class PulseraUpdate(BaseModel):
-    pulsera_rfid: str | None = Field(None, max_length=50)
+    pulsera_rfid: str | None = Field(None, max_length=10)
     activo: bool | None = None
 
 
