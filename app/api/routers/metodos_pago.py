@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.roles import ROL_SISTEMA
 from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
-from app.schemas.metodos_pago import MetodosPagoCreate, MetodosPagoOut, MetodosPagoUpdate
+from app.schemas.metodos_pago import MetodosPagoActivacion, MetodosPagoOut, MetodosPagoUpdate
 
 router = APIRouter(prefix="/api/metodos-pago", tags=["Métodos de Pago"])
 
@@ -27,45 +27,49 @@ async def listar_metodos_pago(
 async def obtener_metodo_pago(
     metodo_pago_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("metodos_pago:ver")),
+    current_user: TokenData = Depends(require_permission("metodos_pago:ver")),
 ) -> MetodosPagoOut:
-    return await svc.obtener(conn, metodo_pago_id)
-
-
-@router.post("", response_model=MetodosPagoOut, status_code=status.HTTP_201_CREATED)
-async def crear_metodo_pago(
-    body: MetodosPagoCreate,
-    conn: asyncpg.Connection = Depends(get_db),
-    current_user: TokenData = Depends(require_permission("metodos_pago:crear")),
-) -> MetodosPagoOut:
-    # sucursal_id siempre se deriva del usuario autenticado, nunca se confía
-    # en lo que mande el cliente -- ya no existe el concepto de método de
-    # pago "global" (sucursal_id NULL).
-    if current_user.role == ROL_SISTEMA:
-        if body.sucursal_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Debes indicar sucursal_id (AdministradorSistema ve todas).",
-            )
-    else:
-        body.sucursal_id = current_user.branch_id
-    return await svc.crear(conn, body)
+    scope = sucursal_scope(current_user)
+    return await svc.obtener(conn, metodo_pago_id, UUID(scope) if scope is not None else None)
 
 
 @router.patch("/{metodo_pago_id}", response_model=MetodosPagoOut)
-async def actualizar_metodo_pago(
+async def actualizar_catalogo_metodo_pago(
     metodo_pago_id: UUID,
     body: MetodosPagoUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("metodos_pago:editar")),
+    current_user: TokenData = Depends(require_permission("metodos_pago:editar")),
 ) -> MetodosPagoOut:
-    return await svc.actualizar(conn, metodo_pago_id, body)
+    # Nombre/descripción son el catálogo global -- solo AdministradorSistema
+    # puede tocarlos, para que ninguna sucursal rompa la consistencia que
+    # motivó que este catálogo sea fijo.
+    if current_user.role != ROL_SISTEMA:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo AdministradorSistema puede editar el catálogo de métodos de pago.",
+        )
+    scope = sucursal_scope(current_user)
+    return await svc.actualizar_catalogo(
+        conn, metodo_pago_id, body, UUID(scope) if scope is not None else None
+    )
 
 
-@router.delete("/{metodo_pago_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def eliminar_metodo_pago(
+@router.patch("/{metodo_pago_id}/activacion", response_model=MetodosPagoOut)
+async def activar_metodo_pago(
     metodo_pago_id: UUID,
+    body: MetodosPagoActivacion,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("metodos_pago:eliminar")),
-) -> None:
-    await svc.eliminar(conn, metodo_pago_id)
+    current_user: TokenData = Depends(require_permission("metodos_pago:editar")),
+) -> MetodosPagoOut:
+    # Activar/desactivar es una decisión de cada sucursal; se deriva siempre
+    # de la sucursal del usuario autenticado, nunca del cliente. Administrador
+    # Sistema no tiene sucursal propia, así que no puede usar este endpoint.
+    if current_user.branch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Este usuario no tiene una sucursal asignada para activar/desactivar "
+            "métodos de pago.",
+        )
+    return await svc.set_activacion(
+        conn, metodo_pago_id, current_user.branch_id, body.activo, UUID(current_user.sub)
+    )
