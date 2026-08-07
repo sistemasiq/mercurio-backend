@@ -2,40 +2,35 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, StringConstraints
 
 # E = Efectivo | T = Tarjeta (crédito/débito/wallets) | C = Cupón | L = Lealtad
 # O = Otro (cualquier método que no encaje en los anteriores, ej. transferencias)
 TipoMetodoPago = Literal["E", "T", "C", "L", "O"]
 
 
-class MetodosPagoBase(BaseModel):
-    nombre: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-    descripcion: str | None = None
-    # Categoría real usada por el FrontEnd para decidir qué botón/comportamiento
-    # de cobro corresponde a este método, independiente del nombre libre que
-    # cada sucursal le ponga (ver 036_metodos_pago_tipo.sql).
-    tipo: TipoMetodoPago = "O"
-
-
-class MetodosPagoCreate(MetodosPagoBase):
-    # Solo relevante para AdministradorSistema (sin sucursal propia); para
-    # cualquier otro rol el router ignora este valor y usa siempre la
-    # sucursal del usuario autenticado. Ya no existe el concepto de método
-    # de pago "global" (sucursal_id NULL).
-    sucursal_id: UUID | None = None
-
-
 class MetodosPagoUpdate(BaseModel):
-    nombre: str | None = Field(None, max_length=100)
+    """Edición del catálogo global -- solo AdministradorSistema. El `tipo` no
+    se edita: es la identidad fija de cada una de las 5 filas."""
+
+    nombre: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+        | None
+    ) = None
     descripcion: str | None = None
-    tipo: TipoMetodoPago | None = None
-    activo: bool | None = None
 
 
-class MetodosPagoOut(MetodosPagoBase):
+class MetodosPagoActivacion(BaseModel):
+    activo: bool
+
+
+class MetodosPagoOut(BaseModel):
     id: UUID
-    sucursal_id: UUID | None
+    nombre: str
+    descripcion: str | None
+    tipo: TipoMetodoPago
+    # Resuelto contra sucursal_metodos_pago para la sucursal del usuario
+    # autenticado -- no es una columna de metodos_pago.
     activo: bool
     creado: datetime
     creado_por: UUID | None
