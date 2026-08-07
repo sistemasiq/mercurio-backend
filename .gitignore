@@ -15,6 +15,9 @@ env/
 *.log
 .DS_Store
 
+# Respaldos de BD tomados antes de migrar: contienen datos reales
+backups/
+
 CLAUDE.md
 
 .ruff_cache/

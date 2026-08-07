@@ -1,0 +1,56 @@
+# Postgres local para desarrollo y pruebas de migraciones.
+#
+# Por qué existe: la BD de dev compartida (100.125.39.1, vía Tailscale) no
+# siempre está disponible y es un recurso que otras personas usan. Probar
+# migraciones ahí es arriesgado e imposible de revertir. Este contenedor es
+# desechable: se tira y se vuelve a crear con `down -v` sin afectar a nadie.
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up -d
+#   ./scripts/reset_db_local.sh          # aplica sql/migrations/* en orden
+#   docker compose -f docker-compose.dev.yml down -v   # borra todo
+#
+# Puerto 5433 en el host: el 5432 ya está ocupado por otro Postgres local.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mercurio_db_local
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: mercury
+    ports:
+      - '5433:5432'
+    volumes:
+      - mercurio_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dev -d mercury']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  # El lifespan de la app llama ensure_bucket() al arrancar, así que sin MinIO
+  # el backend se queda colgado en "Waiting for application startup" y ningún
+  # endpoint responde — ni siquiera el login, que no usa almacenamiento.
+  minio:
+    image: minio/minio:latest
+    container_name: mercurio_minio_local
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000' # API S3
+      - '9001:9001' # Consola web
+    volumes:
+      - mercurio_miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  mercurio_pgdata:
+  mercurio_miniodata:
