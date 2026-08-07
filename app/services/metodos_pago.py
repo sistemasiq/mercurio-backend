@@ -23,7 +23,11 @@ async def crear(conn: asyncpg.Connection, body: MetodosPagoCreate) -> MetodosPag
     if await metodos_pago_repository.nombre_existe(conn, body.nombre, body.sucursal_id):
         raise Conflicto(f"Ya existe un método de pago con el nombre '{body.nombre}'.")
     row = await metodos_pago_repository.crear(
-        conn, sucursal_id=body.sucursal_id, nombre=body.nombre, descripcion=body.descripcion
+        conn,
+        sucursal_id=body.sucursal_id,
+        nombre=body.nombre,
+        descripcion=body.descripcion,
+        tipo=body.tipo,
     )
     return MetodosPagoOut.model_validate(row)
 

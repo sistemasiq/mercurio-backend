@@ -57,23 +57,28 @@ async def crear_lote(
     conn: asyncpg.Connection,
     sucursal_id: UUID,
     celular: str,
-    comanda_id: UUID,
     puntos: int,
     fecha_caducidad: datetime,
     usuario_id: UUID,
+    comanda_id: UUID | None = None,
+    reservacion_id: UUID | None = None,
 ) -> dict[str, Any]:
+    """Crea un lote de puntos otorgados. Exactamente una de comanda_id o
+    reservacion_id debe venir, según el origen del pago (venta de caja o
+    anticipo de reservación) -- el CHECK de BD lo exige."""
     row = await conn.fetchrow(
         """
         INSERT INTO lotes_puntos
-            (sucursal_id, celular, comanda_id, puntos_otorgados, puntos_disponibles,
-             fecha_caducidad, creado_por)
-        VALUES ($1, $2, $3, $4, $4, $5, $6)
-        RETURNING id, sucursal_id, celular, comanda_id, puntos_otorgados, puntos_disponibles,
-                  fecha_otorgado, fecha_caducidad, creado_por
+            (sucursal_id, celular, comanda_id, reservacion_id, puntos_otorgados,
+             puntos_disponibles, fecha_caducidad, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
+        RETURNING id, sucursal_id, celular, comanda_id, reservacion_id, puntos_otorgados,
+                  puntos_disponibles, fecha_otorgado, fecha_caducidad, creado_por
         """,
         sucursal_id,
         celular,
         comanda_id,
+        reservacion_id,
         puntos,
         fecha_caducidad,
         usuario_id,
@@ -154,18 +159,20 @@ async def registrar_movimiento(
     saldo_resultante: int,
     notas: str | None,
     usuario_id: UUID | None,
+    reservacion_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
         INSERT INTO movimientos_puntos
-            (sucursal_id, celular, lote_id, comanda_id, tipo, puntos, saldo_resultante,
-             notas, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (sucursal_id, celular, lote_id, comanda_id, reservacion_id, tipo, puntos,
+             saldo_resultante, notas, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """,
         sucursal_id,
         celular,
         lote_id,
         comanda_id,
+        reservacion_id,
         tipo,
         puntos,
         saldo_resultante,

@@ -4,15 +4,16 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 NombreRequerido = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+TelefonoOpcional = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20)] | None
 
 
 class BranchCreateRequest(BaseModel):
     nombre: NombreRequerido
     direccion: str | None = None
-    telefono: str | None = None
+    telefono: TelefonoOpcional = Field(default=None)
     correo: str | None = None
     administrador_id: UUID | None = None
     clave: str | None = None
@@ -21,7 +22,7 @@ class BranchCreateRequest(BaseModel):
 class BranchUpdateRequest(BaseModel):
     nombre: NombreRequerido
     direccion: str | None = None
-    telefono: str | None = None
+    telefono: TelefonoOpcional = Field(default=None)
     correo: str | None = None
     administrador_id: UUID | None = None
     clave: str | None = None

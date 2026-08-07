@@ -14,6 +14,7 @@ from app.schemas.pagos_reservacion import (
     PagosReservacionOut,
     PagosReservacionUpdate,
 )
+from app.services import lealtad_service
 
 
 async def listar_todos(
@@ -51,8 +52,8 @@ async def obtener(conn: asyncpg.Connection, pago_id: UUID) -> PagosReservacionOu
 async def crear(
     conn: asyncpg.Connection,
     body: PagosReservacionCreate,
+    usuario_id: UUID,
     apertura_caja_id: str,
-    creado_por: str | None = None,
 ) -> PagosReservacionOut:
     row = await pagos_reservacion_repository.crear(
         conn,
@@ -62,6 +63,7 @@ async def crear(
         fecha_pago=datetime.now(UTC),
         notas=body.notas,
     )
+
     await registrar_movimiento_caja(
         conn,
         apertura_caja_id=apertura_caja_id,
@@ -69,8 +71,21 @@ async def crear(
         referencia_id=str(row["id"]),
         metodo_pago_id=str(body.metodo_pago_id),
         monto=body.monto,
-        creado_por=creado_por,
+        creado_por=str(usuario_id),
     )
+
+    reservacion = await reservaciones_repository.obtener(conn, body.reservacion_id)
+    celular = (reservacion["telefono_cliente"] or "").strip() if reservacion else ""
+    if reservacion and celular:
+        await lealtad_service.otorgar_puntos(
+            conn,
+            reservacion["sucursal_id"],
+            celular,
+            body.monto,
+            usuario_id,
+            reservacion_id=body.reservacion_id,
+        )
+
     return PagosReservacionOut.model_validate(row)
 
 

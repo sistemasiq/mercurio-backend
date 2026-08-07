@@ -77,8 +77,17 @@ async def descontar_por_venta(
     """Descuenta del stock los insumos de la receta de cada producto vendido
     (expandiendo combos a sus productos integrantes). Lanza
     StockInsuficienteError si algún insumo no alcanza — el llamador debe
-    envolver esto en una transacción para que aborte la comanda completa."""
+    envolver esto en una transacción para que aborte la comanda completa.
+
+    Los detalles con es_hijo_combo=True son líneas informativas que el
+    FrontEnd agrega para mostrar el contenido de un combo (cocina/ticket) --
+    no representan una venta independiente. La línea del combo padre (tipo
+    'C') ya se expande más abajo a la receta de cada uno de sus integrantes,
+    así que procesar también las líneas hijas descontaría cada insumo del
+    combo dos veces."""
     for detalle in detalles:
+        if detalle.es_hijo_combo:
+            continue
         for item in await _consumo_insumos(conn, UUID(detalle.id), detalle.cantidad):
             nuevo_stock = await insumo_repository.ajustar_stock(
                 conn, item["insumo_id"], -item["consumo"]
@@ -106,8 +115,14 @@ async def revertir_por_cancelacion(
     comanda_id: str,
     creado_por: UUID,
 ) -> None:
-    """Revierte (suma de vuelta) el stock descontado por una comanda cancelada."""
+    """Revierte (suma de vuelta) el stock descontado por una comanda cancelada.
+
+    Igual que en descontar_por_venta, las líneas es_hijo_combo=True se
+    omiten: nunca se les descontó stock propio (ver descontar_por_venta),
+    así que tampoco se les debe revertir."""
     for detalle in detalles:
+        if detalle.es_hijo_combo:
+            continue
         items = await _consumo_insumos(
             conn, UUID(detalle.producto_id), detalle.cantidad, tipo=detalle.producto_tipo
         )

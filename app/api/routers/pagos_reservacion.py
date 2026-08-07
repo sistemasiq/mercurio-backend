@@ -50,7 +50,7 @@ async def crear_pago(
     current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
     apertura_id: str = Depends(apertura_operando_id),
 ) -> PagosReservacionOut:
-    return await svc.crear(conn, body, apertura_id, current_user.sub)
+    return await svc.crear(conn, body, UUID(current_user.sub), apertura_id)
 
 
 @router.patch("/{pago_id}", response_model=PagosReservacionOut)

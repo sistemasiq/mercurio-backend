@@ -18,7 +18,7 @@ from app.schemas.pagos import (
     PaymentOut,
     PaymentRequest,
 )
-from app.services import lealtad_service
+from app.services import inventario_service, lealtad_service
 
 
 async def procesar_pagos(
@@ -84,6 +84,13 @@ async def completar_pago(
             None,
             str(usuario_id),
         )
+        await inventario_service.descontar_por_venta(
+            conn,
+            str(sucursal_id),
+            body.detalles_comanda,
+            comanda.id,
+            usuario_id,
+        )
         await pago_repository.crear_pagos(
             conn,
             comanda_id=UUID(comanda.id),
@@ -123,9 +130,9 @@ async def completar_pago(
                 conn,
                 sucursal_id,
                 body.celular_cliente,
-                UUID(comanda.id),
                 body.total_final,
                 usuario_id,
+                comanda_id=UUID(comanda.id),
             )
 
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)

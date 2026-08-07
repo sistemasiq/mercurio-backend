@@ -16,7 +16,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.core.roles import ROL_SISTEMA
-from app.exceptions import NoEncontrado
+from app.exceptions import Conflicto, NoEncontrado
 from app.models.producto import Producto
 from app.repositories import combo_repository, producto_repository
 from app.schemas.auth import TokenData
@@ -67,16 +67,19 @@ async def crear(
     usuario_id: UUID | None = None,
     imagen: UploadFile | None = None,
 ) -> ProductoOut:
-    row = await producto_repository.crear(
-        conn,
-        nombre=body.nombre,
-        precio_unitario=body.precio_unitario,
-        tipo=body.tipo,
-        sucursal_id=body.sucursal_id,
-        descripcion=body.descripcion,
-        imagen=body.imagen,
-        usuario_id=usuario_id,
-    )
+    try:
+        row = await producto_repository.crear(
+            conn,
+            nombre=body.nombre,
+            precio_unitario=body.precio_unitario,
+            tipo=body.tipo,
+            sucursal_id=body.sucursal_id,
+            descripcion=body.descripcion,
+            imagen=body.imagen,
+            usuario_id=usuario_id,
+        )
+    except asyncpg.UniqueViolationError as exc:
+        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
     row_dict = asdict(row)
 
     if imagen is not None:
@@ -125,7 +128,10 @@ async def actualizar(
     if usuario_id:
         updates["modificado_por"] = usuario_id
 
-    row = await producto_repository.actualizar(conn, producto_id, updates)
+    try:
+        row = await producto_repository.actualizar(conn, producto_id, updates)
+    except asyncpg.UniqueViolationError as exc:
+        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
     if not row:
         raise NoEncontrado("Producto")
 

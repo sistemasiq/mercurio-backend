@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 import asyncpg
@@ -62,26 +62,45 @@ async def otorgar_puntos(
     conn: asyncpg.Connection,
     sucursal_id: UUID,
     celular: str,
-    comanda_id: UUID,
     total_pagado: Decimal,
     usuario_id: UUID,
+    comanda_id: UUID | None = None,
+    reservacion_id: UUID | None = None,
 ) -> int:
-    """Otorga puntos por una venta pagada, si el programa está activo en esa
-    sucursal. total_pagado debe ser el monto neto ya cobrado (después de
-    cualquier descuento por canje aplicado en la misma venta), para no
-    otorgar puntos sobre dinero que el cliente no pagó. No-op (retorna 0) si
-    no hay configuración, está inactiva, o el cálculo da 0 puntos."""
+    """Otorga puntos por un pago (venta de caja o anticipo de reservación),
+    si el programa está activo en esa sucursal. Exactamente uno de
+    comanda_id/reservacion_id debe venir, según el origen del pago.
+    total_pagado debe ser el monto neto ya cobrado (después de cualquier
+    descuento por canje aplicado en el mismo pago), para no otorgar puntos
+    sobre dinero que el cliente no pagó. No-op (retorna 0) si no hay
+    configuración, está inactiva, o el cálculo da 0 puntos.
+
+    Los puntos se escalan por valor_punto para no perder el cashback en
+    pagos chicos: con valor_punto=0.01 (1 punto = 1 centavo), $85 al 1%
+    ($0.85 de cashback) otorga 85 puntos en vez de truncarse a 0."""
+    if (comanda_id is None) == (reservacion_id is None):
+        raise ValueError("Debe indicarse exactamente uno de comanda_id o reservacion_id.")
+
     config = await lealtad_repository.obtener_configuracion(conn, sucursal_id)
     if not config or not config["activo"]:
         return 0
 
-    puntos = int(total_pagado * Decimal(str(config["porcentaje_retorno"])) / 100)
+    cashback = total_pagado * Decimal(str(config["porcentaje_retorno"])) / 100
+    valor_punto = Decimal(str(config["valor_punto"]))
+    puntos = int((cashback / valor_punto).to_integral_value(rounding=ROUND_HALF_UP))
     if puntos <= 0:
         return 0
 
     fecha_caducidad = datetime.now(UTC) + timedelta(days=config["dias_caducidad"])
     lote = await lealtad_repository.crear_lote(
-        conn, sucursal_id, celular, comanda_id, puntos, fecha_caducidad, usuario_id
+        conn,
+        sucursal_id,
+        celular,
+        puntos,
+        fecha_caducidad,
+        usuario_id,
+        comanda_id=comanda_id,
+        reservacion_id=reservacion_id,
     )
     saldo = await lealtad_repository.calcular_saldo(conn, sucursal_id, celular)
     await lealtad_repository.registrar_movimiento(
@@ -95,6 +114,7 @@ async def otorgar_puntos(
         saldo,
         None,
         usuario_id,
+        reservacion_id=reservacion_id,
     )
     return puntos
 

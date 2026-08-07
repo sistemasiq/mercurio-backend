@@ -1,11 +1,13 @@
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 import app.services.extras as svc
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
+from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.extras import ExtrasCrear, ExtrasOut, ExtrasUpdate
 
@@ -14,11 +16,11 @@ router = APIRouter(prefix="/api/extras", tags=["Extras"])
 
 @router.get("", response_model=list[ExtrasOut])
 async def listar_extras(
-    sucursal_id: UUID | None = None,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("extras:listar")),
+    current_user: TokenData = Depends(require_permission("extras:listar")),
 ) -> list[ExtrasOut]:
-    return await svc.listar(conn, sucursal_id)
+    scope = sucursal_scope(current_user)
+    return await svc.listar(conn, UUID(scope) if scope is not None else None)
 
 
 @router.get("/{extra_id}", response_model=ExtrasOut)
@@ -34,8 +36,19 @@ async def obtener_extra(
 async def crear_extra(
     body: ExtrasCrear,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("extras:crear")),
+    current_user: TokenData = Depends(require_permission("extras:crear")),
 ) -> ExtrasOut:
+    # sucursal_id siempre se deriva del usuario autenticado, nunca se confía
+    # en lo que mande el cliente -- ya no existe el concepto de extra
+    # "global" (sucursal_id NULL).
+    if current_user.role == ROL_SISTEMA:
+        if body.sucursal_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Debes indicar sucursal_id (AdministradorSistema ve todas).",
+            )
+    else:
+        body.sucursal_id = current_user.branch_id
     return await svc.crear(conn, body)
 
 
