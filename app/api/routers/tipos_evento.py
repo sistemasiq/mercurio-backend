@@ -17,7 +17,9 @@ router = APIRouter(prefix="/api/tipos-evento", tags=["Tipos de Evento"])
 @router.get("", response_model=list[TiposEventoOut])
 async def listar_tipos_evento(
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: TokenData = Depends(require_permission("tipos_evento:listar")),
+    current_user: TokenData = Depends(
+        require_permission("tipos_evento:listar", "reservaciones:crear")
+    ),
 ) -> list[TiposEventoOut]:
     scope = sucursal_scope(current_user)
     return await svc.listar(conn, UUID(scope) if scope is not None else None)

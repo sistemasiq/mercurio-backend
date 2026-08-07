@@ -6,7 +6,7 @@ import asyncpg
 from app.schemas.pulseras import PulseraResponse
 
 _COLUMNS = """
-    id, sucursal_id, pulsera_rfid, activo, creado, creado_por, modificado, modificado_por
+    id, sucursal_id, pulsera_rfid, activo, numero_lote, creado, creado_por, modificado, modificado_por
 """
 
 
@@ -54,16 +54,23 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> dict[str, Any] 
 
 
 async def crear(
-    conn: asyncpg.Connection, sucursal_id: UUID, pulsera_rfid: str, creado_por: UUID
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    pulsera_rfid: str,
+    activo: bool,
+    numero_lote: str | None,
+    creado_por: UUID,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
-        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, creado_por)
-        VALUES ($1, $2, $3)
+        INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, activo, numero_lote, creado_por)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
         pulsera_rfid,
+        activo,
+        numero_lote,
         creado_por,
     )
     return dict(row)

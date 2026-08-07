@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS public.ninos (
 CREATE TABLE IF NOT EXISTS public.pulseras (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     sucursal_id     UUID        NOT NULL REFERENCES public.sucursales(id),
-    pulsera_rfid    VARCHAR(50) NOT NULL,
+    pulsera_rfid    CHAR(10)    NOT NULL,
 
     activo          BOOLEAN     NOT NULL DEFAULT TRUE,
     creado          TIMESTAMPTZ NOT NULL DEFAULT now(),

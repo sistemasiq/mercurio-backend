@@ -4,7 +4,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, status
 
 import app.services.pagos_reservacion as svc
-from app.api.deps import require_permission
+from app.api.deps import apertura_operando_id, require_permission
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
@@ -48,8 +48,9 @@ async def crear_pago(
     body: PagosReservacionCreate,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
+    apertura_id: str = Depends(apertura_operando_id),
 ) -> PagosReservacionOut:
-    return await svc.crear(conn, body, UUID(current_user.sub))
+    return await svc.crear(conn, body, UUID(current_user.sub), apertura_id)
 
 
 @router.patch("/{pago_id}", response_model=PagosReservacionOut)

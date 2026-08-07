@@ -23,6 +23,9 @@ class ReservacionesBase(BaseModel):
     numero_personas: int = Field(..., gt=0)
     precio_base: Decimal
     precio_personas_extra: Decimal = Field(Decimal(0), ge=0)
+    horas_reservadas: int = Field(0, ge=0)
+    precio_horas: Decimal = Field(Decimal(0), ge=0)
+    precio_productos: Decimal = Field(Decimal(0), ge=0)
     precio_extras: Decimal = Field(Decimal(0), ge=0)
     descuento: Decimal = Field(Decimal(0), ge=0)
     precio_total: Decimal
@@ -55,6 +58,9 @@ class ReservacionesUpdate(BaseModel):
     numero_personas: int | None = Field(None, gt=0)
     precio_base: Decimal | None = None
     precio_personas_extra: Decimal | None = None
+    horas_reservadas: int | None = Field(None, ge=0)
+    precio_horas: Decimal | None = None
+    precio_productos: Decimal | None = None
     precio_extras: Decimal | None = None
     descuento: Decimal | None = None
     precio_total: Decimal | None = None
@@ -75,10 +81,24 @@ class ReservacionesUpdate(BaseModel):
 class ReservacionesOut(ReservacionesBase):
     id: UUID
     saldo_pendiente: Decimal
+    comanda_enviada: bool
     activo: bool
     creado: datetime
     creado_por: UUID | None
     modificado: datetime | None
     modificado_por: UUID | None
+
+    model_config = {"from_attributes": True}
+
+
+class EventoDelDiaOut(BaseModel):
+    id: UUID
+    nombre_cliente: str
+    apellidos_cliente: str | None
+    telefono_cliente: str
+    hora_inicio: time
+    hora_fin: time
+    numero_personas: int
+    fecha_evento: date
 
     model_config = {"from_attributes": True}

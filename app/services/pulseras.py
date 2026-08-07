@@ -27,12 +27,11 @@ async def obtener(conn: asyncpg.Connection, pulsera_id: UUID) -> PulseraOut:
     return PulseraOut.model_validate(row)
 
 
-async def crear(
-    conn: asyncpg.Connection, body: PulseraCrear, current_user: TokenData
-) -> PulseraOut:
-    creado_por = UUID(current_user.sub)
+async def crear(conn: asyncpg.Connection, body: PulseraCrear, creado_por: UUID) -> PulseraOut:
     try:
-        row = await pulseras_repository.crear(conn, body.sucursal_id, body.pulsera_rfid, creado_por)
+        row = await pulseras_repository.crear(
+            conn, body.sucursal_id, body.pulsera_rfid, body.activo, body.numero_lote, creado_por
+        )
     except asyncpg.UniqueViolationError as exc:
         raise Conflicto("Ya existe una pulsera con ese RFID en esta sucursal.") from exc
     except asyncpg.StringDataRightTruncationError as exc:
