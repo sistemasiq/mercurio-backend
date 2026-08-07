@@ -17,8 +17,12 @@ def sucursal_scope(current_user: TokenData) -> str | None:
     (None) si el rol ve todas las sucursales (AdministradorSistema). Si el
     usuario no es AdministradorSistema y no tiene sucursal asignada, devuelve
     un id que no existe para que el filtro no traiga nada, en vez de
-    reventar."""
-    if current_user.role == ROL_SISTEMA:
+    reventar.
+
+    AdministradorSistema puede "pararse" en una sucursal específica (header
+    X-Sucursal-Vista, resuelto en get_current_user) -- en ese caso branch_id
+    ya viene poblado en el token y se filtra igual que cualquier otro rol."""
+    if current_user.role == ROL_SISTEMA and current_user.branch_id is None:
         return VE_TODAS_LAS_SUCURSALES
     if current_user.branch_id is None:
         return "00000000-0000-0000-0000-000000000000"

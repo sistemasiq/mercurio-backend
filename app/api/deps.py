@@ -4,11 +4,12 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
 from app.core.security import decode_access_token
 from app.repositories.token_repository import is_token_revoked
 from app.schemas.auth import TokenData
@@ -86,8 +87,19 @@ async def _resolve_token_data(token: str, conn: asyncpg.Connection) -> TokenData
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     conn: asyncpg.Connection = Depends(get_db),
+    sucursal_vista: str | None = Header(None, alias="X-Sucursal-Vista"),
 ) -> TokenData:
-    return await _resolve_token_data(credentials.credentials, conn)
+    current_user = await _resolve_token_data(credentials.credentials, conn)
+    # AdministradorSistema no tiene sucursal propia; este header opcional le
+    # permite "pararse" en una sucursal para ver sus catálogos/listados como
+    # los vería esa sucursal, sin necesidad de reautenticarse. Cualquier otro
+    # rol lo ignora -- su branch_id siempre sale del token, nunca del cliente.
+    if current_user.role == ROL_SISTEMA and sucursal_vista:
+        try:
+            current_user = current_user.model_copy(update={"branch_id": UUID(sucursal_vista)})
+        except ValueError:
+            pass
+    return current_user
 
 
 async def get_current_user_ws(token: str, conn: asyncpg.Connection) -> TokenData:
