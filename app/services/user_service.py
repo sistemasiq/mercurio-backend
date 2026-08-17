@@ -76,12 +76,12 @@ def _assert_admin_scope(current_user: TokenData, target: UsuarioRecord) -> None:
 
 
 async def list_users(conn: asyncpg.Connection, current_user: TokenData) -> list[UserResponse]:
-    if current_user.role == ROL_SISTEMA:
+    if current_user.branch_id is not None:
+        records = await get_usuarios_by_branch(conn, current_user.branch_id)
+    elif current_user.role == ROL_SISTEMA:
         records = await get_all_usuarios(conn)
     else:
-        if current_user.branch_id is None:
-            return []
-        records = await get_usuarios_by_branch(conn, current_user.branch_id)
+        return []
     return [_to_response(r) for r in records]
 
 
