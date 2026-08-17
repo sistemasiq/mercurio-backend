@@ -7,16 +7,35 @@
 -- fila. extras y tipos_evento NO cambian, siguen exclusivos por sucursal --
 -- esa parte de la decisión de 034 se mantiene.
 --
+-- CORREGIDA tras el primer intento de aplicarla contra la BD compartida:
+-- esa BD tiene estructura (políticas RLS, funciones app.*, y una FK desde
+-- movimientos_caja) que no vive en ningún archivo de sql/migrations/ -- la
+-- tocó alguien fuera de las migraciones del repo. Esta versión se ajusta a
+-- ese estado real en vez de asumir solo lo que los archivos del repo dicen:
+--   - Remapea también pagos_ordenes y movimientos_caja (no solo
+--     pagos_reservacion/pagos_estancia, que era todo lo que existía en el
+--     repo cuando se escribió la primera versión).
+--   - sucursal_metodos_pago replica el patrón RLS + trigger de modificado
+--     que ya usa metodos_pago y configuracion_lealtad en esa BD.
+--   - Una misma sucursal puede tener MÁS DE UNA fila del mismo `tipo`
+--     (pruebas, ediciones -- ej. Puebla Angelópolis con "Efectivo" inactivo
+--     y "Efectivo1" activo). Se usa el estado `activo` de la fila más
+--     reciente de esa sucursal para ese tipo, no un JOIN directo que
+--     pisaría el resultado de forma no determinística.
+--
 -- Consolidación: por cada `tipo` se conserva UNA fila canónica (la más
--- antigua). Los pagos históricos en pagos_reservacion/pagos_estancia que
--- referenciaban una fila duplicada se remapean a la canónica antes de borrar
--- los duplicados -- no se pierde ningún registro.
+-- antigua). Los pagos históricos que referenciaban una fila duplicada se
+-- remapean a la canónica antes de borrar los duplicados -- no se pierde
+-- ningún registro.
 --
 -- Activación por sucursal: nueva tabla sucursal_metodos_pago. Para cada
--- sucursal que ya tenía una fila de un tipo dado, se conserva su `activo`
--- tal cual. Para sucursales que nunca configuraron ese tipo, se activa por
--- default (mejor sobra un método disponible que faltar uno que ya se usaba).
+-- sucursal que ya tenía al menos una fila de un tipo dado, se conserva el
+-- `activo` de su fila más reciente de ese tipo. Para sucursales que nunca
+-- configuraron ese tipo, se activa por default (mejor sobra un método
+-- disponible que faltar uno que ya se usaba).
 -- =============================================================================
+
+BEGIN;
 
 -- 1. Fila canónica por tipo (la más antigua).
 CREATE TEMP TABLE _canonico AS
@@ -24,12 +43,21 @@ SELECT DISTINCT ON (tipo) tipo, id AS canonico_id
 FROM metodos_pago
 ORDER BY tipo, creado ASC, id ASC;
 
--- 2. Remapear pagos históricos de cada duplicado a su canónica.
+-- 2. Remapear pagos históricos de cada duplicado a su canónica -- las 4
+--    tablas que hoy referencian metodos_pago.id en la BD real (verificado
+--    vía information_schema, no asumido de los archivos del repo).
 UPDATE pagos_reservacion pr
 SET metodo_pago_id = c.canonico_id
 FROM metodos_pago mp
 JOIN _canonico c ON c.tipo = mp.tipo
 WHERE pr.metodo_pago_id = mp.id
+  AND mp.id <> c.canonico_id;
+
+UPDATE pagos_ordenes po
+SET metodo_pago_id = c.canonico_id
+FROM metodos_pago mp
+JOIN _canonico c ON c.tipo = mp.tipo
+WHERE po.metodo_pago_id = mp.id
   AND mp.id <> c.canonico_id;
 
 UPDATE pagos_estancia pe
@@ -39,23 +67,60 @@ JOIN _canonico c ON c.tipo = mp.tipo
 WHERE pe.metodos_pago_id = mp.id
   AND mp.id <> c.canonico_id;
 
--- 3. Tabla de activación por sucursal.
+UPDATE movimientos_caja mc
+SET metodo_pago_id = c.canonico_id
+FROM metodos_pago mp
+JOIN _canonico c ON c.tipo = mp.tipo
+WHERE mc.metodo_pago_id = mp.id
+  AND mp.id <> c.canonico_id;
+
+-- 3. Tabla de activación por sucursal -- mismo patrón que
+--    configuracion_lealtad (FK a usuarios en las columnas de auditoría,
+--    ON DELETE CASCADE si se borra la sucursal).
 CREATE TABLE IF NOT EXISTS public.sucursal_metodos_pago (
-    sucursal_id    UUID NOT NULL REFERENCES public.sucursales(id),
+    sucursal_id    UUID NOT NULL REFERENCES public.sucursales(id) ON DELETE CASCADE,
     metodo_pago_id UUID NOT NULL REFERENCES public.metodos_pago(id),
     activo         BOOLEAN NOT NULL DEFAULT TRUE,
     creado         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    creado_por     UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
     modificado     TIMESTAMPTZ DEFAULT now(),
-    modificado_por UUID,
+    modificado_por UUID REFERENCES public.usuarios(id) ON DELETE SET NULL,
     PRIMARY KEY (sucursal_id, metodo_pago_id)
 );
 
--- Sucursales que ya tenían una fila de este tipo: conservan su estado activo.
+ALTER TABLE public.sucursal_metodos_pago ENABLE ROW LEVEL SECURITY;
+
+-- Mismo patrón que metodos_pago: cualquiera lee; para escribir, admin o
+-- alguien de la propia sucursal (activar/desactivar es decisión de cada
+-- sucursal, no solo de admin -- a diferencia del catálogo global en sí).
+CREATE POLICY sucursal_metodos_pago_select ON public.sucursal_metodos_pago
+    FOR SELECT USING (true);
+
+CREATE POLICY sucursal_metodos_pago_write ON public.sucursal_metodos_pago
+    FOR ALL
+    USING (app.usuario_tiene_rol(ARRAY['admin']) OR app.usuario_en_sucursal(sucursal_id))
+    WITH CHECK (app.usuario_tiene_rol(ARRAY['admin']) OR app.usuario_en_sucursal(sucursal_id));
+
+CREATE TRIGGER trg_sucursal_metodos_pago_modificado
+    BEFORE UPDATE ON public.sucursal_metodos_pago
+    FOR EACH ROW EXECUTE FUNCTION app.set_modificado();
+
+-- Estado real más reciente por (sucursal, tipo) -- una sucursal puede tener
+-- varias filas del mismo tipo (pruebas, ediciones); se usa la más nueva en
+-- vez de un JOIN directo, que pisaría el resultado sin orden determinado
+-- cuando hay más de una fila del mismo tipo en la misma sucursal.
+CREATE TEMP TABLE _estado_sucursal_tipo AS
+SELECT DISTINCT ON (sucursal_id, tipo) sucursal_id, tipo, activo
+FROM metodos_pago
+ORDER BY sucursal_id, tipo, creado DESC, id DESC;
+
+-- Sucursales que ya tenían al menos una fila de este tipo: conservan el
+-- activo de su fila más reciente de ese tipo.
 INSERT INTO sucursal_metodos_pago (sucursal_id, metodo_pago_id, activo)
-SELECT mp.sucursal_id, c.canonico_id, mp.activo
-FROM metodos_pago mp
-JOIN _canonico c ON c.tipo = mp.tipo
-ON CONFLICT (sucursal_id, metodo_pago_id) DO UPDATE SET activo = EXCLUDED.activo;
+SELECT est.sucursal_id, c.canonico_id, est.activo
+FROM _estado_sucursal_tipo est
+JOIN _canonico c ON c.tipo = est.tipo
+ON CONFLICT (sucursal_id, metodo_pago_id) DO NOTHING;
 
 -- Sucursales que nunca configuraron ese tipo: se activa por default.
 INSERT INTO sucursal_metodos_pago (sucursal_id, metodo_pago_id, activo)
@@ -99,3 +164,5 @@ SELECT s.id, mp.id, TRUE
 FROM sucursales s
 CROSS JOIN metodos_pago mp
 ON CONFLICT (sucursal_id, metodo_pago_id) DO NOTHING;
+
+COMMIT;
