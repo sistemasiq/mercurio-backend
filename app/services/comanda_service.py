@@ -50,7 +50,6 @@ async def expandir_detalles_comanda(
 ) -> list[DetalleComanda | dict[str, Any]]:
     """Convierte los detalles con combos en detalles individuales (uno por
     producto hijo), para que cocina sepa exactamente qué preparar."""
-    hijos_a_padres = await producto_repository.get_hijos_a_padres_map(conn)
     detalles_finales: list[DetalleComanda | dict[str, Any]] = []
 
     # Pre-computar: ¿qué combos ya tienen hijos en la lista?
@@ -95,21 +94,15 @@ async def expandir_detalles_comanda(
             nombre_producto = producto_info["nombre"] if producto_info else ""
             detalle = _detalle_a_dict(item, nombre_producto)
 
-            stored_padre = detalle.get("nombre_combo_padre")
-            stored_hijo_de = detalle.get("es_hijo_de")
-            stored_hijo_combo = detalle.get("es_hijo_combo")
-
-            if stored_padre:
-                detalle["nombre_combo_padre"] = stored_padre
-                if stored_hijo_de:
-                    detalle["es_hijo_de"] = stored_hijo_de
-                if stored_hijo_combo is not None:
-                    detalle["es_hijo_combo"] = stored_hijo_combo
-            else:
-                padre_nombre = hijos_a_padres.get(producto_id)
-                if padre_nombre:
-                    detalle["nombre_combo_padre"] = padre_nombre
-                    detalle["es_hijo_combo"] = True
+            # Un ítem pertenece a un combo SOLO si la orden lo trajo así
+            # (campos persistidos es_hijo_de/nombre_combo_padre/es_hijo_combo).
+            # Nunca se infiere desde el catálogo global de combos: un producto
+            # que es integrante de un combo pero se vendió suelto debe salir
+            # limpio, sin etiquetas de paquete que no le corresponden.
+            if not detalle.get("nombre_combo_padre"):
+                detalle["nombre_combo_padre"] = None
+                detalle["es_hijo_de"] = None
+                detalle["es_hijo_combo"] = False
 
             detalles_finales.append(detalle)
 
