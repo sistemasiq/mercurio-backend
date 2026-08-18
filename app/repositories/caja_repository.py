@@ -260,7 +260,15 @@ async def eliminar_caja_admin(
 
 # ── Apertura de Caja ──────────────────────────────────────────────────────────
 
-async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, usuario_id: str) -> dict | None:
+async def get_apertura_activa_por_usuario(
+    conn: asyncpg.Connection, usuario_id: str, sucursal_id: str | None = None
+) -> dict | None:
+    # sucursal_id es opcional: los llamadores que verifican RN-APE-001/RN-CIE-001
+    # (¿ya tiene turno activo en algún lado?) deben omitirlo, porque esas reglas
+    # son por cajero, no por sucursal. Solo la pantalla de Apertura de Caja para
+    # AdministradorSistema lo pasa, para que la apertura activa respete la
+    # sucursal seleccionada en el selector global en vez de mostrar la de
+    # cualquier otra sucursal donde el mismo usuario tenga un turno abierto.
     row = await conn.fetchrow(
         """
         SELECT
@@ -283,10 +291,12 @@ async def get_apertura_activa_por_usuario(conn: asyncpg.Connection, usuario_id: 
         LEFT JOIN public.sucursales s ON c.sucursal_id = s.id
         LEFT JOIN public.usuarios u ON a.cajero_id = u.id
         WHERE a.cajero_id = $1 AND a.estado IN ('ABIERTA', 'EN_CORTE')
+          AND ($2::uuid IS NULL OR c.sucursal_id = $2::uuid)
         ORDER BY a.creado DESC
         LIMIT 1
         """,
         uuid.UUID(usuario_id),
+        uuid.UUID(sucursal_id) if sucursal_id else None,
     )
     return dict(row) if row else None
 

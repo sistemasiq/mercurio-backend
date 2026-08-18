@@ -137,7 +137,7 @@ async def enviar_conteo(
 )
 async def autenticar_revision_admin(
     payload: RevisionAdminPayload,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:revision_admin")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> RevisionAdminResponse:
     return await turnos_caja_service.autenticar_admin_revision(conn, current_user.sub, payload)
@@ -150,7 +150,7 @@ async def autenticar_revision_admin(
 )
 async def confirmar_cierre(
     payload: ConfirmarCierrePayload,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(require_permission("turnos_caja:confirmar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> ConfirmarCierreResponse:
     return await turnos_caja_service.confirmar_cierre(conn, current_user.sub, payload)

@@ -197,8 +197,10 @@ async def abrir_turno(
     )
 
 
-async def obtener_turno_activo(conn: asyncpg.Connection, user_id: str) -> TurnoActivoResponse:
-    activa = await get_apertura_activa_por_usuario(conn, user_id)
+async def obtener_turno_activo(
+    conn: asyncpg.Connection, user_id: str, sucursal_id: str | None = None
+) -> TurnoActivoResponse:
+    activa = await get_apertura_activa_por_usuario(conn, user_id, sucursal_id)
     if not activa:
         raise TurnoNoEncontradoError()
 
