@@ -162,6 +162,7 @@ async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[
         SELECT producto_id, cantidad
         FROM public.producto_combo
         WHERE combo_id = $1
+          AND activo = TRUE
         """,
         combo_id,
     )
