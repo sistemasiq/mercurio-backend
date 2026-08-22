@@ -8,7 +8,8 @@ from fastapi import HTTPException, UploadFile
 
 from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
 from app.core.ws_manager import manager
-from app.repositories.caja_repository import registrar_movimiento_caja
+from app.repositories import metodos_pago_repository
+from app.repositories.caja_repository import registrar_cambio_caja, registrar_movimiento_caja
 from app.repositories.detalles_registro import insert_detalle_registro
 from app.repositories.estancias import get_activos_by_sucursal_id
 from app.repositories.ninos import nino_create
@@ -28,6 +29,7 @@ from app.repositories.reservaciones_repository import obtener_evento_mas_cercano
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
 from app.schemas.registros import OnboardingRequest
 from app.schemas.reservaciones import EventoDelDiaOut
+from app.services.validaciones_pago import validar_cambio
 
 
 async def create_estancia(
@@ -38,6 +40,14 @@ async def create_estancia(
     usuario_id: UUID,
     apertura_caja_id: str,
 ) -> dict[str, Any]:
+    ids_efectivo = await metodos_pago_repository.obtener_ids_por_tipo(conn, "E")
+    cambio = data.cambio.quantize(Decimal("0.01"))
+    validar_cambio(
+        [(p.metodoPagoId, Decimal(str(p.monto))) for p in (data.pagos or [])],
+        cambio,
+        ids_efectivo,
+    )
+
     async with conn.transaction():
 
         if data.reservacionId is not None:
@@ -215,6 +225,15 @@ async def create_estancia(
                     creado_por=str(usuario_id),
                 )
                 total_pagado += p.monto
+
+            if cambio > 0:
+                await registrar_cambio_caja(
+                    conn,
+                    apertura_caja_id=apertura_caja_id,
+                    referencia_id=str(registro_id),
+                    monto=cambio,
+                    creado_por=str(usuario_id),
+                )
 
             # 5. actualizar total
             await registro_update_total(conn, usuario_id, registro_id, total)
