@@ -7,8 +7,8 @@ import asyncpg
 
 from app.exceptions import DatosInvalidos
 from app.models.comanda import Comanda
-from app.repositories import comanda_repository, pago_repository
-from app.repositories.caja_repository import registrar_movimiento_caja
+from app.repositories import comanda_repository, metodos_pago_repository, pago_repository
+from app.repositories.caja_repository import registrar_cambio_caja, registrar_movimiento_caja
 from app.schemas.comanda import ComandaCreate, EstadoComanda
 from app.schemas.pagos import (
     DetalleOrdenOut,
@@ -19,6 +19,7 @@ from app.schemas.pagos import (
     PaymentRequest,
 )
 from app.services import inventario_service, lealtad_service
+from app.services.validaciones_pago import validar_cambio
 
 
 async def procesar_pagos(
@@ -52,7 +53,8 @@ async def completar_pago(
     sucursal_id: UUID,
     apertura_caja_id: str,
 ) -> Comanda:
-    """Crea la comanda, registra los pagos y el movimiento de caja de cada uno
+    """Crea la comanda, registra los pagos, el movimiento de caja de cada uno
+    y, si hubo cambio, su propio movimiento
     (multimodal: una comanda puede pagarse con varios métodos) en una única
     transacción. Si falla cualquiera de los dos, nada se persiste (rollback
     automático). Después del commit, expande los detalles de combos y
@@ -67,6 +69,19 @@ async def completar_pago(
             f"El total de los pagos ({total_pagos}) es menor "
             f"al total de la comanda ({body.total_final})."
         )
+
+    ids_efectivo = await metodos_pago_repository.obtener_ids_por_tipo(conn, "E")
+    cambio = body.cambio.quantize(Decimal("0.01"))
+    if cambio > total_pagos - body.total_final:
+        raise DatosInvalidos(
+            f"El cambio declarado ({cambio}) es mayor al excedente pagado "
+            f"({total_pagos - body.total_final})."
+        )
+    validar_cambio(
+        [(p.metodo_pago_id, p.monto) for p in body.pagos],
+        cambio,
+        ids_efectivo,
+    )
 
     comanda_in = ComandaCreate(
         ticket_numero=body.ticket_numero,
@@ -106,6 +121,14 @@ async def completar_pago(
                 referencia_id=comanda.id,
                 metodo_pago_id=str(pago.metodo_pago_id),
                 monto=pago.monto,
+                creado_por=str(usuario_id),
+            )
+        if cambio > 0:
+            await registrar_cambio_caja(
+                conn,
+                apertura_caja_id=apertura_caja_id,
+                referencia_id=comanda.id,
+                monto=cambio,
                 creado_por=str(usuario_id),
             )
         if body.puntos_a_redimir > 0:
