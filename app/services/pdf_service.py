@@ -326,6 +326,50 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         story.append(Paragraph("No se registraron retiros parciales en este turno.", _ESTILO_VACIO))
     story.append(_separador())
 
+    # ── Cambio entregado ─────────────────────────────────────────────────
+    story.append(Paragraph("Cambio Entregado", _ESTILO_SECCION))
+    if detalle.cambios:
+        data = [
+            [
+                Paragraph("Monto", _ESTILO_TABLA_HEADER),
+                Paragraph("Hora", _ESTILO_TABLA_HEADER),
+            ]
+        ]
+        total_cambio = 0.0
+        for cambio in detalle.cambios:
+            data.append(
+                [
+                    Paragraph(_fmt_moneda(cambio.monto), _ESTILO_TABLA_CELDA),
+                    Paragraph(_fmt_fecha(str(cambio.creado)), _ESTILO_TABLA_CELDA),
+                ]
+            )
+            total_cambio += float(cambio.monto)
+        data.append(
+            [
+                Paragraph(_fmt_moneda(total_cambio), _ESTILO_TABLA_CELDA_BOLD),
+                "",
+            ]
+        )
+        tabla_cambios = Table(
+            data,
+            colWidths=[_CONTENT_WIDTH * 0.5, _CONTENT_WIDTH * 0.5],
+            repeatRows=1,
+        )
+        tabla_cambios.setStyle(
+            TableStyle(
+                [
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        story.append(tabla_cambios)
+    else:
+        story.append(Paragraph("No se entregó cambio en este turno.", _ESTILO_VACIO))
+    story.append(_separador())
+
     # ── Observaciones ────────────────────────────────────────────────────
     story.append(Paragraph("Observaciones", _ESTILO_SECCION))
     texto_obs = escape(detalle.observaciones or "Sin observaciones registradas.")
