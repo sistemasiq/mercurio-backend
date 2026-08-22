@@ -57,6 +57,18 @@ _ESTILO_TABLA_CELDA_BOLD = ParagraphStyle(
     "tablaCeldaBold", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=9
 )
 _ESTILO_VACIO = ParagraphStyle("vacio", parent=_styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.grey)
+_ESTILO_TABLA_CELDA_SOBRANTE = ParagraphStyle(
+    "tablaCeldaSobrante", parent=_ESTILO_TABLA_CELDA, textColor=colors.blue
+)
+_ESTILO_TABLA_CELDA_FALTANTE = ParagraphStyle(
+    "tablaCeldaFaltante", parent=_ESTILO_TABLA_CELDA, textColor=colors.red
+)
+_ESTILO_TABLA_CELDA_BOLD_SOBRANTE = ParagraphStyle(
+    "tablaCeldaBoldSobrante", parent=_ESTILO_TABLA_CELDA_BOLD, textColor=colors.blue
+)
+_ESTILO_TABLA_CELDA_BOLD_FALTANTE = ParagraphStyle(
+    "tablaCeldaBoldFaltante", parent=_ESTILO_TABLA_CELDA_BOLD, textColor=colors.red
+)
 _ESTILO_FIRMA_LABEL = ParagraphStyle(
     "firmaLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=9, alignment=1
 )
@@ -64,6 +76,21 @@ _ESTILO_FIRMA_LABEL = ParagraphStyle(
 
 def _fmt_moneda(valor) -> str:
     return f"$ {float(valor):,.2f}"
+
+
+def _celda_diferencia(valor: float, negrita: bool = False) -> Paragraph:
+    """Celda de diferencia (declarado - esperado) con el mismo esquema de color
+    que "Diferencia neta": rojo = faltante, azul = sobrante, negro = exacto."""
+    if valor < 0:
+        estilo = _ESTILO_TABLA_CELDA_BOLD_FALTANTE if negrita else _ESTILO_TABLA_CELDA_FALTANTE
+        texto = f"-{_fmt_moneda(abs(valor))}"
+    elif valor > 0:
+        estilo = _ESTILO_TABLA_CELDA_BOLD_SOBRANTE if negrita else _ESTILO_TABLA_CELDA_SOBRANTE
+        texto = f"+{_fmt_moneda(valor)}"
+    else:
+        estilo = _ESTILO_TABLA_CELDA_BOLD if negrita else _ESTILO_TABLA_CELDA
+        texto = _fmt_moneda(0)
+    return Paragraph(texto, estilo)
 
 
 def _fmt_fecha(valor: str) -> str:
@@ -250,21 +277,40 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
                 Paragraph("Método", _ESTILO_TABLA_HEADER),
                 Paragraph("Esperado (sistema)", _ESTILO_TABLA_HEADER),
                 Paragraph("Declarado (cajero)", _ESTILO_TABLA_HEADER),
+                Paragraph("Diferencia", _ESTILO_TABLA_HEADER),
             ]
         ]
+        total_esperado_metodos = 0.0
+        total_declarado_metodos = 0.0
         for fila_balance in detalle.balance_por_metodo:
             data.append(
                 [
                     Paragraph(escape(fila_balance.label), _ESTILO_TABLA_CELDA),
                     Paragraph(_fmt_moneda(fila_balance.esperado), _ESTILO_TABLA_CELDA),
                     Paragraph(_fmt_moneda(fila_balance.declarado), _ESTILO_TABLA_CELDA),
+                    _celda_diferencia(float(fila_balance.diferencia)),
                 ]
             )
-        tabla_metodos = Table(data, colWidths=[_CONTENT_WIDTH * 0.4, _CONTENT_WIDTH * 0.3, _CONTENT_WIDTH * 0.3], repeatRows=1)
+            total_esperado_metodos += float(fila_balance.esperado)
+            total_declarado_metodos += float(fila_balance.declarado)
+        data.append(
+            [
+                Paragraph("Total", _ESTILO_TABLA_CELDA_BOLD),
+                Paragraph(_fmt_moneda(total_esperado_metodos), _ESTILO_TABLA_CELDA_BOLD),
+                Paragraph(_fmt_moneda(total_declarado_metodos), _ESTILO_TABLA_CELDA_BOLD),
+                _celda_diferencia(total_declarado_metodos - total_esperado_metodos, negrita=True),
+            ]
+        )
+        tabla_metodos = Table(
+            data,
+            colWidths=[_CONTENT_WIDTH * 0.3, _CONTENT_WIDTH * 0.23, _CONTENT_WIDTH * 0.23, _CONTENT_WIDTH * 0.24],
+            repeatRows=1,
+        )
         tabla_metodos.setStyle(
             TableStyle(
                 [
                     ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
+                    ("LINEABOVE", (0, -1), (-1, -1), 0.75, colors.black),
                     ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -324,50 +370,6 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         story.append(tabla_retiros)
     else:
         story.append(Paragraph("No se registraron retiros parciales en este turno.", _ESTILO_VACIO))
-    story.append(_separador())
-
-    # ── Cambio entregado ─────────────────────────────────────────────────
-    story.append(Paragraph("Cambio Entregado", _ESTILO_SECCION))
-    if detalle.cambios:
-        data = [
-            [
-                Paragraph("Monto", _ESTILO_TABLA_HEADER),
-                Paragraph("Hora", _ESTILO_TABLA_HEADER),
-            ]
-        ]
-        total_cambio = 0.0
-        for cambio in detalle.cambios:
-            data.append(
-                [
-                    Paragraph(_fmt_moneda(cambio.monto), _ESTILO_TABLA_CELDA),
-                    Paragraph(_fmt_fecha(str(cambio.creado)), _ESTILO_TABLA_CELDA),
-                ]
-            )
-            total_cambio += float(cambio.monto)
-        data.append(
-            [
-                Paragraph(_fmt_moneda(total_cambio), _ESTILO_TABLA_CELDA_BOLD),
-                "",
-            ]
-        )
-        tabla_cambios = Table(
-            data,
-            colWidths=[_CONTENT_WIDTH * 0.5, _CONTENT_WIDTH * 0.5],
-            repeatRows=1,
-        )
-        tabla_cambios.setStyle(
-            TableStyle(
-                [
-                    ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
-                    ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ]
-            )
-        )
-        story.append(tabla_cambios)
-    else:
-        story.append(Paragraph("No se entregó cambio en este turno.", _ESTILO_VACIO))
     story.append(_separador())
 
     # ── Observaciones ────────────────────────────────────────────────────
