@@ -12,6 +12,11 @@ class PagoIn(BaseModel):
     monto: float
 
 
+class PagoEstanciaExtraRequest(BaseModel):
+    pagos: list[PagoIn] = Field(..., min_length=1)
+    cambio: Decimal = Field(Decimal("0"), ge=0)
+
+
 # ---------------------------------------------------------------------------
 # DTOs para el endpoint POST /api/pagos/ (pagos_ordenes)
 # ---------------------------------------------------------------------------

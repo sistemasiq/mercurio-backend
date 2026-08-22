@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ class OnboardingRequest(BaseModel):
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn] | None = None
+    cambio: Decimal = Field(Decimal("0"), ge=0)
     reservacionId: UUID | None = None
 
 
