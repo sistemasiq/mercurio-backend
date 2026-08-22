@@ -548,12 +548,38 @@ async def sumar_retiros_por_apertura(conn: asyncpg.Connection, apertura_caja_id:
     return Decimal(str(val))
 
 
+async def sumar_cambio_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(monto), 0)
+        FROM public.movimientos_caja
+        WHERE apertura_caja_id = $1
+          AND tipo_movimiento = 'C'
+        """,
+        uuid.UUID(apertura_caja_id),
+    )
+    return Decimal(str(val))
+
+
 async def listar_retiros_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT id, apertura_caja_id, concepto, tipo_destinatario, monto, observaciones, creado
         FROM public.retiros_parciales
         WHERE apertura_caja_id = $1
+        ORDER BY creado DESC
+        """,
+        uuid.UUID(apertura_caja_id),
+    )
+    return [dict(r) for r in rows]
+
+
+async def listar_cambios_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT id, monto, creado
+        FROM public.movimientos_caja
+        WHERE apertura_caja_id = $1 AND tipo_movimiento = 'C'
         ORDER BY creado DESC
         """,
         uuid.UUID(apertura_caja_id),
@@ -596,17 +622,42 @@ async def registrar_movimiento_caja(
     return dict(row)
 
 
+async def registrar_cambio_caja(
+    conn: asyncpg.Connection,
+    apertura_caja_id: str,
+    referencia_id: str,
+    monto: Decimal,
+    creado_por: str | None = None,
+) -> dict:
+    """Registra el cambio físico entregado al cliente cuando pagó en efectivo
+    de más. Mismo tratamiento contable que un retiro parcial (RP): se
+    excluye de las sumas de ventas y se resta aparte en _calcular_balance,
+    nunca se suma como venta. metodo_pago_id siempre None -- el cambio
+    siempre sale del cajón en efectivo, sin importar el método de pago
+    original (mismo criterio que el retiro parcial)."""
+    return await registrar_movimiento_caja(
+        conn,
+        apertura_caja_id=apertura_caja_id,
+        tipo_movimiento="C",
+        referencia_id=referencia_id,
+        metodo_pago_id=None,
+        monto=monto,
+        creado_por=creado_por,
+    )
+
+
 async def obtener_movimientos_por_metodo(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT
             m.metodo_pago_id,
             mp.nombre AS metodo_nombre,
+            mp.tipo AS metodo_tipo,
             COALESCE(SUM(m.monto), 0) AS total_ventas
         FROM public.movimientos_caja m
         INNER JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
         WHERE m.apertura_caja_id = $1
-        GROUP BY m.metodo_pago_id, mp.nombre
+        GROUP BY m.metodo_pago_id, mp.nombre, mp.tipo
         """,
         uuid.UUID(apertura_caja_id),
     )
@@ -633,7 +684,7 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id
         SELECT COALESCE(SUM(monto), 0)
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1
-          AND tipo_movimiento <> 'RP'
+          AND tipo_movimiento NOT IN ('RP', 'C')
         """,
         uuid.UUID(apertura_caja_id),
     )
@@ -641,22 +692,21 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id
 
 
 async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
-    """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón: movimientos
-    con método explícitamente 'Efectivo', o SIN método asignado todavía (comandas no
-    integra métodos de pago aún — mientras tanto se asume efectivo, es lo más común
-    para compras de mostrador). Transferencia/tarjeta NO son dinero físico en caja.
-    Los retiros (RP) se excluyen aquí a propósito: ya se registran también en
-    movimientos_caja para trazabilidad/auditoría (PDF, ledger completo), pero el único
-    lugar que los resta del esperado es sumar_retiros_por_apertura (retiros_parciales) —
-    contarlos aquí también los restaría dos veces."""
+    """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón:
+    movimientos cuyo método tiene tipo='E' (identidad fija del catálogo
+    global, migración 037 -- no el nombre, que es editable), o sin método
+    asignado (comandas aún no integra métodos de pago). Retiros (RP) y
+    cambio (C) se excluyen -- ya se restan aparte en _calcular_balance,
+    sumarlos aquí también los contaría como ventas en vez de salidas de
+    efectivo."""
     val = await conn.fetchval(
         """
         SELECT COALESCE(SUM(m.monto), 0)
         FROM public.movimientos_caja m
         LEFT JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
         WHERE m.apertura_caja_id = $1
-          AND m.tipo_movimiento <> 'RP'
-          AND (m.metodo_pago_id IS NULL OR lower(mp.nombre) = 'efectivo')
+          AND m.tipo_movimiento NOT IN ('RP', 'C')
+          AND (m.metodo_pago_id IS NULL OR mp.tipo = 'E')
         """,
         uuid.UUID(apertura_caja_id),
     )
