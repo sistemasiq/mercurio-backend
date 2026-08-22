@@ -29,6 +29,7 @@ from app.repositories.caja_repository import (
     get_caja_por_codigo,
     get_primer_turno,
     listar_cajas_por_sucursal,
+    listar_cambios_por_apertura,
     listar_historial_cierres,
     listar_retiros_por_apertura,
     listar_turnos,
@@ -37,6 +38,7 @@ from app.repositories.caja_repository import (
     obtener_movimientos_por_metodo,
     registrar_movimiento_caja,
     resetear_conteo_apertura,
+    sumar_cambio_apertura,
     sumar_retiros_por_apertura,
     sumar_total_ventas_apertura,
     sumar_ventas_efectivo_apertura,
@@ -45,6 +47,7 @@ from app.schemas.caja import (
     AbrirTurnoPayload,
     ArqueoResumen,
     CajaResponse,
+    CambioResponse,
     ConfirmarCierrePayload,
     ConfirmarCierreResponse,
     ConteoPayload,
@@ -132,12 +135,24 @@ async def abrir_turno(
     branch_id: str | None,
     payload: AbrirTurnoPayload,
 ) -> TurnoActivoResponse:
+    sucursal = branch_id or payload.sucursal_id
+
     # 1. Verificar si el usuario ya tiene turno activo (RN-APE-001)
     activa = await get_apertura_activa_por_usuario(conn, user_id)
     if activa:
-        return await obtener_turno_activo(conn, user_id)
+        if sucursal and str(activa["sucursal_id"]) != str(sucursal):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "TURNO_ACTIVO_OTRA_SUCURSAL",
+                    "message": (
+                        f"Ya tienes un turno abierto en {activa['sucursal_nombre']}. "
+                        "Ciérralo antes de abrir uno en otra sucursal."
+                    ),
+                },
+            )
+        return await obtener_turno_activo(conn, user_id, sucursal)
 
-    sucursal = branch_id or payload.sucursal_id
     if not sucursal:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -289,19 +304,23 @@ async def _calcular_balance(
     """Balance real del cierre. Devuelve dos vistas distintas:
     - `balance` (por método): el renglón "efectivo" compara el dinero físico —
       fondo inicial + ventas en efectivo (o sin método aún, ver
-      sumar_ventas_efectivo_apertura) - retiros — contra lo que el cajero contó
-      físicamente (desglose_efectivo.total en conteo_json). Cada otro método
-      compara lo que el sistema registró contra lo que el cajero declaró para
-      ese método específico.
+      sumar_ventas_efectivo_apertura) - retiros - cambio dado — contra lo que
+      el cajero contó físicamente (desglose_efectivo.total en conteo_json).
+      Cada otro método compara lo que el sistema registró contra lo que el
+      cajero declaró para ese método específico.
     - Totales generales (esperado/declarado/diferencia): todos los métodos de
       pago cuentan como dinero real del sistema (cupones, lealtad, vouchers
       incluidos) — es la suma de todos los movimientos del turno + fondo
-      inicial - retiros, comparada contra la suma de todo lo que el cajero
-      declaró, independientemente del método."""
+      inicial - retiros - cambio dado, comparada contra la suma de todo lo
+      que el cajero declaró, independientemente del método."""
     monto_inicial = Decimal(str(apertura["fondo_inicial"]))
     total_retiros = await sumar_retiros_por_apertura(conn, turno_id)
+    total_cambio = await sumar_cambio_apertura(conn, turno_id)
     total_esperado_efectivo = (
-        monto_inicial + await sumar_ventas_efectivo_apertura(conn, turno_id) - total_retiros
+        monto_inicial
+        + await sumar_ventas_efectivo_apertura(conn, turno_id)
+        - total_retiros
+        - total_cambio
     )
 
     conteo = json.loads(apertura["conteo_json"]) if apertura["conteo_json"] else {}
@@ -330,9 +349,9 @@ async def _calcular_balance(
     movs = await obtener_movimientos_por_metodo(conn, turno_id)
     vistos: set[str] = set()
     for m in movs:
-        nombre_met = m["metodo_nombre"].lower()
-        if nombre_met == "efectivo":
+        if m["metodo_tipo"] == "E":
             continue
+        nombre_met = m["metodo_nombre"].lower()
         vistos.add(nombre_met)
         esperado = Decimal(str(m["total_ventas"]))
         declarado = declarados_por_metodo.get(nombre_met, Decimal("0"))
@@ -366,7 +385,10 @@ async def _calcular_balance(
     # el total esperado/declarado/diferencia que ve el administrador para autorizar suma
     # todos los métodos con movimientos en el turno, no solo efectivo.
     total_esperado_general = (
-        monto_inicial + await sumar_total_ventas_apertura(conn, turno_id) - total_retiros
+        monto_inicial
+        + await sumar_total_ventas_apertura(conn, turno_id)
+        - total_retiros
+        - total_cambio
     )
     total_declarado_general = declarado_efectivo + sum(
         declarados_por_metodo.values(), Decimal("0")
@@ -796,6 +818,12 @@ async def obtener_detalle(
         for r in retiros_raw
     ]
 
+    cambios_raw = await listar_cambios_por_apertura(conn, apertura_caja_id)
+    cambios = [
+        CambioResponse(id=str(c["id"]), monto=Decimal(str(c["monto"])), creado=c["creado"])
+        for c in cambios_raw
+    ]
+
     return DetalleArqueoResponse(
         id=str(cierre["id"]),
         cajero_nombre=cierre["cajero_nombre"] or "—",
@@ -815,4 +843,5 @@ async def obtener_detalle(
         desglose_efectivo=DesgloseEfectivoDetalle(total=Decimal(str(cierre["total_declarado"]))),
         balance_por_metodo=balance,
         retiros=retiros,
+        cambios=cambios,
     )
