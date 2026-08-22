@@ -63,6 +63,7 @@ class PagoCompletoRequest(BaseModel):
     pagos: list[PaymentItem] = Field(..., min_length=1)
     celular_cliente: str | None = None
     puntos_a_redimir: int = Field(0, ge=0)
+    cambio: Decimal = Field(Decimal("0"), ge=0)
 
     @field_validator("celular_cliente")
     @staticmethod
