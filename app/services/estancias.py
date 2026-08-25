@@ -28,6 +28,7 @@ from app.repositories.reservaciones_repository import obtener_evento_mas_cercano
 from app.repositories.tutores import get_tutor_by_phone, tutor_create
 from app.schemas.registros import OnboardingRequest
 from app.schemas.reservaciones import EventoDelDiaOut
+from app.services import lealtad_service
 
 
 async def create_estancia(
@@ -39,7 +40,6 @@ async def create_estancia(
     apertura_caja_id: str,
 ) -> dict[str, Any]:
     async with conn.transaction():
-
         if data.reservacionId is not None:
             evento_dict = await obtener_evento_mas_cercano(conn, data.sucursalId)
             if evento_dict is None:
@@ -59,11 +59,11 @@ async def create_estancia(
                     print(nombre)
                 else:
                     nombre = evento.nombre_cliente
-                
+
                 tutor_id = await tutor_create(
                     conn, data.sucursalId, nombre, evento.telefono_cliente, usuario_id
                 )
-            
+
             # Agregar validacion para evitar que ya exista el uuid en la db
             registro_id = uuid4()
             while await exists_registro_any(conn, registro_id):
@@ -80,10 +80,19 @@ async def create_estancia(
 
             await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
             await upload_bytes(ruta_bd_llegada, data_llegada, "image/jpeg")
-                
+
             # 2. registro (Un solo INSERT limpio)
             await registro_create(
-                conn, registro_id, data.sucursalId, tutor_id,data.pulseraTutorId, ruta_bd_ine, ruta_bd_llegada, usuario_id, data.nombreSegundoTutor,evento.id
+                conn,
+                registro_id,
+                data.sucursalId,
+                tutor_id,
+                data.pulseraTutorId,
+                ruta_bd_ine,
+                ruta_bd_llegada,
+                usuario_id,
+                data.nombreSegundoTutor,
+                evento.id,
             )
 
             total = Decimal(0)
@@ -107,7 +116,12 @@ async def create_estancia(
             # 3. detalles
             for d in data.detalles:
                 nino_id = await nino_create(
-                    conn, data.sucursalId, d.nino.nombreCompleto, d.nino.edad, d.nino.notas, usuario_id
+                    conn,
+                    data.sucursalId,
+                    d.nino.nombreCompleto,
+                    d.nino.edad,
+                    d.nino.notas,
+                    usuario_id,
                 )
 
                 await insert_detalle_registro(
@@ -119,7 +133,7 @@ async def create_estancia(
                     data.parentesco,
                     entrada,
                     salida_esperada,
-                    usuario_id
+                    usuario_id,
                 )
 
             # 5. actualizar total
@@ -142,7 +156,11 @@ async def create_estancia(
                 tutor_id = tutor["id"]
             else:
                 tutor_id = await tutor_create(
-                    conn, data.sucursalId, data.tutor.nombreCompleto, data.tutor.telefono, usuario_id
+                    conn,
+                    data.sucursalId,
+                    data.tutor.nombreCompleto,
+                    data.tutor.telefono,
+                    usuario_id,
                 )
 
             registro_id = uuid4()
@@ -158,10 +176,18 @@ async def create_estancia(
 
             await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
             await upload_bytes(ruta_bd_llegada, data_llegada, "image/jpeg")
-                
+
             # 2. registro (Un solo INSERT limpio)
             await registro_create(
-                conn, registro_id, data.sucursalId, tutor_id,data.pulseraTutorId, ruta_bd_ine, ruta_bd_llegada, usuario_id, data.nombreSegundoTutor
+                conn,
+                registro_id,
+                data.sucursalId,
+                tutor_id,
+                data.pulseraTutorId,
+                ruta_bd_ine,
+                ruta_bd_llegada,
+                usuario_id,
+                data.nombreSegundoTutor,
             )
 
             total = Decimal(0)
@@ -169,7 +195,12 @@ async def create_estancia(
             # 3. detalles
             for d in data.detalles:
                 nino_id = await nino_create(
-                    conn, data.sucursalId, d.nino.nombreCompleto, d.nino.edad, d.nino.notas, usuario_id
+                    conn,
+                    data.sucursalId,
+                    d.nino.nombreCompleto,
+                    d.nino.edad,
+                    d.nino.notas,
+                    usuario_id,
                 )
 
                 precio = await get_precio_individual_by_id(conn, d.productoId)
@@ -198,6 +229,19 @@ async def create_estancia(
 
                 total += precio * d.cantidad
 
+            # 3.5 canje de puntos de lealtad (opcional, sobre el subtotal ya calculado)
+            if data.puntosARedimir > 0:
+                descuento_puntos = await lealtad_service.redimir_puntos(
+                    conn,
+                    data.sucursalId,
+                    data.tutor.telefono,
+                    data.puntosARedimir,
+                    None,
+                    usuario_id,
+                    registro_id=registro_id,
+                )
+                total = max(total - descuento_puntos, Decimal(0))
+
             # 4. pagos
             total_pagado = 0.0
 
@@ -216,12 +260,23 @@ async def create_estancia(
                 )
                 total_pagado += p.monto
 
+            # 4.5 otorgamiento de puntos de lealtad sobre lo efectivamente pagado
+            if data.tutor.telefono and total_pagado > 0:
+                await lealtad_service.otorgar_puntos(
+                    conn,
+                    data.sucursalId,
+                    data.tutor.telefono,
+                    Decimal(str(total_pagado)),
+                    usuario_id,
+                    registro_id=registro_id,
+                )
+
             # 5. actualizar total
             await registro_update_total(conn, usuario_id, registro_id, total)
 
             # 6. activar si ya pagó todo
             if total_pagado >= total:
-                await change_registro_estado(conn, EstadoRegistro.ACTIVO,usuario_id, registro_id)
+                await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
 
             resultado = {
                 "registroId": registro_id,

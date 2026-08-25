@@ -66,23 +66,34 @@ async def otorgar_puntos(
     usuario_id: UUID,
     comanda_id: UUID | None = None,
     reservacion_id: UUID | None = None,
+    registro_id: UUID | None = None,
 ) -> int:
-    """Otorga puntos por un pago (venta de caja o anticipo de reservación),
-    si el programa está activo en esa sucursal. Exactamente uno de
-    comanda_id/reservacion_id debe venir, según el origen del pago.
-    total_pagado debe ser el monto neto ya cobrado (después de cualquier
-    descuento por canje aplicado en el mismo pago), para no otorgar puntos
-    sobre dinero que el cliente no pagó. No-op (retorna 0) si no hay
-    configuración, está inactiva, o el cálculo da 0 puntos.
+    """Otorga puntos por un pago (venta de caja, anticipo de reservación, o
+    check-in de niños), si el programa está activo en esa sucursal y ese
+    origen en particular no está desactivado. Exactamente uno de
+    comanda_id/reservacion_id/registro_id debe venir, según el origen del
+    pago. total_pagado debe ser el monto neto ya cobrado (después de
+    cualquier descuento por canje aplicado en el mismo pago), para no
+    otorgar puntos sobre dinero que el cliente no pagó. No-op (retorna 0) si
+    no hay configuración, el programa o el origen están desactivados, o el
+    cálculo da 0 puntos.
 
     Los puntos se escalan por valor_punto para no perder el cashback en
     pagos chicos: con valor_punto=0.01 (1 punto = 1 centavo), $85 al 1%
     ($0.85 de cashback) otorga 85 puntos en vez de truncarse a 0."""
-    if (comanda_id is None) == (reservacion_id is None):
-        raise ValueError("Debe indicarse exactamente uno de comanda_id o reservacion_id.")
+    if sum(x is not None for x in (comanda_id, reservacion_id, registro_id)) != 1:
+        raise ValueError(
+            "Debe indicarse exactamente uno de comanda_id, reservacion_id o registro_id."
+        )
 
     config = await lealtad_repository.obtener_configuracion(conn, sucursal_id)
     if not config or not config["activo"]:
+        return 0
+    if comanda_id is not None and not config["otorga_puntos_comandas"]:
+        return 0
+    if reservacion_id is not None and not config["otorga_puntos_reservaciones"]:
+        return 0
+    if registro_id is not None and not config["otorga_puntos_checkin"]:
         return 0
 
     cashback = total_pagado * Decimal(str(config["porcentaje_retorno"])) / 100
@@ -101,6 +112,7 @@ async def otorgar_puntos(
         usuario_id,
         comanda_id=comanda_id,
         reservacion_id=reservacion_id,
+        registro_id=registro_id,
     )
     saldo = await lealtad_repository.calcular_saldo(conn, sucursal_id, celular)
     await lealtad_repository.registrar_movimiento(
@@ -115,6 +127,7 @@ async def otorgar_puntos(
         None,
         usuario_id,
         reservacion_id=reservacion_id,
+        registro_id=registro_id,
     )
     return puntos
 
@@ -124,14 +137,17 @@ async def redimir_puntos(
     sucursal_id: UUID,
     celular: str,
     puntos: int,
-    comanda_id: UUID,
+    comanda_id: UUID | None,
     usuario_id: UUID,
+    registro_id: UUID | None = None,
 ) -> Decimal:
     """Consume `puntos` de los lotes vigentes del celular en esta sucursal,
     FIFO por fecha de caducidad (primero el más próximo a vencer). Bloquea
     las filas tocadas (FOR UPDATE) para que dos canjes concurrentes del
     mismo celular no sobre-consuman. Retorna el descuento en pesos
-    (puntos * valor_punto vigente)."""
+    (puntos * valor_punto vigente). comanda_id/registro_id son solo
+    referencia para el ledger de auditoría (no hay CHECK de "exactamente
+    uno" en movimientos_puntos, a diferencia de lotes_puntos)."""
     config = await lealtad_repository.obtener_configuracion(conn, sucursal_id)
     if not config:
         raise DatosInvalidos("No hay configuración de lealtad para esta sucursal.")
@@ -161,6 +177,7 @@ async def redimir_puntos(
             saldo_actual,
             None,
             usuario_id,
+            registro_id=registro_id,
         )
 
     return puntos * Decimal(str(config["valor_punto"]))

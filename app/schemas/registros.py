@@ -22,7 +22,8 @@ class OnboardingRequest(BaseModel):
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn] | None = None
-    reservacionId: UUID | None = None
+    reservacionId: UUID | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    puntosARedimir: int = Field(default=0, ge=0)  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class OnboardingResponse(BaseModel):
@@ -35,6 +36,7 @@ class OnboardingResponse(BaseModel):
 class CheckoutRequest(BaseModel):
     pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     pagos: list[PagoIn] = []
+
 
 class CheckoutResponse(BaseModel):
     detalleId: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
