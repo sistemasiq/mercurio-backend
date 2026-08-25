@@ -25,6 +25,7 @@ _UNION_VENTAS = """
         v.sucursal_id,
         v.es_cancelado,
         v.monto,
+        v.total_real,
         v.metodo_pago_id,
         v.metodo_pago_nombre,
         v.notas_pago,
@@ -40,6 +41,7 @@ _UNION_VENTAS = """
             po.sucursal_id                     AS sucursal_id,
             (c.estado_actual = 'C')            AS es_cancelado,
             po.monto                           AS monto,
+            c.total_final                      AS total_real,
             po.metodo_pago_id                  AS metodo_pago_id,
             mp.nombre                          AS metodo_pago_nombre,
             po.notas_pago                      AS notas_pago,
@@ -60,6 +62,7 @@ _UNION_VENTAS = """
             pe.sucursal_id                     AS sucursal_id,
             FALSE                              AS es_cancelado,
             pe.monto                           AS monto,
+            r.total                            AS total_real,
             pe.metodos_pago_id                 AS metodo_pago_id,
             mp.nombre                          AS metodo_pago_nombre,
             NULL                               AS notas_pago,
@@ -81,6 +84,7 @@ _UNION_VENTAS = """
             r.sucursal_id                      AS sucursal_id,
             (r.estado = 'cancelada')           AS es_cancelado,
             pr.monto                           AS monto,
+            r.precio_total                     AS total_real,
             pr.metodo_pago_id                  AS metodo_pago_id,
             mp.nombre                          AS metodo_pago_nombre,
             pr.notas                           AS notas_pago,
@@ -97,7 +101,7 @@ _SELECT_HISTORIAL = f"""
         v.referencia_id,
         v.tipo_origen,
         v.titulo,
-        SUM(v.monto)                         AS total_final,
+        SUM(v.total_real)                    AS total_final,
         v.estado_actual,
         v.sucursal_id,
         MAX(v.creado)                        AS creado,
@@ -452,7 +456,7 @@ async def detalle_por_referencia(
 
 _SELECT_ESTADISTICAS = f"""
     SELECT
-        COALESCE(SUM(v.monto), 0)::float     AS total_ventas,
+        COALESCE(SUM(v.total_real), 0)::float AS total_ventas,
         COUNT(DISTINCT v.referencia_id)::int  AS total_ordenes
     FROM ({_UNION_VENTAS}) v
     WHERE v.sucursal_id = $1
