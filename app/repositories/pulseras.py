@@ -10,6 +10,20 @@ _COLUMNS = """
 """
 
 
+async def contar_activas_por_sucursal(conn: asyncpg.Connection, sucursal_id: UUID) -> int:
+    """Total de pulseras activas que POSEE la sucursal, estén en uso o no.
+
+    Es el tope físico de niños que puede pulsear un evento. A diferencia de
+    get_pulseras_disponibles_por_sucursal(), no descuenta las que están puestas
+    ahora mismo: un evento ocurre en una fecha futura y esas ya estarán libres.
+    """
+    total = await conn.fetchval(
+        "SELECT count(*) FROM pulseras WHERE sucursal_id = $1 AND activo = TRUE",
+        sucursal_id,
+    )
+    return int(total or 0)
+
+
 async def get_pulseras_disponibles_por_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID
 ) -> list[PulseraResponse]:

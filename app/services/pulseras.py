@@ -6,13 +6,24 @@ from app.exceptions import Conflicto, DatosInvalidos, NoEncontrado
 from app.repositories import pulseras as pulseras_repository
 from app.repositories.pulseras import get_pulseras_disponibles_por_sucursal
 from app.schemas.auth import TokenData
-from app.schemas.pulseras import PulseraCrear, PulseraOut, PulseraResponse, PulseraUpdate
+from app.schemas.pulseras import (
+    InventarioPulserasOut,
+    PulseraCrear,
+    PulseraOut,
+    PulseraResponse,
+    PulseraUpdate,
+)
 
 
 async def get_pulseras_disponibles_by_sucursal_id(
     conn: asyncpg.Connection, sucursal_id: UUID
 ) -> list[PulseraResponse]:
     return await get_pulseras_disponibles_por_sucursal(conn, sucursal_id)
+
+
+async def obtener_inventario(conn: asyncpg.Connection, sucursal_id: UUID) -> InventarioPulserasOut:
+    total = await pulseras_repository.contar_activas_por_sucursal(conn, sucursal_id)
+    return InventarioPulserasOut(sucursal_id=sucursal_id, total_activas=total)
 
 
 async def listar_todas(conn: asyncpg.Connection, sucursal_id: UUID) -> list[PulseraOut]:
