@@ -6,6 +6,7 @@ SAD §3.2 / Regla 11.4: el router nunca accede a un repository ni escribe SQL.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -21,7 +22,8 @@ from app.schemas.insumo import (
     InsumoRecetaInversaOut,
     InsumoUpdate,
 )
-from app.services import insumo_service
+from app.schemas.movimiento_inventario import CogsRenglonOut
+from app.services import insumo_service, inventario_service
 
 router = APIRouter(prefix="/api/insumos", tags=["Insumos"])
 
@@ -45,6 +47,18 @@ async def listar_alertas(
     """Insumos de la sucursal por debajo de su punto de reorden, separados en
     críticos (< mínimo) y por-reordenar. Para el badge de alerta del menú."""
     return await insumo_service.listar_alertas(conn, sucursal_id)
+
+
+@router.get("/reporte-cogs", response_model=list[CogsRenglonOut])
+async def reporte_cogs(
+    sucursal_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reportes:inventario")),
+) -> list[CogsRenglonOut]:
+    """Costo de ventas (COGS): costo de lo consumido por insumo en el periodo."""
+    return await inventario_service.listar_cogs(conn, sucursal_id, desde, hasta)
 
 
 @router.get("/estimaciones", response_model=list[InsumoRecetaInversaOut])

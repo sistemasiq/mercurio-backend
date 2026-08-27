@@ -24,6 +24,7 @@ from app.repositories import (
     unidad_medida_repository,
 )
 from app.schemas.compra import CompraCrear, CompraOut, CompraUpdate
+from app.services import costeo_service
 
 
 async def _construir_out(conn: asyncpg.Connection, compra: dict[str, Any]) -> CompraOut:
@@ -152,8 +153,9 @@ async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -
             )
             if nuevo_stock is None:
                 raise RuntimeError("No se pudo aumentar el stock del insumo al recibir la compra")
-            await insumo_repository.actualizar(
-                conn, detalle["insumo_id"], {"costo_unitario": costo_base}
+            # Crea una capa de costo FIFO y recalcula el costo promedio del insumo.
+            await costeo_service.registrar_entrada(
+                conn, detalle["insumo_id"], cantidad_base, costo_base, "compra", compra_id
             )
             await movimiento_inventario_repository.registrar(
                 conn,
@@ -166,6 +168,7 @@ async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -
                 referencia_id=compra_id,
                 notas=None,
                 creado_por=creado_por,
+                costo_total=cantidad_base * costo_base,
             )
 
         marcada = await compra_repository.marcar_recibida(conn, compra_id)

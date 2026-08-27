@@ -20,6 +20,15 @@ class ConteoFisicoCreate(BaseModel):
     notas: str | None = None
 
 
+class CogsRenglonOut(BaseModel):
+    insumo_id: UUID
+    insumo_nombre: str
+    cantidad_salida: Decimal
+    costo_total: Decimal
+
+    model_config = {"from_attributes": True}
+
+
 class MovimientoInventarioOut(BaseModel):
     id: UUID
     sucursal_id: UUID
@@ -31,6 +40,7 @@ class MovimientoInventarioOut(BaseModel):
     motivo: str
     referencia_id: UUID | None
     notas: str | None
+    costo_total: Decimal | None
     creado: datetime
     creado_por: UUID | None
 
