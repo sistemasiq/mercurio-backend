@@ -41,7 +41,7 @@ async def registrar(
         INSERT INTO public.movimientos_inventario
             (sucursal_id, insumo_id, tipo, cantidad, stock_resultante, motivo,
              referencia_id, notas, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6::motivo_movimiento_inventario, $7, $8, $9)
         RETURNING id
         """,
         sucursal_id,
