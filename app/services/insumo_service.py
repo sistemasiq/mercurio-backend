@@ -19,6 +19,7 @@ from app.repositories import (
 )
 from app.schemas.auth import TokenData
 from app.schemas.insumo import (
+    InsumoAlertasOut,
     InsumoCrear,
     InsumoOut,
     InsumoRecetaInversaOut,
@@ -62,6 +63,16 @@ async def listar_estimaciones(
     return [InsumoRecetaInversaOut.model_validate(r) for r in rows]
 
 
+async def listar_alertas(conn: asyncpg.Connection, sucursal_id: UUID) -> InsumoAlertasOut:
+    rows = await insumo_repository.listar_bajo_umbral(conn, sucursal_id)
+    criticos: list[InsumoOut] = []
+    por_reordenar: list[InsumoOut] = []
+    for r in rows:
+        destino = criticos if r["stock_actual"] < r["stock_minimo"] else por_reordenar
+        destino.append(InsumoOut.model_validate(r))
+    return InsumoAlertasOut(criticos=criticos, por_reordenar=por_reordenar)
+
+
 async def obtener(conn: asyncpg.Connection, insumo_id: UUID) -> InsumoOut:
     row = await insumo_repository.obtener(conn, insumo_id)
     if not row:
@@ -84,6 +95,8 @@ async def crear(conn: asyncpg.Connection, body: InsumoCrear, current_user: Token
         costo_unitario=body.costo_unitario,
         proveedor_principal_id=body.proveedor_principal_id,
         creado_por=UUID(current_user.sub),
+        punto_reorden=body.punto_reorden,
+        stock_maximo=body.stock_maximo,
     )
     return InsumoOut.model_validate(row)
 

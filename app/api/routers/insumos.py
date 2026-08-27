@@ -14,7 +14,13 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.insumo import InsumoCrear, InsumoOut, InsumoRecetaInversaOut, InsumoUpdate
+from app.schemas.insumo import (
+    InsumoAlertasOut,
+    InsumoCrear,
+    InsumoOut,
+    InsumoRecetaInversaOut,
+    InsumoUpdate,
+)
 from app.services import insumo_service
 
 router = APIRouter(prefix="/api/insumos", tags=["Insumos"])
@@ -28,6 +34,17 @@ async def listar_insumos(
 ) -> list[InsumoOut]:
     """Lista insumos activos e inactivos, para la pantalla de catálogo."""
     return await insumo_service.listar(conn, sucursal_id)
+
+
+@router.get("/alertas", response_model=InsumoAlertasOut)
+async def listar_alertas(
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("inventario:ver")),
+) -> InsumoAlertasOut:
+    """Insumos de la sucursal por debajo de su punto de reorden, separados en
+    críticos (< mínimo) y por-reordenar. Para el badge de alerta del menú."""
+    return await insumo_service.listar_alertas(conn, sucursal_id)
 
 
 @router.get("/estimaciones", response_model=list[InsumoRecetaInversaOut])

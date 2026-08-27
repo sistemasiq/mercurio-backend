@@ -12,6 +12,14 @@ class MovimientoManualCreate(BaseModel):
     notas: str | None = None
 
 
+class ConteoFisicoCreate(BaseModel):
+    """Conteo físico: el usuario captura el stock real que ve en el anaquel y el
+    sistema calcula el ajuste (entrada si sobra, merma si falta)."""
+
+    stock_contado: Decimal = Field(..., ge=0)
+    notas: str | None = None
+
+
 class MovimientoInventarioOut(BaseModel):
     id: UUID
     sucursal_id: UUID

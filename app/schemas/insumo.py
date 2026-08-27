@@ -12,6 +12,8 @@ class InsumoBase(BaseModel):
     unidad_base_id: UUID
     unidad_compra_id: UUID
     stock_minimo: Decimal = Field(Decimal("0"), ge=0)
+    punto_reorden: Decimal | None = Field(None, ge=0)
+    stock_maximo: Decimal | None = Field(None, ge=0)
     costo_unitario: Decimal | None = Field(None, ge=0)
     proveedor_principal_id: UUID | None = None
 
@@ -30,6 +32,8 @@ class InsumoUpdate(BaseModel):
     nombre: str | None = Field(None, max_length=150)
     descripcion: str | None = None
     stock_minimo: Decimal | None = Field(None, ge=0)
+    punto_reorden: Decimal | None = Field(None, ge=0)
+    stock_maximo: Decimal | None = Field(None, ge=0)
     costo_unitario: Decimal | None = Field(None, ge=0)
     proveedor_principal_id: UUID | None = None
     activo: bool | None = None
@@ -46,6 +50,15 @@ class InsumoOut(InsumoBase):
     modificado_por: UUID | None
 
     model_config = {"from_attributes": True}
+
+
+class InsumoAlertasOut(BaseModel):
+    """Insumos de la sucursal que necesitan atención de compra. `criticos` están
+    por debajo del stock mínimo; `por_reordenar` están por debajo del punto de
+    reorden pero todavía sobre el mínimo."""
+
+    criticos: list[InsumoOut]
+    por_reordenar: list[InsumoOut]
 
 
 class InsumoRecetaInversaOut(BaseModel):

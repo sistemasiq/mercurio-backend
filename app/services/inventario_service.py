@@ -13,7 +13,7 @@ from uuid import UUID
 
 import asyncpg
 
-from app.exceptions import NoEncontrado, StockInsuficienteError
+from app.exceptions import DatosInvalidos, NoEncontrado, StockInsuficienteError
 from app.models.comanda import DetalleComanda
 from app.repositories import (
     combo_repository,
@@ -23,7 +23,11 @@ from app.repositories import (
     producto_repository,
 )
 from app.schemas.comanda import DetalleCreate
-from app.schemas.movimiento_inventario import MovimientoInventarioOut, MovimientoManualCreate
+from app.schemas.movimiento_inventario import (
+    ConteoFisicoCreate,
+    MovimientoInventarioOut,
+    MovimientoManualCreate,
+)
 
 
 async def _consumo_insumos(
@@ -169,6 +173,44 @@ async def registrar_ajuste_manual(
         cantidad=body.cantidad,
         stock_resultante=nuevo_stock,
         motivo=motivo,
+        referencia_id=None,
+        notas=body.notas,
+        creado_por=creado_por,
+    )
+    row = await movimiento_inventario_repository.obtener(conn, movimiento_id)
+    if not row:
+        raise RuntimeError("Error al recuperar el movimiento recién registrado")
+    return MovimientoInventarioOut.model_validate(row)
+
+
+async def registrar_conteo_fisico(
+    conn: asyncpg.Connection,
+    insumo_id: UUID,
+    body: ConteoFisicoCreate,
+    creado_por: UUID,
+) -> MovimientoInventarioOut:
+    """Ajusta el stock al valor contado físicamente. El movimiento resultante es
+    una entrada (`E`) si el conteo es mayor al sistema o una merma (`M`) si es
+    menor, siempre con motivo `conteo_fisico`."""
+    insumo = await insumo_repository.obtener(conn, insumo_id)
+    if not insumo:
+        raise NoEncontrado("Insumo")
+    delta = body.stock_contado - insumo["stock_actual"]
+    if delta == 0:
+        raise DatosInvalidos(
+            "El conteo coincide con el stock del sistema; no hay ajuste que registrar."
+        )
+    nuevo_stock = await insumo_repository.ajustar_stock(conn, insumo_id, delta)
+    if nuevo_stock is None:
+        raise StockInsuficienteError(insumo["nombre"], "aplicar este conteo")
+    movimiento_id = await movimiento_inventario_repository.registrar(
+        conn,
+        sucursal_id=insumo["sucursal_id"],
+        insumo_id=insumo_id,
+        tipo="E" if delta > 0 else "M",
+        cantidad=abs(delta),
+        stock_resultante=nuevo_stock,
+        motivo="conteo_fisico",
         referencia_id=None,
         notas=body.notas,
         creado_por=creado_por,
