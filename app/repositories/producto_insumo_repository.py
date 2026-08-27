@@ -58,17 +58,25 @@ async def obtener(
 
 
 async def upsert(
-    conn: asyncpg.Connection, producto_id: UUID, insumo_id: UUID, cantidad: Decimal
+    conn: asyncpg.Connection,
+    producto_id: UUID,
+    insumo_id: UUID,
+    cantidad: Decimal,
+    usuario_id: UUID,
 ) -> None:
     await conn.execute(
         """
-        INSERT INTO public.producto_insumos (producto_id, insumo_id, cantidad)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (producto_id, insumo_id) DO UPDATE SET cantidad = EXCLUDED.cantidad
+        INSERT INTO public.producto_insumos (producto_id, insumo_id, cantidad, creado_por)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (producto_id, insumo_id) DO UPDATE
+        SET cantidad = EXCLUDED.cantidad,
+            modificado = now(),
+            modificado_por = $4
         """,
         producto_id,
         insumo_id,
         cantidad,
+        usuario_id,
     )
 
 
