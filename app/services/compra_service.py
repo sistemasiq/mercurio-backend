@@ -23,7 +23,13 @@ from app.repositories import (
     proveedor_repository,
     unidad_medida_repository,
 )
-from app.schemas.compra import CompraCrear, CompraOut, CompraUpdate
+from app.schemas.compra import (
+    CompraCrear,
+    CompraEditar,
+    CompraOut,
+    CompraUpdate,
+    RecibirCompraRequest,
+)
 from app.services import costeo_service
 
 
@@ -126,16 +132,65 @@ async def actualizar(conn: asyncpg.Connection, compra_id: UUID, body: CompraUpda
     return await _construir_out(conn, row)
 
 
-async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -> CompraOut:
+async def editar(conn: asyncpg.Connection, compra_id: UUID, body: CompraEditar) -> CompraOut:
+    """Reemplaza proveedor, notas y líneas de una compra que sigue en 'P'."""
     compra = await compra_repository.obtener(conn, compra_id)
     if not compra:
         raise NoEncontrado("Compra")
     if compra["estado"] != "P":
+        raise Conflicto("Solo se puede editar una compra pendiente.")
+
+    proveedor = await proveedor_repository.obtener(conn, body.proveedor_id)
+    if not proveedor or proveedor["sucursal_id"] != compra["sucursal_id"]:
+        raise DatosInvalidos("El proveedor no pertenece a esta sucursal.")
+    for detalle in body.detalles:
+        insumo = await insumo_repository.obtener(conn, detalle.insumo_id)
+        if not insumo:
+            raise NoEncontrado("Insumo")
+        if insumo["sucursal_id"] != compra["sucursal_id"]:
+            raise DatosInvalidos("El insumo no pertenece a esta sucursal.")
+        await _validar_y_calcular_base(
+            conn,
+            insumo,
+            detalle.unidad_medida_id,
+            detalle.presentacion_id,
+            detalle.cantidad,
+            detalle.costo_unitario,
+        )
+
+    await compra_repository.reemplazar_detalles(conn, compra_id, body)
+    return await obtener(conn, compra_id)
+
+
+async def recibir(
+    conn: asyncpg.Connection,
+    compra_id: UUID,
+    creado_por: UUID,
+    body: RecibirCompraRequest | None = None,
+) -> CompraOut:
+    compra = await compra_repository.obtener(conn, compra_id)
+    if not compra:
+        raise NoEncontrado("Compra")
+    if compra["estado"] not in ("P", "PARCIAL"):
         raise Conflicto("La compra ya fue recibida o está cancelada.")
 
     detalles = await compra_repository.listar_detalles(conn, compra_id)
+    solicitado: dict[str, Decimal] = {}
+    if body and body.lineas:
+        solicitado = {str(linea.detalle_id): linea.cantidad for linea in body.lineas}
+
     async with conn.transaction():
+        algo_recibido = False
         for detalle in detalles:
+            pendiente = detalle["cantidad"] - detalle["cantidad_recibida"]
+            if pendiente <= 0:
+                continue
+            cantidad = solicitado.get(str(detalle["id"]), pendiente) if solicitado else pendiente
+            recibir_ahora = min(cantidad, pendiente)
+            if recibir_ahora <= 0:
+                continue
+            algo_recibido = True
+
             insumo = await insumo_repository.obtener(conn, detalle["insumo_id"])
             if not insumo:
                 raise NoEncontrado("Insumo")
@@ -144,16 +199,14 @@ async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -
                 insumo,
                 detalle["unidad_medida_id"],
                 detalle["presentacion_id"],
-                detalle["cantidad"],
+                recibir_ahora,
                 detalle["costo_unitario"],
             )
-
             nuevo_stock = await insumo_repository.ajustar_stock(
                 conn, detalle["insumo_id"], cantidad_base
             )
             if nuevo_stock is None:
                 raise RuntimeError("No se pudo aumentar el stock del insumo al recibir la compra")
-            # Crea una capa de costo FIFO y recalcula el costo promedio del insumo.
             await costeo_service.registrar_entrada(
                 conn, detalle["insumo_id"], cantidad_base, costo_base, "compra", compra_id
             )
@@ -170,12 +223,20 @@ async def recibir(conn: asyncpg.Connection, compra_id: UUID, creado_por: UUID) -
                 creado_por=creado_por,
                 costo_total=cantidad_base * costo_base,
             )
+            await compra_repository.sumar_recepcion_linea(conn, detalle["id"], recibir_ahora)
 
-        marcada = await compra_repository.marcar_recibida(conn, compra_id)
-        if marcada is None:
+        if not algo_recibido:
+            raise Conflicto("No hay nada pendiente por recibir en esta compra.")
+
+        detalles = await compra_repository.listar_detalles(conn, compra_id)
+        completa = all(d["cantidad_recibida"] >= d["cantidad"] for d in detalles)
+        actualizada = await compra_repository.marcar_estado(
+            conn, compra_id, "R" if completa else "PARCIAL"
+        )
+        if actualizada is None:
             raise Conflicto("La compra ya fue recibida o está cancelada.")
 
-    return await _construir_out(conn, marcada)
+    return await _construir_out(conn, actualizada)
 
 
 async def cancelar(conn: asyncpg.Connection, compra_id: UUID) -> CompraOut:
@@ -183,7 +244,7 @@ async def cancelar(conn: asyncpg.Connection, compra_id: UUID) -> CompraOut:
     if not compra:
         raise NoEncontrado("Compra")
     if compra["estado"] != "P":
-        raise Conflicto("La compra ya fue recibida o está cancelada.")
+        raise Conflicto("Solo se puede cancelar una compra pendiente sin recepciones.")
     cancelada = await compra_repository.marcar_cancelada(conn, compra_id)
     if cancelada is None:
         raise Conflicto("La compra ya fue recibida o está cancelada.")

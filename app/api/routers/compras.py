@@ -14,7 +14,13 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.compra import CompraCrear, CompraOut, CompraUpdate
+from app.schemas.compra import (
+    CompraCrear,
+    CompraEditar,
+    CompraOut,
+    CompraUpdate,
+    RecibirCompraRequest,
+)
 from app.services import compra_service
 
 router = APIRouter(prefix="/api/compras", tags=["Compras"])
@@ -57,13 +63,24 @@ async def actualizar_compra(
     return await compra_service.actualizar(conn, compra_id, body)
 
 
+@router.put("/{compra_id}", response_model=CompraOut)
+async def editar_compra(
+    compra_id: UUID,
+    body: CompraEditar,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("inventario:gestionar_compras")),
+) -> CompraOut:
+    return await compra_service.editar(conn, compra_id, body)
+
+
 @router.post("/{compra_id}/recibir", response_model=CompraOut)
 async def recibir_compra(
     compra_id: UUID,
+    body: RecibirCompraRequest | None = None,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("inventario:gestionar_compras")),
 ) -> CompraOut:
-    return await compra_service.recibir(conn, compra_id, UUID(current_user.sub))
+    return await compra_service.recibir(conn, compra_id, UUID(current_user.sub), body)
 
 
 @router.post("/{compra_id}/cancelar", response_model=CompraOut)
