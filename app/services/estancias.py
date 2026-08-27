@@ -149,6 +149,17 @@ async def create_estancia(
             }
 
         else:
+            # Normalizado a solo dígitos para que coincida con el celular de
+            # 10 dígitos que usan comandas/reservaciones (CELULAR_PATTERN) --
+            # sin esto, un tutor capturado como "555 123 4567" fragmentaría
+            # sus puntos en una llave distinta a la que usa caja/POS para el
+            # mismo cliente. No se toca get_tutor_by_phone/tutor_create
+            # (comparan el teléfono tal cual, comportamiento preexistente
+            # fuera del alcance de lealtad).
+            celular_lealtad = "".join(ch for ch in data.tutor.telefono if ch.isdigit())
+            if len(celular_lealtad) != 10:
+                celular_lealtad = ""
+
             # 1. tutor
             tutor = await get_tutor_by_phone(conn, data.tutor.telefono, data.sucursalId)
 
@@ -231,10 +242,14 @@ async def create_estancia(
 
             # 3.5 canje de puntos de lealtad (opcional, sobre el subtotal ya calculado)
             if data.puntosARedimir > 0:
+                if not celular_lealtad:
+                    raise HTTPException(
+                        400, "El teléfono del tutor debe tener 10 dígitos para canjear puntos."
+                    )
                 descuento_puntos = await lealtad_service.redimir_puntos(
                     conn,
                     data.sucursalId,
-                    data.tutor.telefono,
+                    celular_lealtad,
                     data.puntosARedimir,
                     None,
                     usuario_id,
@@ -261,11 +276,11 @@ async def create_estancia(
                 total_pagado += p.monto
 
             # 4.5 otorgamiento de puntos de lealtad sobre lo efectivamente pagado
-            if data.tutor.telefono and total_pagado > 0:
+            if celular_lealtad and total_pagado > 0:
                 await lealtad_service.otorgar_puntos(
                     conn,
                     data.sucursalId,
-                    data.tutor.telefono,
+                    celular_lealtad,
                     Decimal(str(total_pagado)),
                     usuario_id,
                     registro_id=registro_id,

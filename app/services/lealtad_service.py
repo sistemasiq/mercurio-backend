@@ -54,6 +54,9 @@ async def actualizar_configuracion(
         valor_punto=body.valor_punto,
         activo=body.activo,
         usuario_id=UUID(current_user.sub),
+        otorga_puntos_comandas=body.otorga_puntos_comandas,
+        otorga_puntos_reservaciones=body.otorga_puntos_reservaciones,
+        otorga_puntos_checkin=body.otorga_puntos_checkin,
     )
     return ConfiguracionLealtadOut.model_validate(row)
 
