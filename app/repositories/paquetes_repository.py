@@ -6,14 +6,14 @@ import asyncpg
 
 _SELECT = """
     SELECT id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-           precio_base, precio_pulsera, activo, creado, creado_por,
+           precio_base, precio_hora_pulsera, activo, creado, creado_por,
            modificado, modificado_por
     FROM paquetes
 """
 
 _RETURNING = """
     id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-    precio_base, precio_pulsera, activo, creado, creado_por,
+    precio_base, precio_hora_pulsera, activo, creado, creado_por,
     modificado, modificado_por
 """
 
@@ -24,7 +24,7 @@ _RETURNING = """
 # número de contrataciones. Queda NULL si el paquete nunca se ha contratado.
 _SELECT_CON_CONTRATACIONES = """
     SELECT p.id, p.sucursal_id, p.nombre, p.descripcion, p.min_invitados, p.max_invitados,
-           p.precio_base, p.precio_pulsera, p.activo,
+           p.precio_base, p.precio_hora_pulsera, p.activo,
            p.creado, p.creado_por, p.modificado, p.modificado_por,
            COUNT(r.id) AS contrataciones,
            MAX(r.creado) AS ultima_contratacion
@@ -68,13 +68,13 @@ async def crear(
     min_invitados: int,
     max_invitados: int,
     precio_base: Decimal,
-    precio_pulsera: Decimal,
+    precio_hora_pulsera: Decimal,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO paquetes
             (sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-             precio_base, precio_pulsera)
+             precio_base, precio_hora_pulsera)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_RETURNING}
         """,
@@ -84,7 +84,7 @@ async def crear(
         min_invitados,
         max_invitados,
         precio_base,
-        precio_pulsera,
+        precio_hora_pulsera,
     )
     return dict(row)
 
