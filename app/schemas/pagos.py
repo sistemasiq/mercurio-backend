@@ -98,6 +98,8 @@ class MetodoPagoResumen(BaseModel):
 
 
 class HistorialOut(BaseModel):
+    # Para una orden es el id de la comanda; para un evento, el id del pago de
+    # reservación. En ambos casos identifica de forma única el renglón.
     comanda_id: UUID
     ticket_numero: str
     total_final: Decimal
@@ -105,6 +107,11 @@ class HistorialOut(BaseModel):
     sucursal_id: UUID
     creado: datetime
     creado_por: UUID | None = None
+    # 'orden' (venta de mostrador) o 'evento' (cobro de reservación). El detalle
+    # por comanda solo existe para 'orden'.
+    origen: str = "orden"
+    # Notas del cobro del evento (anticipo, liquidación...). Null en órdenes.
+    concepto: str | None = None
     metodos_pago: list[MetodoPagoResumen]
 
     model_config = {"from_attributes": True}
