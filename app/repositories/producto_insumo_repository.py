@@ -28,6 +28,26 @@ async def listar_por_producto(conn: asyncpg.Connection, producto_id: UUID) -> li
     return [dict(r) for r in rows]
 
 
+async def listar_por_sucursal(conn: asyncpg.Connection, sucursal_id: UUID) -> list[dict[str, Any]]:
+    """Receta inversa de todos los insumos activos de la sucursal: qué productos
+    A/B activos los consumen y en qué cantidad. Base para la columna "rinde para"
+    de la pantalla de insumos. Los combos ('C') no tienen receta directa y quedan
+    fuera."""
+    rows = await conn.fetch(
+        """
+        SELECT pi.insumo_id, pi.producto_id, pi.cantidad, p.nombre AS producto_nombre
+        FROM public.producto_insumos pi
+        JOIN public.insumos i   ON i.id = pi.insumo_id
+        JOIN public.productos p ON p.id = pi.producto_id
+        WHERE i.sucursal_id = $1 AND i.activo = TRUE
+          AND p.activo = TRUE AND p.tipo IN ('A', 'B')
+        ORDER BY i.nombre ASC, p.nombre ASC
+        """,
+        sucursal_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def obtener(
     conn: asyncpg.Connection, producto_id: UUID, insumo_id: UUID
 ) -> dict[str, Any] | None:

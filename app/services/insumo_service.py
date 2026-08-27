@@ -11,9 +11,19 @@ from uuid import UUID
 import asyncpg
 
 from app.exceptions import DatosInvalidos, NoEncontrado
-from app.repositories import insumo_repository, proveedor_repository, unidad_medida_repository
+from app.repositories import (
+    insumo_repository,
+    producto_insumo_repository,
+    proveedor_repository,
+    unidad_medida_repository,
+)
 from app.schemas.auth import TokenData
-from app.schemas.insumo import InsumoCrear, InsumoOut, InsumoUpdate
+from app.schemas.insumo import (
+    InsumoCrear,
+    InsumoOut,
+    InsumoRecetaInversaOut,
+    InsumoUpdate,
+)
 
 
 async def _validar_unidades(
@@ -43,6 +53,13 @@ async def _validar_proveedor(
 async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[InsumoOut]:
     rows = await insumo_repository.listar(conn, sucursal_id)
     return [InsumoOut.model_validate(r) for r in rows]
+
+
+async def listar_estimaciones(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[InsumoRecetaInversaOut]:
+    rows = await producto_insumo_repository.listar_por_sucursal(conn, sucursal_id)
+    return [InsumoRecetaInversaOut.model_validate(r) for r in rows]
 
 
 async def obtener(conn: asyncpg.Connection, insumo_id: UUID) -> InsumoOut:

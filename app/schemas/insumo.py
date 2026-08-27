@@ -46,3 +46,17 @@ class InsumoOut(InsumoBase):
     modificado_por: UUID | None
 
     model_config = {"from_attributes": True}
+
+
+class InsumoRecetaInversaOut(BaseModel):
+    """Una fila de receta vista desde el insumo: qué producto A/B lo consume y en
+    qué cantidad (expresada en la unidad base del insumo, por 1 unidad de
+    producto). El cálculo de "rinde para N unidades" lo hace el FrontEnd a partir
+    de stock_actual / cantidad."""
+
+    insumo_id: UUID
+    producto_id: UUID
+    producto_nombre: str
+    cantidad: Decimal
+
+    model_config = {"from_attributes": True}

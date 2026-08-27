@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.insumo import InsumoCrear, InsumoOut, InsumoUpdate
+from app.schemas.insumo import InsumoCrear, InsumoOut, InsumoRecetaInversaOut, InsumoUpdate
 from app.services import insumo_service
 
 router = APIRouter(prefix="/api/insumos", tags=["Insumos"])
@@ -28,6 +28,17 @@ async def listar_insumos(
 ) -> list[InsumoOut]:
     """Lista insumos activos e inactivos, para la pantalla de catálogo."""
     return await insumo_service.listar(conn, sucursal_id)
+
+
+@router.get("/estimaciones", response_model=list[InsumoRecetaInversaOut])
+async def listar_estimaciones(
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("inventario:ver")),
+) -> list[InsumoRecetaInversaOut]:
+    """Receta inversa por insumo (qué productos A/B lo consumen y en qué cantidad).
+    El FrontEnd calcula 'rinde para N unidades' con stock_actual / cantidad."""
+    return await insumo_service.listar_estimaciones(conn, sucursal_id)
 
 
 @router.get("/{insumo_id}", response_model=InsumoOut)
