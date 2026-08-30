@@ -90,6 +90,7 @@ async def completar_pago(
         detalles_comanda=body.detalles_comanda,
         notas_generales=body.notas_generales,
         sucursal_id=sucursal_id,
+        nombre_cliente=body.nombre_cliente,
     )
 
     async with conn.transaction():
@@ -198,9 +199,10 @@ async def obtener_historial(
 
 async def obtener_detalle(
     conn: asyncpg.Connection,
-    comanda_id: UUID,
+    tipo_origen: str,
+    referencia_id: UUID,
 ) -> DetalleOrdenOut | None:
-    data = await pago_repository.detalle_por_comanda(conn, comanda_id)
+    data = await pago_repository.detalle_por_referencia(conn, tipo_origen, referencia_id)
     if data is None:
         return None
     return DetalleOrdenOut.model_validate(data)

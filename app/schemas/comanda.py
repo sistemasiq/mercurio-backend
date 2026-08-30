@@ -25,6 +25,7 @@ class DetalleCreate(BaseModel):
     nombre_combo_padre: str | None = None
     es_hijo_de: str | None = None
     es_hijo_combo: bool = False
+    id_combo_padre: str | None = None
 
     class Config:
         populate_by_name = True
@@ -38,6 +39,7 @@ class ComandaCreate(BaseModel):
     ticket_numero: str
     total_final: Decimal
     sucursal_id: uuid.UUID | None = None
+    nombre_cliente: str | None = None
 
 
 # Esquema para cancelación parcial (eliminar productos de una comanda Pendiente)
