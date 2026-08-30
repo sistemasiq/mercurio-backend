@@ -14,8 +14,8 @@ import asyncpg
 
 _COLUMNS = """
     id, sucursal_id, nombre, descripcion, unidad_base_id, unidad_compra_id,
-    stock_actual, stock_minimo, costo_unitario, proveedor_principal_id,
-    activo, creado, creado_por, modificado, modificado_por
+    stock_actual, stock_minimo, punto_reorden, stock_maximo, costo_unitario,
+    proveedor_principal_id, activo, creado, creado_por, modificado, modificado_por
 """
 
 
@@ -29,6 +29,22 @@ async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> l
         )
     else:
         rows = await conn.fetch(f"SELECT {_COLUMNS} FROM public.insumos ORDER BY nombre ASC")
+    return [dict(r) for r in rows]
+
+
+async def listar_bajo_umbral(conn: asyncpg.Connection, sucursal_id: UUID) -> list[dict[str, Any]]:
+    """Insumos activos de la sucursal cuyo stock está por debajo de su punto de
+    reorden (o del mínimo si no hay reorden definido). El llamador separa
+    críticos (< mínimo) de por-reordenar."""
+    rows = await conn.fetch(
+        f"""
+        SELECT {_COLUMNS} FROM public.insumos
+        WHERE sucursal_id = $1 AND activo = TRUE
+          AND stock_actual < COALESCE(punto_reorden, stock_minimo)
+        ORDER BY nombre ASC
+        """,
+        sucursal_id,
+    )
     return [dict(r) for r in rows]
 
 
@@ -49,13 +65,16 @@ async def crear(
     costo_unitario: Decimal | None,
     proveedor_principal_id: UUID | None,
     creado_por: UUID,
+    punto_reorden: Decimal | None = None,
+    stock_maximo: Decimal | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.insumos
             (sucursal_id, nombre, descripcion, unidad_base_id, unidad_compra_id,
-             stock_actual, stock_minimo, costo_unitario, proveedor_principal_id, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             stock_actual, stock_minimo, costo_unitario, proveedor_principal_id, creado_por,
+             punto_reorden, stock_maximo)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
@@ -68,6 +87,8 @@ async def crear(
         costo_unitario,
         proveedor_principal_id,
         creado_por,
+        punto_reorden,
+        stock_maximo,
     )
     return dict(row)
 

@@ -37,9 +37,9 @@ async def upsert_receta_item(
     insumo_id: UUID,
     body: RecetaItemUpdate,
     conn: asyncpg.Connection = Depends(get_db),
-    _: TokenData = Depends(require_permission("inventario:gestionar_productos")),
+    current_user: TokenData = Depends(require_permission("inventario:gestionar_productos")),
 ) -> RecetaItemOut:
-    return await receta_producto_service.upsert(conn, producto_id, insumo_id, body)
+    return await receta_producto_service.upsert(conn, producto_id, insumo_id, body, current_user)
 
 
 @router.delete(

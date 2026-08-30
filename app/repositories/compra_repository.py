@@ -12,7 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
-from app.schemas.compra import DetalleCompraItem
+from app.schemas.compra import CompraEditar, DetalleCompraItem
 
 _COLUMNS = """
     c.id, c.sucursal_id, c.proveedor_id, c.estado, c.fecha_pedido, c.fecha_recepcion,
@@ -28,7 +28,7 @@ _SELECT = f"""
 
 _DETALLE_SELECT = """
     SELECT dc.id, dc.compra_id, dc.insumo_id, dc.unidad_medida_id, dc.presentacion_id,
-           dc.cantidad, dc.costo_unitario, dc.subtotal,
+           dc.cantidad, dc.cantidad_recibida, dc.costo_unitario, dc.subtotal,
            i.nombre AS insumo_nombre, um.codigo AS unidad_medida_codigo,
            pi.nombre AS presentacion_nombre
     FROM public.detalle_compras dc
@@ -110,6 +110,65 @@ async def actualizar(
     sql = f"UPDATE public.compras SET {', '.join(set_parts)} WHERE id = $1 RETURNING id"
     row = await conn.fetchrow(sql, compra_id, *updates.values())
     return await obtener(conn, compra_id) if row else None
+
+
+async def reemplazar_detalles(
+    conn: asyncpg.Connection, compra_id: UUID, body: CompraEditar
+) -> None:
+    """Borra y reinserta las líneas de una compra y recalcula proveedor / notas /
+    total en la cabecera. El llamador ya validó que la compra está en 'P'."""
+    total = sum((d.cantidad * d.costo_unitario for d in body.detalles), Decimal("0"))
+    async with conn.transaction():
+        await conn.execute("DELETE FROM public.detalle_compras WHERE compra_id = $1", compra_id)
+        for detalle in body.detalles:
+            await conn.execute(
+                """
+                INSERT INTO public.detalle_compras
+                    (compra_id, insumo_id, unidad_medida_id, presentacion_id,
+                     cantidad, costo_unitario)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                compra_id,
+                detalle.insumo_id,
+                detalle.unidad_medida_id,
+                detalle.presentacion_id,
+                detalle.cantidad,
+                detalle.costo_unitario,
+            )
+        await conn.execute(
+            """
+            UPDATE public.compras
+            SET proveedor_id = $2, notas = $3, total = $4, modificado = NOW()
+            WHERE id = $1
+            """,
+            compra_id,
+            body.proveedor_id,
+            body.notas,
+            total,
+        )
+
+
+async def sumar_recepcion_linea(
+    conn: asyncpg.Connection, detalle_id: UUID, cantidad: Decimal
+) -> None:
+    await conn.execute(
+        "UPDATE public.detalle_compras "
+        "SET cantidad_recibida = cantidad_recibida + $2 WHERE id = $1",
+        detalle_id,
+        cantidad,
+    )
+
+
+async def marcar_estado(
+    conn: asyncpg.Connection, compra_id: UUID, estado: str
+) -> dict[str, Any] | None:
+    fecha = ", fecha_recepcion = NOW()" if estado == "R" else ""
+    await conn.execute(
+        f"UPDATE public.compras SET estado = $2{fecha}, modificado = NOW() WHERE id = $1",
+        compra_id,
+        estado,
+    )
+    return await obtener(conn, compra_id)
 
 
 async def marcar_recibida(conn: asyncpg.Connection, compra_id: UUID) -> dict[str, Any] | None:
