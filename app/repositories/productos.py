@@ -30,3 +30,14 @@ async def get_productos_estancia_by_sucursal_id(
     )
 
     return [dict(r) for r in rows]
+
+async def get_precio_pulsera_by_reserva_id(conn: asyncpg.Connection, reserva_id: UUID) -> Decimal | None:
+    result = await conn.fetchval(
+        """
+        SELECT p.precio_hora_pulsera FROM reservaciones AS r
+            JOIN paquetes AS p ON r.paquete_id = p.id
+        WHERE r.id = $1
+        """,
+        reserva_id
+    )
+    return Decimal(result) if result is not None else None

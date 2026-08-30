@@ -16,7 +16,7 @@ from app.models.producto import Producto
 
 _COLUMNS = """
     id, nombre, precio_unitario, tipo, sucursal_id, activo, es_combo,
-    descripcion, imagen, creado, creado_por, modificado, modificado_por
+    descripcion, imagen, config_estancia, creado, creado_por, modificado, modificado_por
 """
 
 
@@ -31,6 +31,7 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         es_combo=row.get("es_combo", False),
         descripcion=row.get("descripcion"),
         imagen=row.get("imagen"),
+        config_estancia=row.get("config_estancia"),
         creado=row.get("creado"),
         creado_por=row.get("creado_por"),
         modificado=row.get("modificado"),
@@ -80,26 +81,45 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
+    config_estancia: list[dict] | None = None,
     usuario_id: UUID | None = None,
 ) -> Producto:
     es_combo = True if tipo == "C" else False
 
-    row = await conn.fetchrow(
-        f"""
-        INSERT INTO public.productos
-            (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING {_COLUMNS}
-        """,
-        nombre,
-        precio_unitario,
-        tipo,
-        sucursal_id,
-        descripcion,
-        imagen,
-        es_combo,
-        usuario_id,
-    )
+    if tipo == "E":
+        row = await conn.fetchrow(
+            f"""
+            INSERT INTO public.productos
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, config_estancia, creado_por)
+            VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING {_COLUMNS}
+            """,
+            nombre,
+            tipo,
+            sucursal_id,
+            descripcion,
+            imagen,
+            es_combo,
+            config_estancia,
+            usuario_id,
+        )
+    else:
+        row = await conn.fetchrow(
+            f"""
+            INSERT INTO public.productos
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING {_COLUMNS}
+            """,
+            nombre,
+            precio_unitario,
+            tipo,
+            sucursal_id,
+            descripcion,
+            imagen,
+            es_combo,
+            usuario_id,
+        )
     return _row_to_producto(row)
 
 
@@ -170,3 +190,18 @@ async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[
 
 async def get_by_id(conn: asyncpg.Connection, producto_id: str) -> asyncpg.Record | None:
     return await conn.fetchrow("SELECT * FROM productos WHERE id = $1", producto_id)
+
+async def get_producto_estancia_by_branch_id(conn: asyncpg.Connection, sucursal_id: str):
+    row = await conn.fetchrow(
+        """
+        SELECT id, config_estancia 
+        FROM productos
+        WHERE sucursal_id = $1
+          AND activo = TRUE
+          AND tipo = 'E'
+        LIMIT 1
+        """,
+        sucursal_id,
+    )
+    return row if row else None
+

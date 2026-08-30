@@ -1,5 +1,6 @@
 from typing import Any
 from uuid import UUID
+import json
 
 import asyncpg
 
@@ -112,3 +113,29 @@ async def marcar_comanda_enviada(conn: asyncpg.Connection, reservacion_id: UUID)
     await conn.execute(
         "UPDATE reservaciones SET comanda_enviada = TRUE WHERE id = $1", reservacion_id
     )
+
+async def get_reservacion_id_by_detalle_registro_id(conn: asyncpg.Connection, detalle_registro_id: UUID) -> UUID | None:
+    result = await conn.fetchval(
+        """
+        SELECT r.reservacion_id
+        FROM detalles_registro AS dr
+            JOIN registros AS r ON dr.registros_id = r.id
+            WHERE dr.id = $1
+            AND dr.activo = TRUE
+            AND r.reservacion_id IS NOT NULL
+        """,
+        detalle_registro_id,
+    )
+    return result
+
+async def update_producto_estancia_add_config(conn: asyncpg.Connection, producto_id: UUID, config_estancia: dict[str, Any]) -> None:
+    result = await conn.fetchval(
+       """
+        UPDATE productos
+        SET config_estancia = $1::jsonb
+        WHERE id = $2
+        """,
+        json.dumps(config_estancia),
+        producto_id,
+    )
+    return result

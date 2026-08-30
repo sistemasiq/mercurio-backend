@@ -79,7 +79,7 @@ async def get_activos(
 )
 async def onboarding(
     fotoIne: UploadFile = File(...),  # noqa: N803 - nombre del campo multipart del front
-    fotoLlegada: UploadFile = File(...),  # noqa: N803 - nombre del campo multipart del front
+    fotosLlegada: list[UploadFile] = File(...),  # noqa: N803 - nombre del campo multipart del front
     payload: str = Form(..., description="JSON string con los datos de OnboardingRequest"),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:checkin")),
@@ -92,7 +92,7 @@ async def onboarding(
 
     usuario_id = UUID(current_user.sub)
 
-    return await create_estancia(conn, data, fotoIne, fotoLlegada, usuario_id, apertura_id)
+    return await create_estancia(conn, data, fotoIne, fotosLlegada, usuario_id, apertura_id)
 
 
 @router.post(
@@ -159,7 +159,7 @@ async def checkout(
     usuario_id = UUID(current_user.sub)
 
     return await create_chekout(
-        conn, detalle_id, body.pulseraTutorId, usuario_id, body.pagos, apertura_id
+        conn, detalle_id, usuario_id, body.pagos, apertura_id
     )
 
 

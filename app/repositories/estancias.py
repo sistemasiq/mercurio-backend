@@ -12,8 +12,6 @@ async def get_activos_by_sucursal_id(
         SELECT
             r.id AS "registroId",
             r.nombre_segundo_tutor AS "nombreSegundoTutor",
-            r.pulseras_tutor_id AS "pulseraTutorId",
-            pt.pulsera_rfid AS "pulseraTutorRfid",
             dr.id AS "detalleId",
             n.nombre_completo AS "nino",
             n.notas,
@@ -38,8 +36,6 @@ async def get_activos_by_sucursal_id(
             ON t.id = r.tutores_id
         JOIN pulseras p
             ON p.id = dr.pulseras_id
-        JOIN pulseras pt
-            ON pt.id = r.pulseras_tutor_id
         WHERE dr.sucursal_id = $1
         AND r.estado = 'A'
         AND dr.salida IS NULL
