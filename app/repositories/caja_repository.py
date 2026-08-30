@@ -38,10 +38,20 @@ async def crear_caja(
 ) -> dict:
     caja_id = uuid.uuid4()
     now = get_mexico_now()
+    # numero es NOT NULL con UNIQUE (numero, sucursal_id) WHERE activo (migración
+    # 029). Se asigna el siguiente correlativo por sucursal; sin esto, crear dos
+    # cajas seguidas para una sucursal nueva choca (ambas quedarían en numero=0).
     row = await conn.fetchrow(
         """
-        INSERT INTO public.cajas (id, sucursal_id, codigo, nombre, creado, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO public.cajas (id, sucursal_id, codigo, nombre, numero, creado, creado_por)
+        VALUES (
+            $1, $2, $3, $4,
+            COALESCE(
+                (SELECT MAX(numero) FROM public.cajas WHERE sucursal_id = $2 AND activo = TRUE),
+                0
+            ) + 1,
+            $5, $6
+        )
         RETURNING id, sucursal_id, codigo, nombre, creado
         """,
         caja_id,
