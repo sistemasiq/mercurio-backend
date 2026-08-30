@@ -24,7 +24,7 @@ _RETURNING = """
 # número de contrataciones. Queda NULL si el paquete nunca se ha contratado.
 _SELECT_CON_CONTRATACIONES = """
     SELECT p.id, p.sucursal_id, p.nombre, p.descripcion, p.min_invitados, p.max_invitados,
-           p.precio_base, p.precio_pulsera, p.activo,
+           p.precio_base, p.precio_hora_pulsera, p.activo,
            p.creado, p.creado_por, p.modificado, p.modificado_por,
            COUNT(r.id) AS contrataciones,
            MAX(r.creado) AS ultima_contratacion
