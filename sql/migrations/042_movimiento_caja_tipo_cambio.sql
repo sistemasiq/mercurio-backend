@@ -1,0 +1,24 @@
+-- =============================================================================
+-- 042_movimiento_caja_tipo_cambio.sql
+-- Agrega el tipo de movimiento 'C' (Cambio) al enum tipo_movimiento_caja.
+--
+-- Motivo: cuando un cliente paga en efectivo de más, el cambio devuelto
+-- nunca se registraba -- solo se calculaba para mostrarlo en pantalla. El
+-- monto completo tendido se registraba como si fuera la venta, inflando el
+-- "efectivo esperado" del corte por cada pago con sobrepago -- un bug
+-- sistémico en los módulos que comparten PaymentModal.vue, no aislado a uno.
+--
+-- Este movimiento representa únicamente la salida física de efectivo del
+-- cambio, con el mismo tratamiento contable que un retiro parcial (RP): se
+-- excluye de las sumas de ventas (movimientos_caja.monto es siempre
+-- positivo, CHECK monto > 0, no se puede modelar como negativo) y se resta
+-- aparte en _calcular_balance.
+--
+-- Nota: metodos_pago.tipo también usa 'C' (para "Cupones") -- son columnas
+-- y enums distintos sin relación entre sí, anotado para no confundirlos.
+--
+-- Alcance: solo Cierre de Caja (este archivo). Que los demás módulos de
+-- pago llamen a registrar_cambio_caja() es trabajo de esos módulos.
+-- =============================================================================
+
+ALTER TYPE public.tipo_movimiento_caja ADD VALUE 'C';
