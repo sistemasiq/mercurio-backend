@@ -53,8 +53,6 @@ CREATE TABLE IF NOT EXISTS public.registros (
     id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
     sucursal_id    UUID           NOT NULL REFERENCES public.sucursales(id),
     tutores_id     UUID           NOT NULL REFERENCES public.tutores(id),
-    foto_ine       TEXT           NOT NULL,
-    foto_llegada   TEXT           NOT NULL,
     total          NUMERIC(10, 2) NOT NULL DEFAULT 0,
     estado         VARCHAR(1)     NOT NULL DEFAULT 'P',  -- P pendiente de pago | A activo | C cerrado
 
@@ -64,6 +62,22 @@ CREATE TABLE IF NOT EXISTS public.registros (
     modificado     TIMESTAMPTZ DEFAULT now(),
     modificado_por UUID        REFERENCES public.usuarios(id)
 );
+
+CREATE TABLE IF NOT EXISTS public.fotos (
+    id             UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    registro_id    UUID           NOT NULL REFERENCES registros(id),
+    tipo           CHAR(1)        NOT NULL,
+    storage_url    TEXT           NOT NULL,
+
+    activo         BOOLEAN        DEFAULT TRUE NOT NULL,
+    creado         TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    creado_por     UUID,
+    modificado     TIMESTAMP WITH TIME ZONE,
+    modificado_por UUID,
+
+    CONSTRAINT fotos_tipo_check CHECK (tipo IN ('I', 'L'))
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_registros_sucursal_estado ON public.registros (sucursal_id, estado);
 

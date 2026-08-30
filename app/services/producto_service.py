@@ -10,7 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 from uuid import UUID
-
+import json
 import asyncpg
 from fastapi import HTTPException, UploadFile, status
 
@@ -21,6 +21,7 @@ from app.models.producto import Producto
 from app.repositories import combo_repository, producto_repository
 from app.schemas.auth import TokenData
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
+from app.schemas.registros import ProductoEstanciaResponse
 
 
 async def _guardar_imagen(producto_id: UUID, imagen: UploadFile) -> str:
@@ -68,6 +69,30 @@ async def crear(
     imagen: UploadFile | None = None,
 ) -> ProductoOut:
     try:
+        if body.tipo == "E":
+            if not body.config_estancia:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Se necesita la configuración de estancia"
+                )
+
+            producto_estancia = await producto_repository.get_producto_estancia_by_branch_id(
+                conn,
+                body.sucursal_id
+            )
+
+            if producto_estancia:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe un producto de estancia para esta sucursal"
+                )
+
+        config_estancia_data = (
+            [item.model_dump(mode="json") for item in body.config_estancia]
+            if body.config_estancia
+            else None
+        )
+                
         row = await producto_repository.crear(
             conn,
             nombre=body.nombre,
@@ -77,7 +102,9 @@ async def crear(
             descripcion=body.descripcion,
             imagen=body.imagen,
             usuario_id=usuario_id,
+            config_estancia=config_estancia_data
         )
+
     except asyncpg.UniqueViolationError as exc:
         raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
     row_dict = asdict(row)
@@ -100,12 +127,13 @@ async def actualizar(
     conn: asyncpg.Connection,
     producto_id: UUID,
     body: ProductoUpdate,
-    usuario_id: UUID | None = None,  # <-- Recibimos usuario_id
+    usuario_id: UUID | None = None,
     imagen: UploadFile | None = None,
     current_user: TokenData | None = None,
 ) -> ProductoOut:
     producto_actual = await obtener(conn, producto_id)
 
+    # 1. Control de acceso por sucursal
     if (
         current_user is not None
         and current_user.role != ROL_SISTEMA
@@ -119,8 +147,43 @@ async def actualizar(
             },
         )
 
+    tipo_efectivo = body.tipo if body.tipo is not None else producto_actual.tipo
+
+    # 2. Reglas para tipo Estancia ('E')
+    if tipo_efectivo == "E":
+        producto_estancia = await producto_repository.get_producto_estancia_by_branch_id(
+            conn, str(producto_actual.sucursal_id)
+        )
+        # Verificar que no exista OTRA estancia diferente en la sucursal
+        if producto_estancia:
+            estancia_id = (
+                producto_estancia.id
+                if hasattr(producto_estancia, "id")
+                else producto_estancia["id"]
+            )
+            if str(estancia_id) != str(producto_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ya existe otro producto de estancia para esta sucursal",
+                )
+
+        if body.config_estancia is not None and not body.config_estancia:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La configuración de estancia no puede estar vacía",
+            )
+
+    # 3. Preparar campos para actualizar
     updates = body.model_dump(exclude_unset=True)
     productos_combo = updates.pop("productos_combo", None)
+
+    # Convertir config_estancia a JSON string para asyncpg/Postgres
+    if "config_estancia" in updates and updates["config_estancia"] is not None:
+        tramos_dict = [
+            item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+            for item in body.config_estancia
+        ]
+        updates["config_estancia"] = json.dumps(tramos_dict)
 
     if imagen is not None:
         updates["imagen"] = await _guardar_imagen(producto_id, imagen)
@@ -128,23 +191,24 @@ async def actualizar(
     if usuario_id:
         updates["modificado_por"] = usuario_id
 
+    # 4. Actualizar en BD
     try:
         row = await producto_repository.actualizar(conn, producto_id, updates)
     except asyncpg.UniqueViolationError as exc:
         raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
+
     if not row:
         raise NoEncontrado("Producto")
 
-    row_dict = asdict(row)
-
-    if row_dict.get("tipo") == "C" and productos_combo is not None:
+    # 5. Sincronizar items de combo si corresponde
+    if tipo_efectivo == "C" and productos_combo is not None:
         async with conn.transaction():
             await combo_repository.desasociar_todos_los_productos(
                 conn, producto_id, usuario_id=usuario_id
             )
             if productos_combo:
                 items_dict = [
-                    item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                    item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
                     for item in productos_combo
                 ]
                 await combo_repository.asociar_productos_a_combo(
@@ -171,6 +235,27 @@ async def obtener_productos_para_cajero(
         )
     return await producto_repository.get_catalogo_venta_by_sucursal(conn, current_user.branch_id)
 
+async def obtener_config_estancia_por_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID | str
+) -> ProductoEstanciaResponse:
+    """Retorna la configuración de estancia para una sucursal."""
+    row = await producto_repository.get_producto_estancia_by_branch_id(conn, str(sucursal_id))
+    
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró un producto de estancia activo para esta sucursal",
+        )
+
+    data = dict(row)
+
+    if isinstance(data.get("config_estancia"), str):
+        try:
+            data["config_estancia"] = json.loads(data["config_estancia"])
+        except Exception:
+            data["config_estancia"] = []
+
+    return ProductoEstanciaResponse.model_validate(data)
 
 async def obtener_hijos_combo(conn: asyncpg.Connection, combo_id: UUID) -> list[dict[str, object]]:
     """Retorna los hijos de un combo con sus datos básicos para el carrito."""

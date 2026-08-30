@@ -1,9 +1,12 @@
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.ninos import NinoIn
 from app.schemas.pagos import PagoIn
+from app.schemas.producto import TramoEstanciaSchema
 from app.schemas.tutores import TutorIn
 
 
@@ -18,10 +21,10 @@ class OnboardingRequest(BaseModel):
     sucursalId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     tutor: TutorIn
     nombreSegundoTutor: str | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn] | None = None
+    cambio: Decimal = Field(Decimal("0"), ge=0)
     reservacionId: UUID | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     puntosARedimir: int = Field(default=0, ge=0)  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
@@ -34,7 +37,6 @@ class OnboardingResponse(BaseModel):
 
 
 class CheckoutRequest(BaseModel):
-    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     pagos: list[PagoIn] = []
 
 
@@ -63,8 +65,6 @@ class ProductoResponse(BaseModel):
 class DetalleActivoResponse(BaseModel):
     registroId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     nombreSegundoTutor: str | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-    pulseraTutorId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-    pulseraTutorRfid: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     detalleId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     nino: str
     notas: str | None
@@ -75,3 +75,20 @@ class DetalleActivoResponse(BaseModel):
     pulsera: str
     minutosPagados: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     minutosTranscurridos: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+
+
+class ProductoEstanciaResponse(BaseModel):
+    id: UUID
+    config_estancia: list[TramoEstanciaSchema]
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("config_estancia", mode="before")
+    @classmethod
+    def parsear_config_estancia(cls, v: Any):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        return v

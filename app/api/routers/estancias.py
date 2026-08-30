@@ -22,7 +22,7 @@ from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
-from app.schemas.pagos import PagoIn
+from app.schemas.pagos import PagoEstanciaExtraRequest
 from app.schemas.registros import (
     CheckoutRequest,
     CheckoutResponse,
@@ -79,7 +79,7 @@ async def get_activos(
 )
 async def onboarding(
     fotoIne: UploadFile = File(...),  # noqa: N803 - nombre del campo multipart del front
-    fotoLlegada: UploadFile = File(...),  # noqa: N803 - nombre del campo multipart del front
+    fotosLlegada: list[UploadFile] = File(...),  # noqa: N803 - nombre del campo multipart del front
     payload: str = Form(..., description="JSON string con los datos de OnboardingRequest"),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:checkin")),
@@ -92,7 +92,7 @@ async def onboarding(
 
     usuario_id = UUID(current_user.sub)
 
-    return await create_estancia(conn, data, fotoIne, fotoLlegada, usuario_id, apertura_id)
+    return await create_estancia(conn, data, fotoIne, fotosLlegada, usuario_id, apertura_id)
 
 
 @router.post(
@@ -106,14 +106,14 @@ async def onboarding(
 )
 async def pago_estancia_extra(
     registro_id: UUID,
-    pagos: list[PagoIn],
+    body: PagoEstanciaExtraRequest,
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:gestionar_pagos")),
     apertura_id: str = Depends(apertura_operando_id),
 ) -> None:
     usuario_id = UUID(current_user.sub)
-    return await pago_create_service(conn, pagos, sucursal_id, registro_id, usuario_id, apertura_id)
+    return await pago_create_service(conn, body, sucursal_id, registro_id, usuario_id, apertura_id)
 
 
 # Endpoint para cotizar el checkout (solo lectura, no registra nada)
@@ -159,7 +159,7 @@ async def checkout(
     usuario_id = UUID(current_user.sub)
 
     return await create_chekout(
-        conn, detalle_id, body.pulseraTutorId, usuario_id, body.pagos, apertura_id
+        conn, detalle_id, usuario_id, body.pagos, apertura_id
     )
 
 
