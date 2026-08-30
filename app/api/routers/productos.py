@@ -24,12 +24,19 @@ from app.services import producto_service
 
 router = APIRouter(prefix="/api/productos", tags=["Productos"])
 
+
 @router.get("/estancia")
 async def obtener_config_estancia(
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: TokenData = Depends(get_current_user)
+    current_user: TokenData = Depends(get_current_user),
 ) -> ProductoEstanciaResponse:
+    if current_user.branch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "BRANCH_REQUIRED", "message": "Sucursal no especificada en el token."},
+        )
     return await producto_service.obtener_config_estancia_por_sucursal(conn, current_user.branch_id)
+
 
 @router.get("/catalogo")
 async def listar_productos_cajero(
