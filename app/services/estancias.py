@@ -334,13 +334,17 @@ async def create_estancia(
                     creado_por=str(usuario_id),
                 )
 
-            # 5.5 otorgamiento de puntos de lealtad sobre lo efectivamente pagado
-            if celular_lealtad and total_pagado > 0:
+            # 5.5 otorgamiento de puntos de lealtad sobre el total de la venta
+            # (ya neto de cualquier canje aplicado arriba). NO sobre
+            # total_pagado: ese puede incluir el cambio que se le devolvió al
+            # cliente. Mismo criterio que pago_service, que otorga sobre
+            # body.total_final.
+            if celular_lealtad and total > 0:
                 await lealtad_service.otorgar_puntos(
                     conn,
                     data.sucursalId,
                     celular_lealtad,
-                    Decimal(str(total_pagado)),
+                    total,
                     usuario_id,
                     registro_id=registro_id,
                 )
