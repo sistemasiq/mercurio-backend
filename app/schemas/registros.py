@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -85,7 +86,7 @@ class ProductoEstanciaResponse(BaseModel):
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
+    def parsear_config_estancia(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)

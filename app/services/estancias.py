@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -110,27 +110,18 @@ async def create_estancia(
 
             total = Decimal(0)
 
-            hora_inicio_obj = (
-                time.fromisoformat(evento.hora_inicio)
-                if isinstance(evento.hora_inicio, str)
-                else evento.hora_inicio
-            )
-            hora_fin_obj = (
-                time.fromisoformat(evento.hora_fin)
-                if isinstance(evento.hora_fin, str)
-                else evento.hora_fin
-            )
-
             fecha_base = evento.fecha_evento
 
-            entrada = datetime.combine(fecha_base, hora_inicio_obj)
-            salida_esperada = datetime.combine(fecha_base, hora_fin_obj)
+            entrada = datetime.combine(fecha_base, evento.hora_inicio)
+            salida_esperada = datetime.combine(fecha_base, evento.hora_fin)
 
             # Calcular cantidad de horas segun el evento
             cantidad_horas = int((salida_esperada - entrada).total_seconds() / 3600)
 
             # 4. detalles
             precio = await get_precio_pulsera_by_reserva_id(conn, data.reservacionId)
+            if precio is None:
+                raise HTTPException(400, "No hay precio de pulsera configurado para la reservación")
 
             for d in data.detalles:
                 nino_id = await nino_create(
@@ -227,7 +218,7 @@ async def create_estancia(
                 )
 
             # 4. detalles
-            producto_estancia = await get_producto_estancia_by_branch_id(conn, data.sucursalId)
+            producto_estancia = await get_producto_estancia_by_branch_id(conn, str(data.sucursalId))
 
             if producto_estancia is None:
                 raise HTTPException(400, "Producto inválido")
@@ -264,21 +255,22 @@ async def create_estancia(
 
                 # Buscar el precio correspondiente en los tramos
                 precio = None
-                cantidad_horas = float(d.cantidad)
+                horas_solicitadas = float(d.cantidad)
 
                 for config in precios:
                     min_h = float(config["min_horas"])
                     max_h = float(config["max_horas"])
                     p_val = Decimal(str(config["precio"]))
 
-                    if min_h <= cantidad_horas <= max_h:
+                    if min_h <= horas_solicitadas <= max_h:
                         precio = p_val
                         break
 
                 if precio is None:
                     raise HTTPException(
                         400,
-                        f"No se encontró un precio válido para la duración especificada ({d.cantidad} hrs)",
+                        "No se encontró un precio válido para la duración especificada "
+                        f"({d.cantidad} hrs)",
                     )
 
                 await insert_detalle_registro(
