@@ -12,6 +12,11 @@ class PagoIn(BaseModel):
     monto: float
 
 
+class PagoEstanciaExtraRequest(BaseModel):
+    pagos: list[PagoIn] = Field(..., min_length=1)
+    cambio: Decimal = Field(Decimal("0"), ge=0)
+
+
 # ---------------------------------------------------------------------------
 # DTOs para el endpoint POST /api/pagos/ (pagos_ordenes)
 # ---------------------------------------------------------------------------
@@ -62,7 +67,9 @@ class PagoCompletoRequest(BaseModel):
     notas_generales: str | None = None
     pagos: list[PaymentItem] = Field(..., min_length=1)
     celular_cliente: str | None = None
+    nombre_cliente: str | None = None
     puntos_a_redimir: int = Field(0, ge=0)
+    cambio: Decimal = Field(Decimal("0"), ge=0)
 
     @field_validator("celular_cliente")
     @staticmethod
@@ -98,21 +105,18 @@ class MetodoPagoResumen(BaseModel):
 
 
 class HistorialOut(BaseModel):
-    # Para una orden es el id de la comanda; para un evento, el id del pago de
-    # reservación. En ambos casos identifica de forma única el renglón.
-    comanda_id: UUID
-    ticket_numero: str
+    tipo_origen: str
+    referencia_id: UUID
+    titulo: str
     total_final: Decimal
     estado_actual: str
     sucursal_id: UUID
     creado: datetime
     creado_por: UUID | None = None
-    # 'orden' (venta de mostrador) o 'evento' (cobro de reservación). El detalle
-    # por comanda solo existe para 'orden'.
-    origen: str = "orden"
-    # Notas del cobro del evento (anticipo, liquidación...). Null en órdenes.
-    concepto: str | None = None
     metodos_pago: list[MetodoPagoResumen]
+    # Campos de compatibilidad: solo se llenan para ventas tipo comanda.
+    comanda_id: UUID | None = None
+    ticket_numero: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -144,8 +148,9 @@ class MetodoPagoDetalle(BaseModel):
 
 
 class DetalleOrdenOut(BaseModel):
-    comanda_id: str
-    ticket_numero: str
+    tipo_origen: str = "comanda"
+    referencia_id: str
+    titulo: str
     total_final: float
     estado_actual: str
     fecha_hora: str | None = None
@@ -153,6 +158,9 @@ class DetalleOrdenOut(BaseModel):
     creado_por_nombre: str | None = None
     metodos_pago: list[MetodoPagoDetalle]
     detalles: list[DetalleProductoOut]
+    # Campos de compatibilidad: solo se llenan para ventas tipo comanda.
+    comanda_id: str | None = None
+    ticket_numero: str | None = None
 
 
 # ---------------------------------------------------------------------------

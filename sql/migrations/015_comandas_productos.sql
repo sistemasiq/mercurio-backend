@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.productos (
     sucursal_id     UUID           NOT NULL REFERENCES public.sucursales(id),
     descripcion     TEXT,
     imagen          TEXT,
+    config_estancia JSONB,
 
     activo          BOOLEAN     NOT NULL DEFAULT TRUE,
     creado          TIMESTAMPTZ NOT NULL DEFAULT now(),

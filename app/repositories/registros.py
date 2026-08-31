@@ -8,21 +8,7 @@ import asyncpg
 class EstadoRegistro(str, Enum):
     ACTIVO = "A"
     CERRADO = "C"
-
-
-async def get_guardian_bracelet_by_detalles_registro_id(
-    conn: asyncpg.Connection, registro_id: UUID
-) -> UUID | None:
-    bracelet_id = await conn.fetchval(
-        """
-        SELECT pulseras_tutor_id
-        FROM registros
-        WHERE id = $1 AND activo = TRUE
-        """,
-        registro_id,
-    )
-
-    return UUID(str(bracelet_id)) if bracelet_id is not None else None
+    PENDIENTE = "P"
 
 
 async def registro_create(
@@ -30,38 +16,29 @@ async def registro_create(
     registro_id: UUID,
     sucursal_id: UUID,
     tutor_id: UUID,
-    pulsera_tutor_id: UUID,
-    foto_ine: str,
-    foto_llegada: str,
     usuario_id: UUID,
     nombre_segundo_tutor: str | None = None,
     reservacion_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
-       INSERT INTO registros (
-           id,
-           sucursal_id,
-           tutores_id,
-           nombre_segundo_tutor,
-           pulseras_tutor_id,
-           foto_ine,
-           foto_llegada,
-           total,
-           estado,
-           creado,
-           creado_por,
-           reservacion_id
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,0,'P',NOW(),$8,$9)
-   """,
+        INSERT INTO registros (
+            id,
+            sucursal_id,
+            tutores_id,
+            nombre_segundo_tutor,
+            total,
+            estado,
+            creado,
+            creado_por,
+            reservacion_id
+        )
+        VALUES ($1, $2, $3, $4, 0, 'P', NOW(), $5, $6)
+        """,
         registro_id,
         sucursal_id,
         tutor_id,
         nombre_segundo_tutor,
-        pulsera_tutor_id,
-        foto_ine,
-        foto_llegada,
         usuario_id,
         reservacion_id,
     )
@@ -127,20 +104,6 @@ async def exists_registro(
        SELECT 1
        FROM registros
        WHERE id=$1 AND activo = TRUE
-   """,
-        registro_id,
-    )
-    return bool(result)
-
-async def exists_registro_any(
-    conn: asyncpg.Connection,
-    registro_id: UUID,
-) -> bool:
-    result = await conn.fetchval(
-        """
-       SELECT 1
-       FROM registros
-       WHERE id=$1
    """,
         registro_id,
     )

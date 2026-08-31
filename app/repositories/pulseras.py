@@ -40,11 +40,6 @@ async def get_pulseras_disponibles_por_sucursal(
             FROM detalles_registro dr
             WHERE dr.pulseras_id = p.id
         )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM registros r
-            WHERE r.pulseras_tutor_id = p.id
-        )
         ORDER BY p.pulsera_rfid
         """,
         sucursal_id,

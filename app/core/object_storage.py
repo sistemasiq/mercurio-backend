@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 PREFIJOS = {
     "identificaciones": "uploads/identificaciones",
-    "llegadas": "uploads/llegadas",
     "productos": "uploads/productos",
 }
 

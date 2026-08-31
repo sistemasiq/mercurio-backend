@@ -6,6 +6,7 @@ import asyncpg
 
 _SELECT = """
     SELECT sucursal_id, porcentaje_retorno, dias_caducidad, valor_punto, activo,
+           otorga_puntos_comandas, otorga_puntos_reservaciones, otorga_puntos_checkin,
            creado, creado_por, modificado, modificado_por
     FROM configuracion_lealtad
 """
@@ -26,21 +27,29 @@ async def upsert_configuracion(
     valor_punto: float,
     activo: bool,
     usuario_id: UUID,
+    otorga_puntos_comandas: bool = True,
+    otorga_puntos_reservaciones: bool = True,
+    otorga_puntos_checkin: bool = True,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         """
         INSERT INTO configuracion_lealtad
             (sucursal_id, porcentaje_retorno, dias_caducidad, valor_punto,
-             activo, creado_por, modificado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
+             activo, otorga_puntos_comandas, otorga_puntos_reservaciones,
+             otorga_puntos_checkin, creado_por, modificado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
         ON CONFLICT (sucursal_id) DO UPDATE SET
             porcentaje_retorno = EXCLUDED.porcentaje_retorno,
             dias_caducidad = EXCLUDED.dias_caducidad,
             valor_punto = EXCLUDED.valor_punto,
             activo = EXCLUDED.activo,
+            otorga_puntos_comandas = EXCLUDED.otorga_puntos_comandas,
+            otorga_puntos_reservaciones = EXCLUDED.otorga_puntos_reservaciones,
+            otorga_puntos_checkin = EXCLUDED.otorga_puntos_checkin,
             modificado = NOW(),
             modificado_por = EXCLUDED.modificado_por
         RETURNING sucursal_id, porcentaje_retorno, dias_caducidad, valor_punto, activo,
+                  otorga_puntos_comandas, otorga_puntos_reservaciones, otorga_puntos_checkin,
                   creado, creado_por, modificado, modificado_por
         """,
         sucursal_id,
@@ -48,6 +57,9 @@ async def upsert_configuracion(
         dias_caducidad,
         valor_punto,
         activo,
+        otorga_puntos_comandas,
+        otorga_puntos_reservaciones,
+        otorga_puntos_checkin,
         usuario_id,
     )
     return dict(row)
@@ -62,23 +74,27 @@ async def crear_lote(
     usuario_id: UUID,
     comanda_id: UUID | None = None,
     reservacion_id: UUID | None = None,
+    registro_id: UUID | None = None,
 ) -> dict[str, Any]:
-    """Crea un lote de puntos otorgados. Exactamente una de comanda_id o
-    reservacion_id debe venir, según el origen del pago (venta de caja o
-    anticipo de reservación) -- el CHECK de BD lo exige."""
+    """Crea un lote de puntos otorgados. Exactamente una de comanda_id,
+    reservacion_id o registro_id debe venir, según el origen del pago (venta
+    de caja, anticipo de reservación, o check-in de niños) -- el CHECK de BD
+    lo exige."""
     row = await conn.fetchrow(
         """
         INSERT INTO lotes_puntos
-            (sucursal_id, celular, comanda_id, reservacion_id, puntos_otorgados,
-             puntos_disponibles, fecha_caducidad, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
-        RETURNING id, sucursal_id, celular, comanda_id, reservacion_id, puntos_otorgados,
-                  puntos_disponibles, fecha_otorgado, fecha_caducidad, creado_por
+            (sucursal_id, celular, comanda_id, reservacion_id, registro_id,
+             puntos_otorgados, puntos_disponibles, fecha_caducidad, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
+        RETURNING id, sucursal_id, celular, comanda_id, reservacion_id, registro_id,
+                  puntos_otorgados, puntos_disponibles, fecha_otorgado, fecha_caducidad,
+                  creado_por
         """,
         sucursal_id,
         celular,
         comanda_id,
         reservacion_id,
+        registro_id,
         puntos,
         fecha_caducidad,
         usuario_id,
@@ -160,19 +176,21 @@ async def registrar_movimiento(
     notas: str | None,
     usuario_id: UUID | None,
     reservacion_id: UUID | None = None,
+    registro_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
         INSERT INTO movimientos_puntos
-            (sucursal_id, celular, lote_id, comanda_id, reservacion_id, tipo, puntos,
-             saldo_resultante, notas, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (sucursal_id, celular, lote_id, comanda_id, reservacion_id, registro_id,
+             tipo, puntos, saldo_resultante, notas, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """,
         sucursal_id,
         celular,
         lote_id,
         comanda_id,
         reservacion_id,
+        registro_id,
         tipo,
         puntos,
         saldo_resultante,

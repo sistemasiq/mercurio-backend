@@ -16,96 +16,119 @@ _INSERT = """
         sucursal_id, creado, creado_por
 """
 
-# El historial es la vista de "todo el dinero que entró", así que une dos orígenes:
-# las ventas de mostrador (comandas) y los cobros de eventos (pagos_reservacion),
-# que antes no aparecían por ningún lado aunque sí afectan la caja.
-#
-# Los dos lados agrupan distinto a propósito:
-#   - Una comanda es UN renglón con todos sus pagos agregados: se cobra de una vez,
-#     posiblemente repartida entre métodos.
-#   - Una reservación es UN renglón POR PAGO, porque su anticipo y su liquidación
-#     ocurren en fechas distintas y son ingresos separados. Colapsarlos por
-#     reservación haría que un anticipo de julio se contara dentro de agosto.
-_SELECT_HISTORIAL = """
-    WITH ordenes AS (
+_UNION_VENTAS = """
+    SELECT
+        v.referencia_id,
+        v.tipo_origen,
+        v.titulo,
+        v.estado_actual,
+        v.sucursal_id,
+        v.es_cancelado,
+        v.monto,
+        v.total_real,
+        v.metodo_pago_id,
+        v.metodo_pago_nombre,
+        v.notas_pago,
+        v.creado,
+        v.creado_por
+    FROM (
+        -- Ventas POS (comandas)
         SELECT
-            c.id                 AS comanda_id,
-            -- ticket_numero y estado_actual se castean a text porque del lado de
-            -- comandas son varchar y un ENUM (estado_comanda), y UNION exige que
-            -- ambas ramas coincidan exactamente en tipo.
-            c.ticket_numero::text AS ticket_numero,
-            c.total_final,
-            c.estado_actual::text AS estado_actual,
-            po.sucursal_id,
-            MAX(po.creado)       AS creado,
-            (SELECT po2.creado_por
-               FROM pagos_ordenes po2
-              WHERE po2.comanda_id = c.id
-              LIMIT 1)            AS creado_por,
-            'orden'              AS origen,
-            NULL::text           AS concepto,
-            json_agg(
-                json_build_object(
-                    'metodo_pago_id',     po.metodo_pago_id,
-                    'metodo_pago_nombre', mp.nombre,
-                    'monto',              po.monto,
-                    'notas_pago',         po.notas_pago
-                )
-                ORDER BY po.creado
-            ) AS metodos_pago
-        FROM comandas c
-        JOIN pagos_ordenes po ON po.comanda_id = c.id
-        JOIN metodos_pago mp  ON mp.id = po.metodo_pago_id
-        WHERE po.sucursal_id = $1
-          AND po.creado >= $2::timestamptz
-          AND ($3::timestamptz IS NULL OR po.creado <= $3::timestamptz)
-          AND (
-              $4 = 'todos'
-              OR ($4 = 'pagado' AND c.estado_actual != 'C')
-              OR ($4 = 'cancelado' AND c.estado_actual = 'C')
-          )
-        GROUP BY c.id, c.ticket_numero, c.total_final, c.estado_actual, po.sucursal_id
-    ),
-    eventos AS (
+            c.id                               AS referencia_id,
+            'comanda'                          AS tipo_origen,
+            c.ticket_numero                    AS titulo,
+            c.estado_actual::text              AS estado_actual,
+            po.sucursal_id                     AS sucursal_id,
+            (c.estado_actual = 'C')            AS es_cancelado,
+            po.monto                           AS monto,
+            c.total_final                      AS total_real,
+            po.metodo_pago_id                  AS metodo_pago_id,
+            mp.nombre                          AS metodo_pago_nombre,
+            po.notas_pago                      AS notas_pago,
+            po.creado                          AS creado,
+            po.creado_por                      AS creado_por
+        FROM pagos_ordenes po
+        JOIN comandas c ON c.id = po.comanda_id
+        JOIN metodos_pago mp ON mp.id = po.metodo_pago_id
+
+        UNION ALL
+
+        -- Estancias / entradas de niños
         SELECT
-            pr.id                AS comanda_id,
-            -- Las reservaciones no tienen folio propio; se identifica al evento por
-            -- su cliente, que es como el staff lo reconoce en la agenda.
-            COALESCE(NULLIF(TRIM(r.nombre_cliente), ''), 'Evento')::text AS ticket_numero,
-            pr.monto             AS total_final,
-            -- Ninguna reservación se cancela hoy (estados: pendiente/confirmada/
-            -- completada), pero se mapea igual para que el filtro 'cancelado' del
-            -- historial siga teniendo un significado único entre ambos orígenes.
-            (CASE WHEN r.estado = 'cancelada' THEN 'C' ELSE 'P' END)::text AS estado_actual,
-            r.sucursal_id,
-            pr.fecha_pago        AS creado,
-            pr.creado_por,
-            'evento'             AS origen,
-            pr.notas             AS concepto,
-            json_build_array(
-                json_build_object(
-                    'metodo_pago_id',     pr.metodo_pago_id,
-                    'metodo_pago_nombre', mp.nombre,
-                    'monto',              pr.monto,
-                    'notas_pago',         pr.notas
-                )
-            ) AS metodos_pago
+            r.id                               AS referencia_id,
+            'estancia'                         AS tipo_origen,
+            t.nombre_completo                  AS titulo,
+            r.estado::text                     AS estado_actual,
+            pe.sucursal_id                     AS sucursal_id,
+            FALSE                              AS es_cancelado,
+            pe.monto                           AS monto,
+            r.total                            AS total_real,
+            pe.metodos_pago_id                 AS metodo_pago_id,
+            mp.nombre                          AS metodo_pago_nombre,
+            NULL                               AS notas_pago,
+            pe.creado                          AS creado,
+            pe.creado_por                      AS creado_por
+        FROM pagos_estancia pe
+        JOIN registros r ON r.id = pe.registros_id
+        JOIN tutores t ON t.id = r.tutores_id
+        JOIN metodos_pago mp ON mp.id = pe.metodos_pago_id
+
+        UNION ALL
+
+        -- Reservaciones / eventos
+        SELECT
+            r.id                               AS referencia_id,
+            'reservacion'                      AS tipo_origen,
+            CONCAT_WS(' ', r.nombre_cliente, r.apellidos_cliente) AS titulo,
+            r.estado::text                         AS estado_actual,
+            r.sucursal_id                      AS sucursal_id,
+            (r.estado = 'cancelada')           AS es_cancelado,
+            pr.monto                           AS monto,
+            r.precio_total                     AS total_real,
+            pr.metodo_pago_id                  AS metodo_pago_id,
+            mp.nombre                          AS metodo_pago_nombre,
+            pr.notas                           AS notas_pago,
+            pr.fecha_pago                      AS creado,
+            pr.creado_por                      AS creado_por
         FROM pagos_reservacion pr
-        JOIN reservaciones r  ON r.id = pr.reservacion_id
-        JOIN metodos_pago mp  ON mp.id = pr.metodo_pago_id
-        WHERE r.sucursal_id = $1
-          AND pr.fecha_pago >= $2::timestamptz
-          AND ($3::timestamptz IS NULL OR pr.fecha_pago <= $3::timestamptz)
-          AND (
-              $4 = 'todos'
-              OR ($4 = 'pagado' AND r.estado <> 'cancelada')
-              OR ($4 = 'cancelado' AND r.estado = 'cancelada')
-          )
+        JOIN reservaciones r ON r.id = pr.reservacion_id
+        JOIN metodos_pago mp ON mp.id = pr.metodo_pago_id
+    ) v
+"""
+
+_SELECT_HISTORIAL = f"""
+    SELECT
+        v.referencia_id,
+        v.tipo_origen,
+        v.titulo,
+        SUM(v.total_real)                    AS total_final,
+        v.estado_actual,
+        v.sucursal_id,
+        MAX(v.creado)                        AS creado,
+        (ARRAY_AGG(v.creado_por) FILTER (WHERE v.creado_por IS NOT NULL))[1] AS creado_por,
+        CASE WHEN v.tipo_origen = 'comanda' THEN v.referencia_id END AS comanda_id,
+        CASE WHEN v.tipo_origen = 'comanda' THEN v.titulo      END AS ticket_numero,
+        json_agg(
+            json_build_object(
+                'metodo_pago_id',     v.metodo_pago_id,
+                'metodo_pago_nombre', v.metodo_pago_nombre,
+                'monto',              v.monto,
+                'notas_pago',         v.notas_pago
+            )
+            ORDER BY v.creado
+        ) AS metodos_pago
+    FROM ({_UNION_VENTAS}) v
+    WHERE v.sucursal_id = $1
+      AND v.creado >= $2::timestamptz
+      AND ($3::timestamptz IS NULL OR v.creado <= $3::timestamptz)
+    GROUP BY
+        v.referencia_id, v.tipo_origen, v.titulo, v.estado_actual, v.sucursal_id
+    HAVING (
+        $4 = 'todos'
+        OR ($4 = 'pagado' AND NOT bool_or(v.es_cancelado))
+        OR ($4 = 'cancelado' AND bool_or(v.es_cancelado))
     )
-    SELECT * FROM ordenes
-    UNION ALL
-    SELECT * FROM eventos
-    ORDER BY creado DESC
+    ORDER BY MAX(v.creado) DESC
 """
 
 
@@ -160,6 +183,7 @@ _SELECT_DETALLE_COMANDA = """
         c.estado_actual,
         c.fecha_hora,
         c.motivo_cancelacion,
+        c.nombre_cliente,
         u.nombre_completo  AS creado_por_nombre
     FROM comandas c
     LEFT JOIN usuarios u ON u.id = c.creado_por
@@ -225,6 +249,9 @@ async def detalle_por_comanda(
     ]
 
     return {
+        "tipo_origen": "comanda",
+        "referencia_id": str(c["comanda_id"]),
+        "titulo": c["ticket_numero"],
         "comanda_id": str(c["comanda_id"]),
         "ticket_numero": c["ticket_numero"],
         "total_final": float(c["total_final"]),
@@ -232,54 +259,210 @@ async def detalle_por_comanda(
         "fecha_hora": c["fecha_hora"].isoformat() if c["fecha_hora"] else None,
         "motivo_cancelacion": c.get("motivo_cancelacion"),
         "creado_por_nombre": c["creado_por_nombre"],
+        "nombre_cliente": c.get("nombre_cliente"),
         "metodos_pago": metodos_pago,
         "detalles": detalles,
     }
 
 
-# Mismo criterio que _SELECT_HISTORIAL: el total es el ingreso del periodo, sumando
-# mostrador y eventos. Se cuenta una orden por comanda y un movimiento por cobro de
-# evento, que es la unidad en que cada uno entra a caja.
-_SELECT_ESTADISTICAS = """
+_SELECT_DETALLE_ESTANCIA = """
     SELECT
-        (
-            SELECT COALESCE(SUM(po.monto), 0)
-            FROM pagos_ordenes po
-            JOIN comandas c ON c.id = po.comanda_id
-            WHERE po.sucursal_id = $1
-              AND po.creado >= $2::timestamptz
-              AND ($3::timestamptz IS NULL OR po.creado <= $3::timestamptz)
-              AND c.estado_actual != 'C'
-        )
-        +
-        (
-            SELECT COALESCE(SUM(pr.monto), 0)
-            FROM pagos_reservacion pr
-            JOIN reservaciones r ON r.id = pr.reservacion_id
-            WHERE r.sucursal_id = $1
-              AND pr.fecha_pago >= $2::timestamptz
-              AND ($3::timestamptz IS NULL OR pr.fecha_pago <= $3::timestamptz)
-              AND r.estado <> 'cancelada'
-        ) AS total_ventas_num,
-        (
-            SELECT COUNT(DISTINCT po.comanda_id)
-            FROM pagos_ordenes po
-            JOIN comandas c ON c.id = po.comanda_id
-            WHERE po.sucursal_id = $1
-              AND po.creado >= $2::timestamptz
-              AND ($3::timestamptz IS NULL OR po.creado <= $3::timestamptz)
-              AND c.estado_actual != 'C'
-        )
-        +
-        (
-            SELECT COUNT(*)
-            FROM pagos_reservacion pr
-            JOIN reservaciones r ON r.id = pr.reservacion_id
-            WHERE r.sucursal_id = $1
-              AND pr.fecha_pago >= $2::timestamptz
-              AND ($3::timestamptz IS NULL OR pr.fecha_pago <= $3::timestamptz)
-              AND r.estado <> 'cancelada'
-        ) AS total_ordenes_num
+        r.id                  AS referencia_id,
+        t.nombre_completo     AS titulo,
+        r.total               AS total_final,
+        r.estado              AS estado_actual,
+        r.creado              AS fecha_hora,
+        u.nombre_completo     AS creado_por_nombre
+    FROM registros r
+    JOIN tutores t ON t.id = r.tutores_id
+    LEFT JOIN usuarios u ON u.id = r.creado_por
+    WHERE r.id = $1
+"""
+
+_SELECT_DETALLE_PAGOS_ESTANCIA = """
+    SELECT
+        mp.nombre   AS metodo_pago_nombre,
+        pe.monto,
+        NULL::text  AS notas_pago
+    FROM pagos_estancia pe
+    JOIN metodos_pago mp ON mp.id = pe.metodos_pago_id
+    WHERE pe.registros_id = $1
+"""
+
+_SELECT_DETALLE_ITEMS_ESTANCIA = """
+    SELECT
+        dr.id,
+        p.nombre                  AS producto_nombre,
+        dr.cantidad,
+        dr.precio                 AS precio_unitario,
+        (dr.cantidad * dr.precio) AS importe,
+        n.nombre_completo         AS notas_especiales,
+        NULL::text                AS nombre_combo_padre
+    FROM detalles_registro dr
+    JOIN productos p ON p.id = dr.productos_id
+    JOIN ninos n ON n.id = dr.ninos_id
+    WHERE dr.registros_id = $1
+"""
+
+_SELECT_DETALLE_RESERVACION = """
+    SELECT
+        r.id                                          AS referencia_id,
+        CONCAT_WS(' ', r.nombre_cliente, r.apellidos_cliente) AS titulo,
+        r.precio_total                                AS total_final,
+        r.estado                                      AS estado_actual,
+        r.creado                                      AS fecha_hora,
+        u.nombre_completo                             AS creado_por_nombre
+    FROM reservaciones r
+    LEFT JOIN usuarios u ON u.id = r.creado_por
+    WHERE r.id = $1
+"""
+
+_SELECT_DETALLE_PAGOS_RESERVACION = """
+    SELECT
+        mp.nombre AS metodo_pago_nombre,
+        pr.monto,
+        pr.notas  AS notas_pago
+    FROM pagos_reservacion pr
+    JOIN metodos_pago mp ON mp.id = pr.metodo_pago_id
+    WHERE pr.reservacion_id = $1
+"""
+
+_SELECT_DETALLE_ITEMS_RESERVACION = """
+    SELECT
+        r.id,
+        CONCAT('Paquete: ', pk.nombre) AS producto_nombre,
+        1                              AS cantidad,
+        r.precio_base                  AS precio_unitario,
+        r.precio_base                  AS importe,
+        NULL::text                     AS notas_especiales,
+        NULL::text                     AS nombre_combo_padre
+    FROM reservaciones r
+    JOIN paquetes pk ON pk.id = r.paquete_id
+    WHERE r.id = $1
+    UNION ALL
+    SELECT
+        re.id,
+        e.nombre              AS producto_nombre,
+        re.cantidad,
+        re.precio_unitario,
+        re.subtotal,
+        NULL::text            AS notas_especiales,
+        NULL::text            AS nombre_combo_padre
+    FROM reservacion_extras re
+    JOIN extras e ON e.id = re.extra_id
+    WHERE re.reservacion_id = $1
+    UNION ALL
+    SELECT
+        rp.id,
+        p.nombre              AS producto_nombre,
+        rp.cantidad,
+        rp.precio_unitario,
+        rp.subtotal,
+        rp.notas              AS notas_especiales,
+        NULL::text            AS nombre_combo_padre
+    FROM reservacion_productos rp
+    JOIN productos p ON p.id = rp.producto_id
+    WHERE rp.reservacion_id = $1
+"""
+
+
+def _armar_metodos_pago(pagos_rows: list[asyncpg.Record]) -> list[dict[str, Any]]:
+    return [
+        {
+            "metodo_pago_nombre": dict(p)["metodo_pago_nombre"],
+            "monto": float(dict(p)["monto"]),
+            "notas_pago": dict(p)["notas_pago"],
+        }
+        for p in pagos_rows
+    ]
+
+
+def _armar_detalles(items_rows: list[asyncpg.Record]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": str(dict(row)["id"]),
+            "producto_nombre": dict(row)["producto_nombre"],
+            "cantidad": dict(row)["cantidad"],
+            "precio_unitario": float(dict(row)["precio_unitario"]),
+            "importe": float(dict(row)["importe"]),
+            "notas_especiales": dict(row)["notas_especiales"],
+            "nombre_combo_padre": dict(row)["nombre_combo_padre"],
+        }
+        for row in items_rows
+    ]
+
+
+async def _detalle_estancia(
+    conn: asyncpg.Connection, registro_id: UUID
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(_SELECT_DETALLE_ESTANCIA, registro_id)
+    if not row:
+        return None
+    c = dict(row)
+    pagos_rows = await conn.fetch(_SELECT_DETALLE_PAGOS_ESTANCIA, registro_id)
+    items_rows = await conn.fetch(_SELECT_DETALLE_ITEMS_ESTANCIA, registro_id)
+    return {
+        "tipo_origen": "estancia",
+        "referencia_id": str(c["referencia_id"]),
+        "titulo": c["titulo"],
+        "comanda_id": None,
+        "ticket_numero": None,
+        "total_final": float(c["total_final"]),
+        "estado_actual": c["estado_actual"],
+        "fecha_hora": c["fecha_hora"].isoformat() if c["fecha_hora"] else None,
+        "motivo_cancelacion": None,
+        "creado_por_nombre": c["creado_por_nombre"],
+        "metodos_pago": _armar_metodos_pago(pagos_rows),
+        "detalles": _armar_detalles(items_rows),
+    }
+
+
+async def _detalle_reservacion(
+    conn: asyncpg.Connection, reservacion_id: UUID
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(_SELECT_DETALLE_RESERVACION, reservacion_id)
+    if not row:
+        return None
+    c = dict(row)
+    pagos_rows = await conn.fetch(_SELECT_DETALLE_PAGOS_RESERVACION, reservacion_id)
+    items_rows = await conn.fetch(_SELECT_DETALLE_ITEMS_RESERVACION, reservacion_id)
+    return {
+        "tipo_origen": "reservacion",
+        "referencia_id": str(c["referencia_id"]),
+        "titulo": c["titulo"],
+        "comanda_id": None,
+        "ticket_numero": None,
+        "total_final": float(c["total_final"]),
+        "estado_actual": c["estado_actual"],
+        "fecha_hora": c["fecha_hora"].isoformat() if c["fecha_hora"] else None,
+        "motivo_cancelacion": None,
+        "creado_por_nombre": c["creado_por_nombre"],
+        "metodos_pago": _armar_metodos_pago(pagos_rows),
+        "detalles": _armar_detalles(items_rows),
+    }
+
+
+async def detalle_por_referencia(
+    conn: asyncpg.Connection,
+    tipo_origen: str,
+    referencia_id: UUID,
+) -> dict[str, Any] | None:
+    if tipo_origen == "estancia":
+        return await _detalle_estancia(conn, referencia_id)
+    if tipo_origen == "reservacion":
+        return await _detalle_reservacion(conn, referencia_id)
+    return await detalle_por_comanda(conn, referencia_id)
+
+
+_SELECT_ESTADISTICAS = f"""
+    SELECT
+        COALESCE(SUM(v.total_real), 0)::float AS total_ventas,
+        COUNT(DISTINCT v.referencia_id)::int  AS total_ordenes
+    FROM ({_UNION_VENTAS}) v
+    WHERE v.sucursal_id = $1
+      AND v.creado >= $2::timestamptz
+      AND ($3::timestamptz IS NULL OR v.creado <= $3::timestamptz)
+      AND NOT v.es_cancelado
 """
 
 
@@ -290,11 +473,4 @@ async def estadisticas(
     hasta: datetime | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(_SELECT_ESTADISTICAS, sucursal_id, desde, hasta)
-    if row is None:
-        return {"total_ventas": 0.0, "total_ordenes": 0}
-    # Los subselects devuelven numeric/bigint; se normaliza aquí para que el
-    # servicio siga recibiendo los mismos tipos que antes de unir los dos orígenes.
-    return {
-        "total_ventas": float(row["total_ventas_num"] or 0),
-        "total_ordenes": int(row["total_ordenes_num"] or 0),
-    }
+    return dict(row) if row else {"total_ventas": 0.0, "total_ordenes": 0}
