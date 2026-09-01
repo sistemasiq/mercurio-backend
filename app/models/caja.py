@@ -44,6 +44,7 @@ class TipoMovimientoCaja(str, Enum):
     RESERVACION = "R"
     RETIRO = "RP"
     CAMBIO = "C"
+    INGRESO = "I"
 
 
 @dataclass

@@ -106,6 +106,18 @@ class CambioResponse(BaseModel):
     creado: datetime
 
 
+class IngresoEfectivoCreate(BaseModel):
+    apertura_caja_id: str
+    monto: Decimal = Field(..., gt=0)
+
+
+class IngresoEfectivoResponse(BaseModel):
+    id: str
+    apertura_caja_id: str
+    monto: Decimal
+    creado: datetime
+
+
 # ── Declaración de Conteo y Arqueo ──────────────────────────────────────────
 
 

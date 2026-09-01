@@ -65,19 +65,6 @@ async def listar_cajas_por_sucursal(conn: asyncpg.Connection, sucursal_id: str |
             """,
             uuid.UUID(sucursal_id),
         )
-        if not rows:
-            await crear_caja(conn, sucursal_id, "CAJA 01", "Caja Principal 01")
-            await crear_caja(conn, sucursal_id, "CAJA 02", "Caja Secundaria 02")
-            rows = await conn.fetch(
-                """
-                SELECT id, sucursal_id, codigo, nombre, creado
-                FROM public.cajas
-                WHERE sucursal_id = $1 AND activo = TRUE
-                ORDER BY codigo ASC
-                """,
-                uuid.UUID(sucursal_id),
-            )
-        return [dict(r) for r in rows]
     else:
         rows = await conn.fetch(
             """
@@ -87,20 +74,7 @@ async def listar_cajas_por_sucursal(conn: asyncpg.Connection, sucursal_id: str |
             ORDER BY codigo ASC
             """
         )
-        if not rows:
-            suc = await conn.fetchval("SELECT id FROM public.sucursales LIMIT 1")
-            suc_str = str(suc) if suc else "00000000-0000-0000-0000-000000000000"
-            await crear_caja(conn, suc_str, "CAJA 01", "Caja Principal 01")
-            await crear_caja(conn, suc_str, "CAJA 02", "Caja Secundaria 02")
-            rows = await conn.fetch(
-                """
-                SELECT id, sucursal_id, codigo, nombre, creado
-                FROM public.cajas
-                WHERE activo = TRUE
-                ORDER BY codigo ASC
-                """
-            )
-        return [dict(r) for r in rows]
+    return [dict(r) for r in rows]
 
 
 async def listar_turnos(conn: asyncpg.Connection) -> list[dict]:
@@ -112,34 +86,6 @@ async def listar_turnos(conn: asyncpg.Connection) -> list[dict]:
         ORDER BY hora_inicio ASC
         """
     )
-    if not rows:
-        now = get_mexico_now()
-        default_turnos = [
-            ("Turno Matutino", "08:00:00", "16:00:00"),
-            ("Turno Vespertino", "16:00:00", "00:00:00"),
-            ("Turno Nocturno", "00:00:00", "08:00:00"),
-        ]
-        for nom, hi, hf in default_turnos:
-            t_id = uuid.uuid4()
-            await conn.execute(
-                """
-                INSERT INTO public.turnos (id, nombre, hora_inicio, hora_fin, creado)
-                VALUES ($1, $2, $3::time, $4::time, $5)
-                ON CONFLICT (nombre) DO NOTHING
-                """,
-                t_id,
-                nom,
-                datetime.strptime(hi, "%H:%M:%S").time(),
-                datetime.strptime(hf, "%H:%M:%S").time(),
-                now,
-            )
-        rows = await conn.fetch(
-            """
-            SELECT id, nombre, hora_inicio, hora_fin
-            FROM public.turnos
-            ORDER BY hora_inicio ASC
-            """
-        )
     return [dict(r) for r in rows]
 
 
@@ -646,6 +592,42 @@ async def registrar_cambio_caja(
     )
 
 
+async def registrar_ingreso_efectivo(
+    conn: asyncpg.Connection,
+    apertura_caja_id: str,
+    referencia_id: str,
+    monto: Decimal,
+    creado_por: str | None = None,
+) -> dict:
+    """Registra una entrada de efectivo físico durante el turno que no
+    corresponde a una venta (reposición de cambio, fondo adicional, etc.).
+    Mismo tratamiento que el cambio (tipo 'C'): metodo_pago_id siempre None,
+    sin tabla propia. A diferencia de retiro/cambio, que restan del efectivo
+    esperado, el ingreso suma (ver _calcular_balance)."""
+    return await registrar_movimiento_caja(
+        conn,
+        apertura_caja_id=apertura_caja_id,
+        tipo_movimiento="I",
+        referencia_id=referencia_id,
+        metodo_pago_id=None,
+        monto=monto,
+        creado_por=creado_por,
+    )
+
+
+async def sumar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(monto), 0)
+        FROM public.movimientos_caja
+        WHERE apertura_caja_id = $1
+          AND tipo_movimiento = 'I'
+        """,
+        uuid.UUID(apertura_caja_id),
+    )
+    return Decimal(str(val))
+
+
 async def obtener_movimientos_por_metodo(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
     rows = await conn.fetch(
         """
@@ -684,7 +666,7 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id
         SELECT COALESCE(SUM(monto), 0)
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1
-          AND tipo_movimiento NOT IN ('RP', 'C')
+          AND tipo_movimiento NOT IN ('RP', 'C', 'I')
         """,
         uuid.UUID(apertura_caja_id),
     )
@@ -695,17 +677,17 @@ async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, apertura_caja
     """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón:
     movimientos cuyo método tiene tipo='E' (identidad fija del catálogo
     global, migración 037 -- no el nombre, que es editable), o sin método
-    asignado (comandas aún no integra métodos de pago). Retiros (RP) y
-    cambio (C) se excluyen -- ya se restan aparte en _calcular_balance,
-    sumarlos aquí también los contaría como ventas en vez de salidas de
-    efectivo."""
+    asignado (comandas aún no integra métodos de pago). Retiros (RP), cambio
+    (C) e ingresos (I) se excluyen -- ya se suman/restan aparte en
+    _calcular_balance, sumarlos aquí también los contaría como ventas en vez
+    de salidas/entradas de efectivo."""
     val = await conn.fetchval(
         """
         SELECT COALESCE(SUM(m.monto), 0)
         FROM public.movimientos_caja m
         LEFT JOIN public.metodos_pago mp ON m.metodo_pago_id = mp.id
         WHERE m.apertura_caja_id = $1
-          AND m.tipo_movimiento NOT IN ('RP', 'C')
+          AND m.tipo_movimiento NOT IN ('RP', 'C', 'I')
           AND (m.metodo_pago_id IS NULL OR mp.tipo = 'E')
         """,
         uuid.UUID(apertura_caja_id),
