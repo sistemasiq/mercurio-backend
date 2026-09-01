@@ -19,14 +19,15 @@ from app.repositories.pagos_comanda import pago_create
 from app.repositories.registros import (
     EstadoRegistro,
     change_registro_estado,
-    get_guardian_bracelet_by_detalles_registro_id,
     registro_add_total,
 )
-from app.repositories.productos import get_productos_estancia_by_sucursal_id
+from app.repositories.productos import get_productos_estancia_by_sucursal_id, get_precio_pulsera_by_reserva_id
+from app.repositories.producto_repository import get_producto_estancia_by_branch_id
+from app.repositories.reservaciones_repository import get_reservacion_id_by_detalle_registro_id
 from app.schemas.pagos import PagoIn
 
 
-EXTRA_GRACE_MINUTES = 5
+EXTRA_GRACE_MINUTES = 10
 
 CENTAVO = 0.01
 
@@ -46,9 +47,9 @@ async def _calcular_cargo_extra(conn: asyncpg.Connection, detalle: dict[str, Any
     if minutos_extra > EXTRA_GRACE_MINUTES:
         extra_horas = ceil((minutos_extra - EXTRA_GRACE_MINUTES) / 60)
 
-    productos = await get_productos_estancia_by_sucursal_id(conn, detalle["sucursal_id"])
-    produto = productos[0]
-    total_extra = produto["precioUnitario"] * extra_horas
+    precio = detalle["precio"]
+    total_extra = precio * extra_horas
+
     return extra_horas, total_extra
 
 
@@ -77,7 +78,6 @@ async def cotizar_checkout(conn: asyncpg.Connection, detalle_id: UUID) -> dict[s
 async def create_chekout(
     conn: asyncpg.Connection,
     detalle_id: UUID,
-    pulsera_tutor_id: UUID,
     usuario_id: UUID,
     pagos: list[PagoIn],
     apertura_caja_id: str,
@@ -93,20 +93,13 @@ async def create_chekout(
         if detalle["salida"] is not None:
             raise HTTPException(400, "El niño ya realizó checkout")
 
-        pulsera_tutor_id_db = await get_guardian_bracelet_by_detalles_registro_id(
-            conn, detalle["registros_id"]
-        )
-
-        if pulsera_tutor_id_db is None or str(pulsera_tutor_id) != str(pulsera_tutor_id_db):
-            raise HTTPException(403, "La pulsera presentada no corresponde al tutor autorizado")
-
         # Recalculado con la hora real de este instante
         extra_horas, total_extra = await _calcular_cargo_extra(conn, detalle, now)
 
         if total_extra > 0:
             monto_pagado = sum(Decimal(str(pago.monto)) for pago in pagos)
             if abs(monto_pagado - total_extra) > CENTAVO:
-                # El detail va estructurado (no solo texto) para que el frontend pueda reintentar con el monto correcto sin tener que hacer una llamada GET adicional a /checkout/cotizacion.
+                # El detail va estructurado para que el frontend pueda reintentar con el monto correcto
                 raise HTTPException(
                     409,
                     detail={

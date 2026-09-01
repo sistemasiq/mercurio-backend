@@ -1,0 +1,24 @@
+-- =============================================================================
+-- 045_movimiento_caja_tipo_retiro_parcial.sql
+-- Agrega el tipo de movimiento 'RP' (Retiro Parcial) al enum
+-- tipo_movimiento_caja.
+--
+-- Motivo: el código de cierre de caja ya usa 'RP' desde el merge de
+-- fix/cierre-caja (app/models/caja.py TipoMovimientoCaja.RETIRO = "RP",
+-- app/services/turnos_caja_service.py::crear_retiro_parcial con
+-- tipo_movimiento='RP', y app/repositories/caja_repository.py lo excluye de
+-- las sumas de ventas junto con 'C'). Pero ninguna migración versionada lo
+-- agregaba al enum -- solo existía en la BD compartida porque se metió a
+-- mano. La migración 042 incluso lo menciona ("el mismo tratamiento
+-- contable que un retiro parcial (RP)") asumiendo que ya estaba.
+--
+-- Sin esta migración, reconstruir la BD desde cero (reset_db_local.sh) deja
+-- un enum sin 'RP' y cualquier retiro parcial revienta con
+-- "invalid input value for enum tipo_movimiento_caja".
+--
+-- Se agrega BEFORE 'C' para que el orden del enum coincida con el de
+-- TipoMovimientoCaja en app/models/caja.py (E, O, R, RP, C). IF NOT EXISTS
+-- para ser idempotente contra la BD compartida que ya lo tiene.
+-- =============================================================================
+
+ALTER TYPE public.tipo_movimiento_caja ADD VALUE IF NOT EXISTS 'RP' BEFORE 'C';
