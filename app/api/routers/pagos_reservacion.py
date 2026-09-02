@@ -8,6 +8,7 @@ from app.api.deps import apertura_operando_id, require_permission
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
+from app.services import turnos_caja_service
 from app.schemas.pagos_reservacion import (
     PagosReservacionCompletarRequest,
     PagosReservacionCompletarResponse,
@@ -72,7 +73,12 @@ async def completar_pago(
     current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
     apertura_id: str = Depends(apertura_operando_id),
 ) -> PagosReservacionCompletarResponse:
-    return await svc.completar(conn, body, UUID(current_user.sub), apertura_id)
+    disponible_antes = await turnos_caja_service.efectivo_disponible_actual(conn, apertura_id)
+    resultado = await svc.completar(conn, body, UUID(current_user.sub), apertura_id)
+    resultado.advertencia_efectivo = turnos_caja_service.advertencia_efectivo_insuficiente(
+        disponible_antes, body.cambio
+    )
+    return resultado
 
 
 @router.patch("/{pago_id}", response_model=PagosReservacionOut)

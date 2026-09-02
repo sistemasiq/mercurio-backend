@@ -50,3 +50,4 @@ class PagosReservacionOut(PagosReservacionBase):
 class PagosReservacionCompletarResponse(BaseModel):
     pagos: list[PagosReservacionOut]
     cambio: Decimal
+    advertencia_efectivo: str | None = None

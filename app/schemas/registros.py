@@ -35,6 +35,7 @@ class OnboardingResponse(BaseModel):
     total: float
     pagado: float
     estado: str
+    advertenciaEfectivo: str | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class CheckoutRequest(BaseModel):
