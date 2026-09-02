@@ -3,16 +3,30 @@ app/schemas/caja.py
 Esquemas Pydantic para el módulo de Cierre de Caja, Apertura, Retiros y Catálogos.
 """
 
+import uuid
 from datetime import datetime, time
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.caja import (
     ConceptoRetiro,
     TipoCierreEnum,
     TipoDestinatario,
 )
+
+
+def _validar_uuid(v: str) -> str:
+    """Valida formato UUID en el borde de la API. Sin esto, un valor mal
+    formado llega tal cual a uuid.UUID(...) en caja_repository y truena con
+    un 500 crudo en vez de un 422 limpio (mismo patrón ya usado en
+    ComandaModifyRequest._validate_uuids)."""
+    try:
+        uuid.UUID(v)
+    except ValueError as exc:
+        raise ValueError(f"apertura_caja_id inválido: '{v}'. Se esperaba un UUID válido.") from exc
+    return v
+
 
 # ── Catálogos: Caja y Turno ─────────────────────────────────────────────────
 
@@ -76,6 +90,7 @@ class TurnoActivoResponse(BaseModel):
     fecha_apertura: str
     total_ventas: Decimal = Decimal("0")
     total_retiros: Decimal = Decimal("0")
+    total_ingresos: Decimal = Decimal("0")
     movimientos: list[MovimientoResumen] = []
 
 
@@ -88,6 +103,8 @@ class RetiroParcialCreate(BaseModel):
     tipo_destinatario: TipoDestinatario
     monto: Decimal = Field(..., gt=0)
     observaciones: str | None = None
+
+    _validar_apertura_caja_id = field_validator("apertura_caja_id")(_validar_uuid)
 
 
 class RetiroParcialResponse(BaseModel):
@@ -106,9 +123,17 @@ class CambioResponse(BaseModel):
     creado: datetime
 
 
+class IngresoDetalle(BaseModel):
+    id: str
+    monto: Decimal
+    creado: datetime
+
+
 class IngresoEfectivoCreate(BaseModel):
     apertura_caja_id: str
     monto: Decimal = Field(..., gt=0)
+
+    _validar_apertura_caja_id = field_validator("apertura_caja_id")(_validar_uuid)
 
 
 class IngresoEfectivoResponse(BaseModel):
@@ -122,26 +147,26 @@ class IngresoEfectivoResponse(BaseModel):
 
 
 class DenominacionCantidad(BaseModel):
-    denominacion: Decimal
-    cantidad: int
+    denominacion: Decimal = Field(..., gt=0)
+    cantidad: int = Field(..., ge=0)
 
 
 class DesgloseEfectivoPayload(BaseModel):
     billetes: list[DenominacionCantidad] = []
     monedas: list[DenominacionCantidad] = []
-    total: Decimal
+    total: Decimal = Field(..., ge=0)
 
 
 class MetodoPagoMonto(BaseModel):
     metodo: str
-    monto: Decimal
+    monto: Decimal = Field(..., ge=0)
 
 
 class ConteoPayload(BaseModel):
     turno_id: str
     desglose_efectivo: DesgloseEfectivoPayload
     metodos_pago: list[MetodoPagoMonto]
-    total_declarado: Decimal
+    total_declarado: Decimal = Field(..., ge=0)
 
 
 # ── Autenticación / Revisión Admin ──────────────────────────────────────────
@@ -234,6 +259,7 @@ class DetalleArqueoResponse(ArqueoResumen):
     balance_por_metodo: list[FilaBalance] = []
     retiros: list[RetiroParcialResponse] = []
     cambios: list[CambioResponse] = []
+    ingresos: list[IngresoDetalle] = []
     observaciones: str | None = ""
 
 

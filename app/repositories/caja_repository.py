@@ -14,6 +14,17 @@ import asyncpg
 
 from app.core.utils import get_mexico_now
 
+
+def _uuid_o_none(id_str: str) -> uuid.UUID | None:
+    """Convierte a UUID o devuelve None si el formato es inválido, en vez de dejar
+    que ValueError se propague hasta un 500 crudo. Los llamadores de get_apertura_por_id
+    y obtener_detalle_cierre ya tratan un resultado None como "no encontrado" (404),
+    así que un id mal formado simplemente no encuentra nada -- semántica correcta."""
+    try:
+        return uuid.UUID(id_str)
+    except (ValueError, AttributeError, TypeError):
+        return None
+
 # ── Catálogos: Cajas y Turnos ─────────────────────────────────────────────────
 
 async def get_caja_por_codigo(conn: asyncpg.Connection, sucursal_id: str, codigo: str) -> dict | None:
@@ -280,6 +291,9 @@ async def get_apertura_activa_por_caja(conn: asyncpg.Connection, caja_id: str) -
 
 
 async def get_apertura_por_id(conn: asyncpg.Connection, apertura_id: str) -> dict | None:
+    apertura_uuid = _uuid_o_none(apertura_id)
+    if apertura_uuid is None:
+        return None
     row = await conn.fetchrow(
         """
         SELECT
@@ -304,7 +318,7 @@ async def get_apertura_por_id(conn: asyncpg.Connection, apertura_id: str) -> dic
         LEFT JOIN public.usuarios u ON a.cajero_id = u.id
         WHERE a.id = $1
         """,
-        uuid.UUID(apertura_id),
+        apertura_uuid,
     )
     return dict(row) if row else None
 
@@ -348,60 +362,6 @@ async def actualizar_estado_apertura(conn: asyncpg.Connection, apertura_id: str,
         WHERE id = $3
         """,
         nuevo_estado,
-        now,
-        uuid.UUID(apertura_id),
-    )
-
-
-async def guardar_conteo(
-    conn: asyncpg.Connection,
-    apertura_id: str,
-    conteo_json: str,
-    monto_declarado: Decimal,
-) -> None:
-    now = get_mexico_now()
-    await conn.execute(
-        """
-        UPDATE public.apertura_caja
-        SET conteo_json = $1, monto_declarado = $2, modificado = $3
-        WHERE id = $4
-        """,
-        conteo_json,
-        monto_declarado,
-        now,
-        uuid.UUID(apertura_id),
-    )
-
-
-async def guardar_token_admin(conn: asyncpg.Connection, apertura_id: str, jti: uuid.UUID) -> None:
-    now = get_mexico_now()
-    await conn.execute(
-        """
-        UPDATE public.apertura_caja
-        SET token_admin_jti = $1, modificado = $2
-        WHERE id = $3
-        """,
-        jti,
-        now,
-        uuid.UUID(apertura_id),
-    )
-
-
-async def verificar_token_admin(conn: asyncpg.Connection, apertura_id: str) -> uuid.UUID | None:
-    return await conn.fetchval(
-        "SELECT token_admin_jti FROM public.apertura_caja WHERE id = $1",
-        uuid.UUID(apertura_id),
-    )
-
-
-async def invalidar_token_admin(conn: asyncpg.Connection, apertura_id: str) -> None:
-    now = get_mexico_now()
-    await conn.execute(
-        """
-        UPDATE public.apertura_caja
-        SET token_admin_jti = NULL, modificado = $1
-        WHERE id = $2
-        """,
         now,
         uuid.UUID(apertura_id),
     )
@@ -536,6 +496,19 @@ async def listar_cambios_por_apertura(conn: asyncpg.Connection, apertura_caja_id
         SELECT id, monto, creado
         FROM public.movimientos_caja
         WHERE apertura_caja_id = $1 AND tipo_movimiento = 'C'
+        ORDER BY creado DESC
+        """,
+        uuid.UUID(apertura_caja_id),
+    )
+    return [dict(r) for r in rows]
+
+
+async def listar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT id, monto, creado
+        FROM public.movimientos_caja
+        WHERE apertura_caja_id = $1 AND tipo_movimiento = 'I'
         ORDER BY creado DESC
         """,
         uuid.UUID(apertura_caja_id),
@@ -860,6 +833,9 @@ async def contar_historial_cierres(
 
 
 async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> dict | None:
+    cierre_uuid = _uuid_o_none(cierre_id)
+    if cierre_uuid is None:
+        return None
     row = await conn.fetchrow(
         """
         SELECT
@@ -886,6 +862,6 @@ async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> di
         LEFT JOIN public.usuarios u_admin ON cc.administrador_id = u_admin.id
         WHERE cc.id = $1
         """,
-        uuid.UUID(cierre_id),
+        cierre_uuid,
     )
     return dict(row) if row else None

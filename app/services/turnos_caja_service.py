@@ -29,6 +29,7 @@ from app.repositories.caja_repository import (
     listar_cajas_por_sucursal,
     listar_cambios_por_apertura,
     listar_historial_cierres,
+    listar_ingresos_por_apertura,
     listar_retiros_por_apertura,
     listar_turnos,
     obtener_detalle_cierre,
@@ -56,6 +57,7 @@ from app.schemas.caja import (
     FilaBalance,
     FiltrosHistorial,
     HistorialArqueosResponse,
+    IngresoDetalle,
     IngresoEfectivoCreate,
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
@@ -82,6 +84,20 @@ class TransicionInvalidaError(HTTPException):
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "TRANSICION_INVALIDA", "message": mensaje},
+        )
+
+
+class EfectivoInsuficienteError(HTTPException):
+    def __init__(self, efectivo_disponible: Decimal):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "EFECTIVO_INSUFICIENTE",
+                "message": (
+                    f"El retiro excede el efectivo disponible en caja "
+                    f"(disponible: {efectivo_disponible})."
+                ),
+            },
         )
 
 
@@ -215,6 +231,7 @@ async def abrir_turno(
         fecha_apertura=str(nueva["fecha_apertura"]),
         total_ventas=Decimal("0"),
         total_retiros=Decimal("0"),
+        total_ingresos=Decimal("0"),
         movimientos=[],
     )
 
@@ -229,6 +246,7 @@ async def obtener_turno_activo(
     apertura_id = str(activa["id"])
     total_ventas = await sumar_total_ventas_apertura(conn, apertura_id)
     total_retiros = await sumar_retiros_por_apertura(conn, apertura_id)
+    total_ingresos = await sumar_ingresos_por_apertura(conn, apertura_id)
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
 
     movimientos = [
@@ -260,6 +278,7 @@ async def obtener_turno_activo(
         fecha_apertura=str(activa["fecha_apertura"]),
         total_ventas=total_ventas,
         total_retiros=total_retiros,
+        total_ingresos=total_ingresos,
         movimientos=movimientos,
     )
 
@@ -402,8 +421,14 @@ async def _calcular_balance(
         - total_retiros
         - total_cambio
     )
+    # "efectivo" ya está contado en declarado_efectivo (viene de desglose_efectivo,
+    # no de metodos_pago) -- excluirlo aquí igual que ya se hace arriba al construir
+    # `balance` (línea ~400). Sin esto, un payload que declare efectivo también dentro
+    # de metodos_pago duplica el total y ese número corrupto queda congelado para
+    # siempre en cierre_caja al confirmar (el balance por método se ve bien porque se
+    # recalcula en vivo, pero total_declarado/diferencia_neta no).
     total_declarado_general = declarado_efectivo + sum(
-        declarados_por_metodo.values(), Decimal("0")
+        (v for k, v in declarados_por_metodo.items() if k != "efectivo"), Decimal("0")
     )
     diferencia_neta_general = total_declarado_general - total_esperado_general
 
@@ -590,6 +615,19 @@ async def crear_retiro(
         raise TransicionInvalidaError(
             "No se pueden registrar retiros mientras el turno está en conteo o cierre."
         )
+
+    # RN: un retiro no puede dejar el efectivo esperado en negativo -- misma fórmula
+    # que _calcular_balance para "efectivo esperado", pero evaluada en el momento del
+    # retiro (sin depender del conteo de cierre, que aún no existe con el turno ABIERTA).
+    efectivo_disponible = (
+        Decimal(str(apertura["fondo_inicial"]))
+        + await sumar_ventas_efectivo_apertura(conn, payload.apertura_caja_id)
+        + await sumar_ingresos_por_apertura(conn, payload.apertura_caja_id)
+        - await sumar_retiros_por_apertura(conn, payload.apertura_caja_id)
+        - await sumar_cambio_apertura(conn, payload.apertura_caja_id)
+    )
+    if payload.monto > efectivo_disponible:
+        raise EfectivoInsuficienteError(efectivo_disponible)
 
     async with conn.transaction():
         row = await crear_retiro_parcial(
@@ -808,6 +846,12 @@ async def obtener_detalle(
         for c in cambios_raw
     ]
 
+    ingresos_raw = await listar_ingresos_por_apertura(conn, apertura_caja_id)
+    ingresos = [
+        IngresoDetalle(id=str(i["id"]), monto=Decimal(str(i["monto"])), creado=i["creado"])
+        for i in ingresos_raw
+    ]
+
     return DetalleArqueoResponse(
         id=str(cierre["id"]),
         cajero_nombre=cierre["cajero_nombre"] or "—",
@@ -828,4 +872,5 @@ async def obtener_detalle(
         balance_por_metodo=balance,
         retiros=retiros,
         cambios=cambios,
+        ingresos=ingresos,
     )
