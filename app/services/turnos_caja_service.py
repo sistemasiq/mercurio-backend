@@ -18,6 +18,7 @@ from app.repositories.caja_repository import (
     actualizar_admin_autorizacion,
     actualizar_conteo_apertura,
     actualizar_estado_apertura,
+    calcular_efectivo_disponible,
     contar_historial_cierres,
     crear_apertura_caja,
     crear_cierre_caja,
@@ -619,12 +620,8 @@ async def crear_retiro(
     # RN: un retiro no puede dejar el efectivo esperado en negativo -- misma fórmula
     # que _calcular_balance para "efectivo esperado", pero evaluada en el momento del
     # retiro (sin depender del conteo de cierre, que aún no existe con el turno ABIERTA).
-    efectivo_disponible = (
-        Decimal(str(apertura["fondo_inicial"]))
-        + await sumar_ventas_efectivo_apertura(conn, payload.apertura_caja_id)
-        + await sumar_ingresos_por_apertura(conn, payload.apertura_caja_id)
-        - await sumar_retiros_por_apertura(conn, payload.apertura_caja_id)
-        - await sumar_cambio_apertura(conn, payload.apertura_caja_id)
+    efectivo_disponible = await calcular_efectivo_disponible(
+        conn, payload.apertura_caja_id, Decimal(str(apertura["fondo_inicial"]))
     )
     if payload.monto > efectivo_disponible:
         raise EfectivoInsuficienteError(efectivo_disponible)
@@ -661,6 +658,35 @@ async def crear_retiro(
         observaciones=row["observaciones"],
         creado=row["creado"],
     )
+
+
+async def efectivo_disponible_actual(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+    """Wrapper de calcular_efectivo_disponible que resuelve el fondo_inicial por
+    su cuenta, para llamadores (routers de pagos/reservaciones/estancias) que no
+    tienen la apertura ya cargada."""
+    apertura = await get_apertura_por_id(conn, apertura_caja_id)
+    if not apertura:
+        return Decimal("0")
+    return await calcular_efectivo_disponible(
+        conn, apertura_caja_id, Decimal(str(apertura["fondo_inicial"]))
+    )
+
+
+def advertencia_efectivo_insuficiente(disponible_antes: Decimal, cambio: Decimal) -> str | None:
+    """A diferencia de crear_retiro, dar cambio NUNCA bloquea el pago -- decisión
+    de negocio explícita: igual que una sucursal real completa la venta y pide
+    cambio prestado, el sistema deja pasar el pago y solo avisa para que el
+    cajero solicite un ingreso de efectivo.
+
+    Compara contra el efectivo que YA había en caja antes de esta venta, no
+    contra el saldo neto después de sumar el propio pago del cliente: un
+    billete de $200 no se puede partir para dar $70 de cambio si no había ya
+    billetes/monedas chicos en el cajón, aunque en lo agregado 200 - 70 dé
+    positivo. Es la misma regla física que ya bloquea los retiros parciales,
+    solo que aquí no bloquea, avisa."""
+    if cambio <= disponible_antes:
+        return None
+    return "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
 
 
 async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[RetiroParcialResponse]:

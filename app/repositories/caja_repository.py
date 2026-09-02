@@ -656,6 +656,25 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id
     return Decimal(str(val))
 
 
+async def calcular_efectivo_disponible(
+    conn: asyncpg.Connection, apertura_caja_id: str, fondo_inicial: Decimal
+) -> Decimal:
+    """Efectivo físico esperado en el cajón en este momento (turno aún ABIERTA,
+    sin depender del conteo de cierre). Misma fórmula que _calcular_balance usa
+    para "efectivo esperado" al cerrar, evaluada en vivo -- fondo inicial +
+    ventas en efectivo + ingresos - retiros - cambio entregado. Único origen de
+    verdad, reusado por crear_retiro (bloquea si el retiro la deja negativa) y
+    por la advertencia de cambio insuficiente en pagos/reservaciones/estancias
+    (no bloquea, solo informa)."""
+    return (
+        fondo_inicial
+        + await sumar_ventas_efectivo_apertura(conn, apertura_caja_id)
+        + await sumar_ingresos_por_apertura(conn, apertura_caja_id)
+        - await sumar_retiros_por_apertura(conn, apertura_caja_id)
+        - await sumar_cambio_apertura(conn, apertura_caja_id)
+    )
+
+
 async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
     """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón:
     movimientos cuyo método tiene tipo='E' (identidad fija del catálogo
