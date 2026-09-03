@@ -63,7 +63,7 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.paquetes
     (id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-     precio_base, precio_pulsera)
+     precio_base, precio_hora_pulsera)
 VALUES
   ('bbbbbbbb-0000-0000-0000-000000000001',
    '11111111-1111-1111-1111-111111111111',
