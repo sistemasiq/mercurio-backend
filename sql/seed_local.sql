@@ -32,13 +32,20 @@ VALUES
   ('33333333-3333-3333-3333-333333333333',
    'sistemas@local.dev',
    '$2b$12$jGOsFgnr5KIF6TB6gbQ7A.tDGDQ56EsXo8NhGA9oPBYOgAvGIGLWO',
-   'Administrador de Sistema Local', 1)
+   'Administrador de Sistema Local', 1),
+  ('44444444-4444-4444-4444-444444444444',
+   'cajero@local.dev',
+   '$2b$12$jGOsFgnr5KIF6TB6gbQ7A.tDGDQ56EsXo8NhGA9oPBYOgAvGIGLWO',
+   'Cajero Local', 3)
 ON CONFLICT (id) DO NOTHING;
 
--- El rol Administrador (2) exige sucursal asignada; el AdministradorSistema (1)
--- va sin fila aquí a propósito, porque su acceso es global.
+-- El rol Administrador (2) y Cajero (3) exigen sucursal asignada; el
+-- AdministradorSistema (1) va sin fila aquí a propósito, porque su acceso es
+-- global.
 INSERT INTO public.usuarios_sucursal (usuario_id, sucursal_id)
 VALUES ('22222222-2222-2222-2222-222222222222',
+        '11111111-1111-1111-1111-111111111111'),
+       ('44444444-4444-4444-4444-444444444444',
         '11111111-1111-1111-1111-111111111111')
 ON CONFLICT (usuario_id, sucursal_id) DO NOTHING;
 
@@ -63,7 +70,7 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.paquetes
     (id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-     precio_base, precio_pulsera)
+     precio_base, precio_hora_pulsera)
 VALUES
   ('bbbbbbbb-0000-0000-0000-000000000001',
    '11111111-1111-1111-1111-111111111111',

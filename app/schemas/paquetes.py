@@ -20,8 +20,9 @@ class PaquetesBase(BaseModel):
     min_invitados: int = Field(1, gt=0)
     max_invitados: int = Field(10, gt=0)
     precio_base: Decimal = Field(..., ge=0)
-    # Se cobra por cada invitado del evento: precio_base + precio_pulsera * invitados.
-    precio_pulsera: Decimal = Field(Decimal(0), ge=0)
+    # Tarifa de la pulsera por invitado y por hora de evento:
+    #   total = precio_base + precio_hora_pulsera * invitados * horas
+    precio_hora_pulsera: Decimal = Field(Decimal(0), ge=0)
 
     @model_validator(mode="after")
     def validar_rango(self) -> "PaquetesBase":
@@ -40,7 +41,7 @@ class PaquetesUpdate(BaseModel):
     min_invitados: int | None = Field(None, gt=0)
     max_invitados: int | None = Field(None, gt=0)
     precio_base: Decimal | None = Field(None, ge=0)
-    precio_pulsera: Decimal | None = Field(None, ge=0)
+    precio_hora_pulsera: Decimal | None = Field(None, ge=0)
     activo: bool | None = None
     productos_incluidos: list[PaqueteProductoItem] | None = None
 
