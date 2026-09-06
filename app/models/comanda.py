@@ -30,6 +30,8 @@ class DetalleComanda:
     nombre_combo_padre: str | None = None
     es_hijo_de: str | None = None
     es_hijo_combo: bool = False
+    # Instancia de combo: agrupa hijos de una misma unidad pedida (KDS)
+    id_combo_padre: str | None = None
 
 
 @dataclass
@@ -40,6 +42,7 @@ class Comanda:
     total_final: Decimal
     sucursal_id: str
     fecha_hora: datetime | None = None
+    nombre_cliente: str | None = None
     # expandir_detalles_comanda() reemplaza esta lista por dicts (uno por
     # producto hijo cuando hay combos) — no siempre son DetalleComanda.
     detalles: list[DetalleComanda | dict[str, Any]] = field(default_factory=list)

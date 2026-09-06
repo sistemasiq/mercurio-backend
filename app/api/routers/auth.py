@@ -33,6 +33,16 @@ _INVALID_CREDENTIALS = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail={"code": "INVALID_CREDENTIALS", "message": "Credenciales incorrectas."},
 )
+_NO_BRANCH_ASSIGNED = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail={
+        "code": "NO_BRANCH_ASSIGNED",
+        "message": (
+            "Tu cuenta no tiene ninguna sucursal asignada. "
+            "Contacta a un administrador del sistema."
+        ),
+    },
+)
 _INVALID_REFRESH = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail={"code": "TOKEN_INVALID", "message": "Refresh token inválido o expirado."},
@@ -52,8 +62,10 @@ async def login_endpoint(
             sucursal_id=body.sucursal_id,
             remember_me=body.remember_me,
         )
-    except (InvalidCredentialsError, SucursalNoAsignadaError):
+    except InvalidCredentialsError:
         raise _INVALID_CREDENTIALS from None
+    except SucursalNoAsignadaError:
+        raise _NO_BRANCH_ASSIGNED from None
 
 
 @router.get("/me", response_model=UserOut)

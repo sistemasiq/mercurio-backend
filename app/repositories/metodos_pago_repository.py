@@ -47,6 +47,14 @@ async def existe(conn: asyncpg.Connection, metodo_pago_id: UUID) -> bool:
     return row is not None
 
 
+async def obtener_ids_por_tipo(conn: asyncpg.Connection, tipo: str) -> set[UUID]:
+    """Resuelve los ids de metodos_pago cuyo `tipo` coincide. Desde la
+    migración 037 hay como máximo una fila por tipo (UNIQUE (tipo)), pero se
+    devuelve un set para no asumir esa invariante en el llamador."""
+    rows = await conn.fetch("SELECT id FROM metodos_pago WHERE tipo = $1", tipo)
+    return {r["id"] for r in rows}
+
+
 async def actualizar_catalogo(
     conn: asyncpg.Connection, metodo_pago_id: UUID, updates: dict[str, Any]
 ) -> None:

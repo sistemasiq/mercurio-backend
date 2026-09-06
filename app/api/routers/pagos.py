@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
@@ -91,24 +91,26 @@ async def listar_estadisticas(
 
 
 @router.get(
-    "/detalles/{comanda_id}",
+    "/detalles/{tipo_origen}/{referencia_id}",
     response_model=DetalleOrdenOut,
     summary="Detalle completo de una transacción",
     description=(
-        "Devuelve la comanda: productos, totales, "
-        "métodos de pago y datos del usuario que creó el registro."
+        "Devuelve el detalle de una venta (comanda POS, estancia o "
+        "reservación): productos, totales, métodos de pago y el usuario "
+        "que creó el registro."
     ),
 )
 async def obtener_detalle(
-    comanda_id: UUID,
+    tipo_origen: Literal["comanda", "estancia", "reservacion"],
+    referencia_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
 ) -> DetalleOrdenOut:
-    resultado = await svc.obtener_detalle(conn, comanda_id)
+    resultado = await svc.obtener_detalle(conn, tipo_origen, referencia_id)
     if resultado is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontró la comanda con el ID proporcionado.",
+            detail="No se encontró la venta con el ID proporcionado.",
         )
     return resultado
 

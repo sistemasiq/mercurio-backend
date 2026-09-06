@@ -100,6 +100,12 @@ class RetiroParcialResponse(BaseModel):
     creado: datetime
 
 
+class CambioResponse(BaseModel):
+    id: str
+    monto: Decimal
+    creado: datetime
+
+
 # ── Declaración de Conteo y Arqueo ──────────────────────────────────────────
 
 
@@ -215,6 +221,7 @@ class DetalleArqueoResponse(ArqueoResumen):
     desglose_efectivo: DesgloseEfectivoDetalle | None = None
     balance_por_metodo: list[FilaBalance] = []
     retiros: list[RetiroParcialResponse] = []
+    cambios: list[CambioResponse] = []
     observaciones: str | None = ""
 
 

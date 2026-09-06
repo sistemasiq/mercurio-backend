@@ -36,6 +36,7 @@ def _row_to_detalle(row: asyncpg.Record) -> DetalleComanda:
         nombre_combo_padre=row.get("nombre_combo_padre"),
         es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
         es_hijo_combo=bool(row.get("es_hijo_combo", False)),
+        id_combo_padre=str(row["id_combo_padre"]) if row.get("id_combo_padre") else None,
     )
 
 
@@ -66,6 +67,7 @@ def _campos_insercion_detalle(item: Any) -> tuple[Any, ...]:
         nombre_combo_padre = item.get("nombre_combo_padre")
         es_hijo_de = str(item["es_hijo_de"]) if item.get("es_hijo_de") else None
         es_hijo_combo = bool(item.get("es_hijo_combo", False))
+        id_combo_padre = item.get("id_combo_padre")
         return (
             producto_id,
             cantidad,
@@ -75,6 +77,7 @@ def _campos_insercion_detalle(item: Any) -> tuple[Any, ...]:
             nombre_combo_padre,
             es_hijo_de,
             es_hijo_combo,
+            id_combo_padre,
         )
 
     return (
@@ -86,6 +89,7 @@ def _campos_insercion_detalle(item: Any) -> tuple[Any, ...]:
         getattr(item, "nombre_combo_padre", None),
         str(item.es_hijo_de) if getattr(item, "es_hijo_de", None) else None,
         bool(getattr(item, "es_hijo_combo", False)),
+        getattr(item, "id_combo_padre", None),
     )
 
 
@@ -108,8 +112,9 @@ async def crear_comanda_con_detalles(
         await conn.execute(
             """
             INSERT INTO public.comandas
-                (id, ticket_numero, estado_actual, total_final, sucursal_id, fecha_hora, creado_por)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (id, ticket_numero, estado_actual, total_final,
+                 sucursal_id, fecha_hora, creado_por, nombre_cliente)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             comanda_id,
             comanda_in.ticket_numero,
@@ -118,6 +123,7 @@ async def crear_comanda_con_detalles(
             comanda_in.sucursal_id,
             fecha,
             creado_por,
+            comanda_in.nombre_cliente,
         )
 
         detalles = (
@@ -134,14 +140,15 @@ async def crear_comanda_con_detalles(
                 nombre_combo_padre,
                 es_hijo_de,
                 es_hijo_combo,
+                id_combo_padre,
             ) = _campos_insercion_detalle(item)
             await conn.execute(
                 """
                 INSERT INTO public.detalles_comanda
                     (id, comanda_id, producto_id, cantidad, precio_unitario, importe,
                     sucursal_id, notas_especiales, nombre_combo_padre, es_hijo_de,
-                    es_hijo_combo, creado_por)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    es_hijo_combo, id_combo_padre, creado_por)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 """,
                 str(uuid.uuid4()),
                 comanda_id,
@@ -154,6 +161,7 @@ async def crear_comanda_con_detalles(
                 nombre_combo_padre,
                 es_hijo_de,
                 es_hijo_combo,
+                id_combo_padre,
                 creado_por,
             )
 
@@ -355,7 +363,7 @@ async def get_comandas_pendientes(
         f"""
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
-            c.sucursal_id, c.fecha_hora,
+            c.sucursal_id, c.fecha_hora, c.nombre_cliente,
             dc.id AS detalle_id,
             dc.producto_id,
             dc.cantidad,
@@ -365,6 +373,7 @@ async def get_comandas_pendientes(
             dc.nombre_combo_padre,
             dc.es_hijo_de,
             dc.es_hijo_combo,
+            dc.id_combo_padre,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
@@ -389,6 +398,7 @@ async def get_comandas_pendientes(
                 total_final=Decimal(str(row["total_final"])),
                 sucursal_id=str(row["sucursal_id"]),
                 fecha_hora=row.get("fecha_hora"),
+                nombre_cliente=row.get("nombre_cliente"),
                 detalles=[],
             )
         if row["detalle_id"] is not None:
@@ -408,6 +418,9 @@ async def get_comandas_pendientes(
                     nombre_combo_padre=row.get("nombre_combo_padre"),
                     es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
                     es_hijo_combo=bool(row.get("es_hijo_combo", False)),
+                    id_combo_padre=(
+                        str(row["id_combo_padre"]) if row.get("id_combo_padre") else None
+                    ),
                 )
             )
 
@@ -423,7 +436,7 @@ async def get_comanda_por_id(
         """
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
-            c.sucursal_id, c.fecha_hora,
+            c.sucursal_id, c.fecha_hora, c.nombre_cliente,
             dc.id              AS detalle_id,
             dc.producto_id,
             dc.cantidad,
@@ -433,6 +446,7 @@ async def get_comanda_por_id(
             dc.nombre_combo_padre,
             dc.es_hijo_de,
             dc.es_hijo_combo,
+            dc.id_combo_padre,
             p.nombre,
             p.tipo AS producto_tipo
         FROM public.comandas c
@@ -453,6 +467,7 @@ async def get_comanda_por_id(
         total_final=Decimal(str(rows[0]["total_final"])),
         sucursal_id=str(rows[0]["sucursal_id"]),
         fecha_hora=rows[0].get("fecha_hora"),
+        nombre_cliente=rows[0].get("nombre_cliente"),
         detalles=[],
     )
 
@@ -474,6 +489,9 @@ async def get_comanda_por_id(
                     nombre_combo_padre=row.get("nombre_combo_padre"),
                     es_hijo_de=str(row["es_hijo_de"]) if row.get("es_hijo_de") else None,
                     es_hijo_combo=bool(row.get("es_hijo_combo", False)),
+                    id_combo_padre=(
+                        str(row["id_combo_padre"]) if row.get("id_combo_padre") else None
+                    ),
                 )
             )
 

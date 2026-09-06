@@ -11,6 +11,9 @@ class ConfiguracionLealtadBase(BaseModel):
     dias_caducidad: int = Field(..., gt=0)
     valor_punto: float = Field(1.00, gt=0)
     activo: bool = True
+    otorga_puntos_comandas: bool = True
+    otorga_puntos_reservaciones: bool = True
+    otorga_puntos_checkin: bool = True
 
 
 class ConfiguracionLealtadOut(ConfiguracionLealtadBase):

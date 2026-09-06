@@ -1,11 +1,13 @@
-from uuid import UUID
-from typing import Any
-from pydantic import BaseModel, Field, ConfigDict, field_validator
 import json
+from decimal import Decimal
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.ninos import NinoIn
 from app.schemas.pagos import PagoIn
-from app.schemas.tutores import TutorIn
 from app.schemas.producto import TramoEstanciaSchema
+from app.schemas.tutores import TutorIn
 
 
 class DetalleIn(BaseModel):
@@ -22,7 +24,9 @@ class OnboardingRequest(BaseModel):
     parentesco: str
     detalles: list[DetalleIn]
     pagos: list[PagoIn] | None = None
-    reservacionId: UUID | None = None
+    cambio: Decimal = Field(Decimal("0"), ge=0)
+    reservacionId: UUID | None = None  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    puntosARedimir: int = Field(default=0, ge=0)  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class OnboardingResponse(BaseModel):
@@ -34,6 +38,7 @@ class OnboardingResponse(BaseModel):
 
 class CheckoutRequest(BaseModel):
     pagos: list[PagoIn] = []
+
 
 class CheckoutResponse(BaseModel):
     detalleId: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
@@ -71,6 +76,7 @@ class DetalleActivoResponse(BaseModel):
     minutosPagados: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     minutosTranscurridos: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
+
 class ProductoEstanciaResponse(BaseModel):
     id: UUID
     config_estancia: list[TramoEstanciaSchema] = []
@@ -79,7 +85,7 @@ class ProductoEstanciaResponse(BaseModel):
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
+    def parsear_config_estancia(cls, v: Any) -> Any:
         if v is None:
             return []
 
@@ -88,5 +94,4 @@ class ProductoEstanciaResponse(BaseModel):
                 return json.loads(v)
             except Exception:
                 return []
-
         return v

@@ -85,10 +85,20 @@ async def abrir_turno(
     summary="Obtiene el turno activo del cajero autenticado",
 )
 async def obtener_activo(
+    sucursal_id: str | None = Query(None),
     current_user: TokenData = Depends(require_permission("turnos_caja:ver_activo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
-    return await turnos_caja_service.obtener_turno_activo(conn, current_user.sub)
+    # AdministradorSistema no tiene sucursal propia: la apertura activa debe
+    # respetar la sucursal elegida en el selector global, no cualquier turno
+    # abierto en otra sucursal. El resto de roles siempre usa su propia
+    # sucursal del JWT, sin importar qué sucursal_id se mande por query param
+    # (mismo criterio que /historial, ver _sucursal_restringida).
+    if current_user.role == "AdministradorSistema":
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+    return await turnos_caja_service.obtener_turno_activo(conn, current_user.sub, sucursal_efectiva)
 
 
 @router.get(

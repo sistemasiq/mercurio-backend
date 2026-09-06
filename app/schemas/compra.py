@@ -31,6 +31,27 @@ class CompraUpdate(BaseModel):
     activo: bool | None = None
 
 
+class CompraEditar(BaseModel):
+    """Edición completa de una compra en estado 'P' (reemplaza proveedor,
+    notas y todas las líneas)."""
+
+    proveedor_id: UUID
+    notas: str | None = None
+    detalles: list[DetalleCompraItem] = Field(..., min_length=1)
+
+
+class LineaRecepcion(BaseModel):
+    detalle_id: UUID
+    cantidad: Decimal = Field(..., gt=0)
+
+
+class RecibirCompraRequest(BaseModel):
+    """Recepción parcial: qué líneas y cuánto de cada una llegó en esta vuelta.
+    Sin `lineas`, se recibe todo lo pendiente."""
+
+    lineas: list[LineaRecepcion] | None = None
+
+
 class DetalleCompraOut(BaseModel):
     id: UUID
     insumo_id: UUID
@@ -40,6 +61,7 @@ class DetalleCompraOut(BaseModel):
     presentacion_id: UUID | None
     presentacion_nombre: str | None
     cantidad: Decimal
+    cantidad_recibida: Decimal
     costo_unitario: Decimal
     subtotal: Decimal
 

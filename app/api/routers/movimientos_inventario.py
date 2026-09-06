@@ -16,7 +16,11 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.movimiento_inventario import MovimientoInventarioOut, MovimientoManualCreate
+from app.schemas.movimiento_inventario import (
+    ConteoFisicoCreate,
+    MovimientoInventarioOut,
+    MovimientoManualCreate,
+)
 from app.services import inventario_service
 
 router = APIRouter(prefix="/api/insumos", tags=["Movimientos de Inventario"])
@@ -47,5 +51,22 @@ async def registrar_movimiento(
     current_user: TokenData = Depends(require_permission("inventario:registrar_movimiento")),
 ) -> MovimientoInventarioOut:
     return await inventario_service.registrar_ajuste_manual(
+        conn, insumo_id, body, UUID(current_user.sub)
+    )
+
+
+@router.post(
+    "/{insumo_id}/conteo",
+    response_model=MovimientoInventarioOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def registrar_conteo(
+    insumo_id: UUID,
+    body: ConteoFisicoCreate,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("inventario:registrar_movimiento")),
+) -> MovimientoInventarioOut:
+    """Conteo físico: ajusta el stock al valor real contado."""
+    return await inventario_service.registrar_conteo_fisico(
         conn, insumo_id, body, UUID(current_user.sub)
     )

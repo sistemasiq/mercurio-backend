@@ -12,6 +12,7 @@ import asyncpg
 
 from app.exceptions import DatosInvalidos, NoEncontrado
 from app.repositories import insumo_repository, producto_insumo_repository, producto_repository
+from app.schemas.auth import TokenData
 from app.schemas.receta_producto import RecetaItemOut, RecetaItemUpdate
 
 
@@ -24,7 +25,11 @@ async def listar(conn: asyncpg.Connection, producto_id: UUID) -> list[RecetaItem
 
 
 async def upsert(
-    conn: asyncpg.Connection, producto_id: UUID, insumo_id: UUID, body: RecetaItemUpdate
+    conn: asyncpg.Connection,
+    producto_id: UUID,
+    insumo_id: UUID,
+    body: RecetaItemUpdate,
+    current_user: TokenData,
 ) -> RecetaItemOut:
     producto = await producto_repository.obtener(conn, producto_id)
     if not producto:
@@ -34,7 +39,9 @@ async def upsert(
         raise NoEncontrado("Insumo")
     if str(insumo["sucursal_id"]) != producto.sucursal_id:
         raise DatosInvalidos("El insumo no pertenece a la misma sucursal del producto.")
-    await producto_insumo_repository.upsert(conn, producto_id, insumo_id, body.cantidad)
+    await producto_insumo_repository.upsert(
+        conn, producto_id, insumo_id, body.cantidad, UUID(current_user.sub)
+    )
     row = await producto_insumo_repository.obtener(conn, producto_id, insumo_id)
     if not row:
         raise RuntimeError("Error al recuperar la línea de receta recién guardada")

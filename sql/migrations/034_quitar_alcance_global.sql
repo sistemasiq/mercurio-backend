@@ -19,19 +19,36 @@
 -- reservaciones/pagos intactos (el FK sigue apuntando al mismo id), pero
 -- dejan de verlos en sus pantallas de administración de catálogo -- es la
 -- consecuencia esperada y aceptada de esta decisión.
+--
+-- reset_db_local.sh (reconstrucción desde cero): en ese punto la tabla
+-- sucursales todavía está vacía (el seed corre DESPUÉS de las migraciones),
+-- así que el id fijo de Plaza Colibrí no existe y el UPDATE reventaba con
+-- FK violation. El bloque de abajo cae a: Plaza Colibrí si existe (BD
+-- compartida), si no la sucursal más antigua que haya, y si no hay ninguna
+-- (rebuild puro) elimina las filas globales -- que ahí son solo datos demo
+-- sembrados por migraciones previas, sin ningún pago/reservación real que
+-- las referencie todavía.
 -- =============================================================================
 
-UPDATE public.extras
-SET sucursal_id = '1eb11d0c-8a9c-468d-bbc6-0e649e9bfcf2'
-WHERE sucursal_id IS NULL;
+DO $$
+DECLARE
+    destino UUID;
+BEGIN
+    SELECT COALESCE(
+        (SELECT id FROM public.sucursales WHERE id = '1eb11d0c-8a9c-468d-bbc6-0e649e9bfcf2'),
+        (SELECT id FROM public.sucursales ORDER BY creado NULLS FIRST, id LIMIT 1)
+    ) INTO destino;
 
-UPDATE public.tipos_evento
-SET sucursal_id = '1eb11d0c-8a9c-468d-bbc6-0e649e9bfcf2'
-WHERE sucursal_id IS NULL;
-
-UPDATE public.metodos_pago
-SET sucursal_id = '1eb11d0c-8a9c-468d-bbc6-0e649e9bfcf2'
-WHERE sucursal_id IS NULL;
+    IF destino IS NOT NULL THEN
+        UPDATE public.extras       SET sucursal_id = destino WHERE sucursal_id IS NULL;
+        UPDATE public.tipos_evento SET sucursal_id = destino WHERE sucursal_id IS NULL;
+        UPDATE public.metodos_pago SET sucursal_id = destino WHERE sucursal_id IS NULL;
+    ELSE
+        DELETE FROM public.extras       WHERE sucursal_id IS NULL;
+        DELETE FROM public.tipos_evento WHERE sucursal_id IS NULL;
+        DELETE FROM public.metodos_pago WHERE sucursal_id IS NULL;
+    END IF;
+END $$;
 
 ALTER TABLE public.extras ALTER COLUMN sucursal_id SET NOT NULL;
 ALTER TABLE public.tipos_evento ALTER COLUMN sucursal_id SET NOT NULL;

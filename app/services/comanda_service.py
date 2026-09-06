@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -71,24 +71,31 @@ async def expandir_detalles_comanda(
                 producto_padre = await producto_repository.get_by_id(conn, producto_id)
                 nombre_padre = producto_padre["nombre"] if producto_padre else ""
                 hijos = await producto_repository.get_combo_hijos(conn, producto_id)
+                cantidad_pedida = _cantidad_de_detalle(item)
 
-                for hijo in hijos:
-                    h_id = str(hijo["producto_id"])
-                    hijo_producto = await producto_repository.get_by_id(conn, h_id)
-                    nombre_hijo = hijo_producto["nombre"] if hijo_producto else ""
-                    detalles_finales.append(
-                        {
-                            "producto_id": str(hijo["producto_id"]),
-                            "nombre": nombre_hijo,
-                            "nombre_combo_padre": nombre_padre,
-                            "cantidad": hijo["cantidad"] * _cantidad_de_detalle(item),
-                            "precio_unitario": 0,
-                            "subtotal": 0,
-                            "es_hijo_de": producto_id,
-                            "es_hijo_combo": True,
-                            "notas_especiales": None,
-                        }
-                    )
+                # Una instancia por unidad pedida: cada combo se expande en su
+                # propio set de hijos con id_combo_padre único, para que el
+                # visor de cocina pueda separar combos múltiples por unidad.
+                for _unidad in range(cantidad_pedida):
+                    id_instancia = str(uuid4())
+                    for hijo in hijos:
+                        h_id = str(hijo["producto_id"])
+                        hijo_producto = await producto_repository.get_by_id(conn, h_id)
+                        nombre_hijo = hijo_producto["nombre"] if hijo_producto else ""
+                        detalles_finales.append(
+                            {
+                                "producto_id": str(hijo["producto_id"]),
+                                "nombre": nombre_hijo,
+                                "nombre_combo_padre": nombre_padre,
+                                "cantidad": hijo["cantidad"],
+                                "precio_unitario": 0,
+                                "subtotal": 0,
+                                "es_hijo_de": producto_id,
+                                "es_hijo_combo": True,
+                                "notas_especiales": None,
+                                "id_combo_padre": id_instancia,
+                            }
+                        )
         else:
             producto_info = await producto_repository.get_by_id(conn, producto_id)
             nombre_producto = producto_info["nombre"] if producto_info else ""

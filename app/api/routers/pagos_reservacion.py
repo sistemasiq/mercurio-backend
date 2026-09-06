@@ -9,6 +9,8 @@ from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
 from app.schemas.pagos_reservacion import (
+    PagosReservacionCompletarRequest,
+    PagosReservacionCompletarResponse,
     PagosReservacionCreate,
     PagosReservacionOut,
     PagosReservacionUpdate,
@@ -51,6 +53,26 @@ async def crear_pago(
     apertura_id: str = Depends(apertura_operando_id),
 ) -> PagosReservacionOut:
     return await svc.crear(conn, body, UUID(current_user.sub), apertura_id)
+
+
+@router.post(
+    "/completar",
+    response_model=PagosReservacionCompletarResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar uno o más pagos y el cambio en una transacción",
+    description=(
+        "Recibe todos los pagos de un cobro (anticipo o saldo) y el cambio "
+        "a devolver si lo hay. Registra los pagos y el movimiento de cambio "
+        "en una única transacción. Si falla cualquiera, nada se persiste."
+    ),
+)
+async def completar_pago(
+    body: PagosReservacionCompletarRequest,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("reservaciones:gestionar_pagos")),
+    apertura_id: str = Depends(apertura_operando_id),
+) -> PagosReservacionCompletarResponse:
+    return await svc.completar(conn, body, UUID(current_user.sub), apertura_id)
 
 
 @router.patch("/{pago_id}", response_model=PagosReservacionOut)
