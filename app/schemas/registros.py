@@ -1,7 +1,7 @@
 from uuid import UUID
 from typing import Any
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-
+import json
 from app.schemas.ninos import NinoIn
 from app.schemas.pagos import PagoIn
 from app.schemas.tutores import TutorIn
@@ -73,16 +73,20 @@ class DetalleActivoResponse(BaseModel):
 
 class ProductoEstanciaResponse(BaseModel):
     id: UUID
-    config_estancia: list[TramoEstanciaSchema]
+    config_estancia: list[TramoEstanciaSchema] = []
 
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("config_estancia", mode="before")
     @classmethod
     def parsear_config_estancia(cls, v: Any):
+        if v is None:
+            return []
+
         if isinstance(v, str):
             try:
                 return json.loads(v)
             except Exception:
                 return []
+
         return v
