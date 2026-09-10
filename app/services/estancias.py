@@ -265,13 +265,24 @@ async def create_estancia(
                     if min_h <= horas_solicitadas <= max_h:
                         precio = p_val
                         break
-
+                    
                 if precio is None:
-                    raise HTTPException(
-                        400,
-                        "No se encontró un precio válido para la duración especificada "
-                        f"({d.cantidad} hrs)",
-                    )
+                    precio_mas_bajo = None
+                    min_horas_mas_bajo = float('inf')
+                    
+                    for config in precios:
+                        min_h = float(config["min_horas"])
+                        if min_h < min_horas_mas_bajo:
+                            min_horas_mas_bajo = min_h
+                            precio_mas_bajo = Decimal(str(config["precio"]))
+                    
+                    if precio_mas_bajo is not None:
+                        precio = precio_mas_bajo
+                    else:
+                        raise HTTPException(
+                            400, 
+                            "No se encontró ningún precio disponible en la configuración de estancia"
+                        )
 
                 await insert_detalle_registro(
                     conn,

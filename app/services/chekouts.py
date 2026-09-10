@@ -32,7 +32,7 @@ EXTRA_GRACE_MINUTES = 10
 CENTAVO = 0.01
 
 
-async def _calcular_cargo_extra(conn: asyncpg.Connection, detalle: dict[str, Any], now: datetime) -> tuple[int, float]:
+async def _calcular_cargo_extra(detalle: dict[str, Any], now: datetime) -> tuple[int, float]:
     """Calcula horas extra y monto a cobrar por tiempo excedido, con la
     misma fórmula tanto para cotizar como para confirmar el checkout, así
     ninguna de las dos rutas se puede desincronizar de la otra."""
@@ -65,7 +65,7 @@ async def cotizar_checkout(conn: asyncpg.Connection, detalle_id: UUID) -> dict[s
         raise HTTPException(400, "El niño ya realizó checkout")
 
     now = datetime.now(UTC)
-    extra_horas, total_extra = await _calcular_cargo_extra(conn, detalle, now)
+    extra_horas, total_extra = await _calcular_cargo_extra(detalle, now)
 
     return {
         "detalleId": str(detalle_id),
@@ -94,7 +94,7 @@ async def create_chekout(
             raise HTTPException(400, "El niño ya realizó checkout")
 
         # Recalculado con la hora real de este instante
-        extra_horas, total_extra = await _calcular_cargo_extra(conn, detalle, now)
+        extra_horas, total_extra = await _calcular_cargo_extra(detalle, now)
 
         if total_extra > 0:
             monto_pagado = sum(Decimal(str(pago.monto)) for pago in pagos)
