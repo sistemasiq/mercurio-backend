@@ -25,12 +25,14 @@ class ConceptoRetiro(str, Enum):
     PAGO_SERVICIOS = "Pago de servicios"
     GASTOS_ADMINISTRATIVOS = "Gastos administrativos"
     GASTOS_VARIOS = "Gastos varios"
+    DEVOLUCION = "Devolución"
 
 
 class TipoDestinatario(str, Enum):
     PROVEEDOR = "Proveedor"
     EMPLEADO = "Empleado"
     ADMINISTRADOR = "Administrador"
+    CLIENTE = "Cliente"
 
 
 class TipoCierreEnum(str, Enum):
@@ -44,6 +46,7 @@ class TipoMovimientoCaja(str, Enum):
     RESERVACION = "R"
     RETIRO = "RP"
     CAMBIO = "C"
+    INGRESO = "I"
 
 
 @dataclass

@@ -60,6 +60,9 @@ async def apertura_prueba(conn):
         yield apertura_id
     finally:
         await conn.execute(
+            "DELETE FROM public.retiros_parciales WHERE apertura_caja_id = $1", uuid.UUID(apertura_id)
+        )
+        await conn.execute(
             "DELETE FROM public.movimientos_caja WHERE apertura_caja_id = $1", uuid.UUID(apertura_id)
         )
         await conn.execute(

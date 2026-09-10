@@ -71,6 +71,7 @@ async def crear(
         monto=body.monto,
         fecha_pago=datetime.now(UTC),
         notas=body.notas,
+        creado_por=usuario_id,
     )
 
     await registrar_movimiento_caja(
