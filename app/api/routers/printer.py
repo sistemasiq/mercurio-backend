@@ -177,7 +177,7 @@ async def guardar_config(
     )
 
 
-@router.delete("/config-impresora/{tipo}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina config de un tipo")
+@router.delete("/config-impresora/{tipo}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina config de un tipo", response_model=None)
 async def eliminar_config(
     tipo: str,
     current_user: TokenData = Depends(require_permission("cajas:crear")),
