@@ -4,7 +4,7 @@
 --
 -- Las pulseras son de uso único (desechables): una vez asignada a un niño
 -- (detalles_registro) o a un tutor (registros.pulseras_tutor_id) no vuelve a
--- aparecer como disponible. El estado se deriva en el cliente:
+-- aparecer como disponible. El estado de uso se deriva de esas asignaciones:
 --   baja       = activo FALSE
 --   en_uso     = activa pero ya asignada/consumida
 --   disponible = activa y sin uso registrado
