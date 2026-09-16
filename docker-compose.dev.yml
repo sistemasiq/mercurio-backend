@@ -34,7 +34,7 @@ services:
   # el backend se queda colgado en "Waiting for application startup" y ningún
   # endpoint responde — ni siquiera el login, que no usa almacenamiento.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: mercurio_minio_local
     command: server /data --console-address ":9001"
     environment:
