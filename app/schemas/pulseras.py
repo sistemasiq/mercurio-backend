@@ -41,6 +41,7 @@ class PulseraOut(BaseModel):
     sucursal_id: UUID
     pulsera_rfid: str
     activo: bool
+    usada: bool
     numero_lote: str | None = None
     creado: datetime | None
     creado_por: UUID | None

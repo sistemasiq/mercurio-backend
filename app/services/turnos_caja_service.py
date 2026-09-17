@@ -18,27 +18,29 @@ from app.repositories.caja_repository import (
     actualizar_admin_autorizacion,
     actualizar_conteo_apertura,
     actualizar_estado_apertura,
+    calcular_efectivo_disponible,
     contar_historial_cierres,
     crear_apertura_caja,
-    crear_caja,
     crear_cierre_caja,
     crear_retiro_parcial,
     get_apertura_activa_por_caja,
     get_apertura_activa_por_usuario,
     get_apertura_por_id,
     get_caja_por_codigo,
-    get_primer_turno,
     listar_cajas_por_sucursal,
     listar_cambios_por_apertura,
     listar_historial_cierres,
+    listar_ingresos_por_apertura,
     listar_retiros_por_apertura,
     listar_turnos,
     obtener_detalle_cierre,
     obtener_metodos_con_movimientos,
     obtener_movimientos_por_metodo,
+    registrar_ingreso_efectivo,
     registrar_movimiento_caja,
     resetear_conteo_apertura,
     sumar_cambio_apertura,
+    sumar_ingresos_por_apertura,
     sumar_retiros_por_apertura,
     sumar_total_ventas_apertura,
     sumar_ventas_efectivo_apertura,
@@ -56,6 +58,9 @@ from app.schemas.caja import (
     FilaBalance,
     FiltrosHistorial,
     HistorialArqueosResponse,
+    IngresoDetalle,
+    IngresoEfectivoCreate,
+    IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
     MovimientoResumen,
     RetiroParcialCreate,
@@ -80,6 +85,20 @@ class TransicionInvalidaError(HTTPException):
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "TRANSICION_INVALIDA", "message": mensaje},
+        )
+
+
+class EfectivoInsuficienteError(HTTPException):
+    def __init__(self, efectivo_disponible: Decimal):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "EFECTIVO_INSUFICIENTE",
+                "message": (
+                    f"El retiro excede el efectivo disponible en caja "
+                    f"(disponible: {efectivo_disponible})."
+                ),
+            },
         )
 
 
@@ -161,12 +180,18 @@ async def abrir_turno(
                 "message": "Debes especificar la sucursal en la que se abrirá la caja.",
             },
         )
-    terminal_code = payload.terminal or "CAJA 01"
+    if not payload.terminal:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "TERMINAL_REQUERIDA", "message": "Debes seleccionar una caja o terminal."},
+        )
 
-    # Obtener o crear la caja física
-    caja = await get_caja_por_codigo(conn, sucursal, terminal_code)
+    caja = await get_caja_por_codigo(conn, sucursal, payload.terminal)
     if not caja:
-        caja = await crear_caja(conn, sucursal, terminal_code, f"Estación {terminal_code}", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "CAJA_NO_ENCONTRADA", "message": "La caja seleccionada no existe. Solicita al administrador que la registre."},
+        )
 
     caja_id = str(caja["id"])
 
@@ -178,13 +203,12 @@ async def abrir_turno(
             detail={"code": "CAJA_OCUPADA", "message": "La caja física seleccionada ya cuenta con un turno activo."},
         )
 
-    # Obtener el turno (usar el turno_id enviado si existe)
-    if payload.turno_id:
-        turno_id = payload.turno_id
-    else:
-        turno = await get_primer_turno(conn)
-        assert turno is not None
-        turno_id = str(turno["id"])
+    if not payload.turno_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "TURNO_REQUERIDO", "message": "Debes seleccionar un turno de trabajo."},
+        )
+    turno_id = payload.turno_id
 
     # Crear la apertura
     nueva = await crear_apertura_caja(
@@ -208,6 +232,7 @@ async def abrir_turno(
         fecha_apertura=str(nueva["fecha_apertura"]),
         total_ventas=Decimal("0"),
         total_retiros=Decimal("0"),
+        total_ingresos=Decimal("0"),
         movimientos=[],
     )
 
@@ -222,6 +247,7 @@ async def obtener_turno_activo(
     apertura_id = str(activa["id"])
     total_ventas = await sumar_total_ventas_apertura(conn, apertura_id)
     total_retiros = await sumar_retiros_por_apertura(conn, apertura_id)
+    total_ingresos = await sumar_ingresos_por_apertura(conn, apertura_id)
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
 
     movimientos = [
@@ -253,6 +279,7 @@ async def obtener_turno_activo(
         fecha_apertura=str(activa["fecha_apertura"]),
         total_ventas=total_ventas,
         total_retiros=total_retiros,
+        total_ingresos=total_ingresos,
         movimientos=movimientos,
     )
 
@@ -304,21 +331,25 @@ async def _calcular_balance(
     """Balance real del cierre. Devuelve dos vistas distintas:
     - `balance` (por método): el renglón "efectivo" compara el dinero físico —
       fondo inicial + ventas en efectivo (o sin método aún, ver
-      sumar_ventas_efectivo_apertura) - retiros - cambio dado — contra lo que
-      el cajero contó físicamente (desglose_efectivo.total en conteo_json).
-      Cada otro método compara lo que el sistema registró contra lo que el
-      cajero declaró para ese método específico.
+      sumar_ventas_efectivo_apertura) + ingresos de efectivo - retiros -
+      cambio dado — contra lo que el cajero contó físicamente
+      (desglose_efectivo.total en conteo_json). Cada otro método compara lo
+      que el sistema registró contra lo que el cajero declaró para ese
+      método específico.
     - Totales generales (esperado/declarado/diferencia): todos los métodos de
       pago cuentan como dinero real del sistema (cupones, lealtad, vouchers
       incluidos) — es la suma de todos los movimientos del turno + fondo
-      inicial - retiros - cambio dado, comparada contra la suma de todo lo
-      que el cajero declaró, independientemente del método."""
+      inicial + ingresos de efectivo - retiros - cambio dado, comparada
+      contra la suma de todo lo que el cajero declaró, independientemente
+      del método."""
     monto_inicial = Decimal(str(apertura["fondo_inicial"]))
     total_retiros = await sumar_retiros_por_apertura(conn, turno_id)
     total_cambio = await sumar_cambio_apertura(conn, turno_id)
+    total_ingresos = await sumar_ingresos_por_apertura(conn, turno_id)
     total_esperado_efectivo = (
         monto_inicial
         + await sumar_ventas_efectivo_apertura(conn, turno_id)
+        + total_ingresos
         - total_retiros
         - total_cambio
     )
@@ -387,15 +418,47 @@ async def _calcular_balance(
     total_esperado_general = (
         monto_inicial
         + await sumar_total_ventas_apertura(conn, turno_id)
+        + total_ingresos
         - total_retiros
         - total_cambio
     )
+    # "efectivo" ya está contado en declarado_efectivo (viene de desglose_efectivo,
+    # no de metodos_pago) -- excluirlo aquí igual que ya se hace arriba al construir
+    # `balance` (línea ~400). Sin esto, un payload que declare efectivo también dentro
+    # de metodos_pago duplica el total y ese número corrupto queda congelado para
+    # siempre en cierre_caja al confirmar (el balance por método se ve bien porque se
+    # recalcula en vivo, pero total_declarado/diferencia_neta no).
     total_declarado_general = declarado_efectivo + sum(
-        declarados_por_metodo.values(), Decimal("0")
+        (v for k, v in declarados_por_metodo.items() if k != "efectivo"), Decimal("0")
     )
     diferencia_neta_general = total_declarado_general - total_esperado_general
 
     return total_esperado_general, total_declarado_general, diferencia_neta_general, balance
+
+
+async def _verificar_credenciales_usuario(conn: asyncpg.Connection, email: str, password: str) -> asyncpg.Record:
+    """Busca el usuario por email y verifica su contraseña o PIN contra la BD.
+    Lanza CredencialesAdminInvalidasError si no existe o las credenciales son incorrectas."""
+    row = await conn.fetchrow(
+        """
+        SELECT u.id, u.email, u.password_hash, u.pin_hash, u.nombre_completo, us.sucursal_id
+        FROM public.usuarios u
+        LEFT JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
+        WHERE u.email = $1 AND u.activo = TRUE
+        LIMIT 1
+        """,
+        email,
+    )
+    if not row:
+        raise CredencialesAdminInvalidasError("Usuario no encontrado.")
+
+    pass_ok = verify_password(password, row["password_hash"])
+    pin_ok = bool(row["pin_hash"]) and verify_password(password, row["pin_hash"])
+
+    if not pass_ok and not pin_ok:
+        raise CredencialesAdminInvalidasError("Contraseña o PIN incorrecto.")
+
+    return row
 
 
 async def autenticar_admin_revision(
@@ -403,42 +466,7 @@ async def autenticar_admin_revision(
     user_id: str,
     payload: RevisionAdminPayload,
 ) -> RevisionAdminResponse:
-    # 1. Buscar el usuario administrador por email (o username)
-    admin_row = await conn.fetchrow(
-        """
-        SELECT u.id, u.email, u.password_hash, u.nombre_completo, u.pin_hash, us.sucursal_id
-        FROM public.usuarios u
-        LEFT JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
-        WHERE u.email = $1 AND u.activo = TRUE
-        LIMIT 1
-        """,
-        payload.admin_email,
-    )
-
-    if not admin_row:
-        # Intentar buscar por nombre o username
-        admin_row = await conn.fetchrow(
-            """
-            SELECT u.id, u.email, u.password_hash, u.nombre_completo, u.pin_hash, us.sucursal_id
-            FROM public.usuarios u
-            LEFT JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
-            WHERE u.nombre_completo ILIKE $1 AND u.activo = TRUE
-            LIMIT 1
-            """,
-            payload.admin_email,
-        )
-
-    if not admin_row:
-        raise CredencialesAdminInvalidasError("Usuario de administrador no encontrado.")
-
-    # 2. Verificar contraseña o PIN
-    pass_ok = verify_password(payload.admin_password, admin_row["password_hash"])
-    pin_ok = False
-    if not pass_ok and admin_row["pin_hash"]:
-        pin_ok = verify_password(payload.admin_password, admin_row["pin_hash"])
-
-    if not pass_ok and not pin_ok:
-        raise CredencialesAdminInvalidasError("Contraseña o PIN incorrecto.")
+    admin_row = await _verificar_credenciales_usuario(conn, payload.admin_email, payload.admin_password)
 
     # 3. Calcular montos esperados reales para el turno
     apertura = await get_apertura_por_id(conn, payload.turno_id)
@@ -483,27 +511,20 @@ async def validar_pin_cajero(
     if not apertura:
         raise TurnoNoEncontradoError()
 
-    cajero_id = str(apertura["cajero_id"])
     cajero_row = await conn.fetchrow(
-        "SELECT id, pin_hash, password_hash, nombre_completo FROM public.usuarios WHERE id = $1 AND activo = TRUE",
-        uuid.UUID(cajero_id),
+        """
+        SELECT id, email, pin_hash, password_hash, nombre_completo
+        FROM public.usuarios
+        WHERE id = $1 AND activo = TRUE
+        """,
+        uuid.UUID(str(apertura["cajero_id"])),
     )
-    if not cajero_row and user_id:
-        cajero_row = await conn.fetchrow(
-            "SELECT id, pin_hash, password_hash, nombre_completo FROM public.usuarios WHERE id = $1 AND activo = TRUE",
-            uuid.UUID(user_id),
-        )
-
     if not cajero_row:
-        raise CredencialesAdminInvalidasError("Usuario cajero no encontrado en la base de datos.")
+        raise CredencialesAdminInvalidasError("Usuario cajero no encontrado.")
 
-    pin_ok = False
-    if cajero_row["pin_hash"]:
-        pin_ok = verify_password(pin, cajero_row["pin_hash"])
-    if not pin_ok and cajero_row["password_hash"]:
+    pin_ok = bool(cajero_row["pin_hash"]) and verify_password(pin, cajero_row["pin_hash"])
+    if not pin_ok:
         pin_ok = verify_password(pin, cajero_row["password_hash"])
-    if not pin_ok and pin == "1234":
-        pin_ok = True
 
     if not pin_ok:
         raise CredencialesAdminInvalidasError("El PIN ingresado para el Cajero es incorrecto.")
@@ -521,60 +542,22 @@ async def validar_pin_admin(
     if not apertura:
         raise TurnoNoEncontradoError()
 
-    turno_sucursal = apertura.get("sucursal_id")
-
-    # 1. Intentar buscar por email o nombre completo
-    admin_row = None
-    if admin_email and admin_email != "admin":
-        admin_row = await conn.fetchrow(
-            """
-            SELECT u.id, u.pin_hash, u.password_hash, u.nombre_completo, us.sucursal_id
-            FROM public.usuarios u
-            LEFT JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
-            WHERE (u.email ILIKE $1 OR u.nombre_completo ILIKE $1) AND u.activo = TRUE
-            LIMIT 1
-            """,
-            admin_email,
-        )
-
-    # 2. Si no coincide o se envió genérico, buscar usuario con rol Admin/Supervisor de la sucursal del turno
-    if not admin_row and turno_sucursal:
-        admin_row = await conn.fetchrow(
-            """
-            SELECT u.id, u.pin_hash, u.password_hash, u.nombre_completo, us.sucursal_id
-            FROM public.usuarios u
-            JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
-            JOIN public.roles r ON r.id = u.rol
-            WHERE us.sucursal_id = $1 AND u.activo = TRUE
-              AND r.nombre IN ('Administrador', 'Supervisor', 'Admin', 'Gerente')
-            LIMIT 1
-            """,
-            turno_sucursal,
-        )
-
-    # 3. Fallback: buscar cualquier usuario de la sucursal del turno
-    if not admin_row and turno_sucursal:
-        admin_row = await conn.fetchrow(
-            """
-            SELECT u.id, u.pin_hash, u.password_hash, u.nombre_completo, us.sucursal_id
-            FROM public.usuarios u
-            JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
-            WHERE us.sucursal_id = $1 AND u.activo = TRUE
-            LIMIT 1
-            """,
-            turno_sucursal,
-        )
-
+    admin_row = await conn.fetchrow(
+        """
+        SELECT u.id, u.pin_hash, u.password_hash, u.nombre_completo, us.sucursal_id
+        FROM public.usuarios u
+        LEFT JOIN public.usuarios_sucursal us ON us.usuario_id = u.id AND us.activo = TRUE
+        WHERE u.email = $1 AND u.activo = TRUE
+        LIMIT 1
+        """,
+        admin_email,
+    )
     if not admin_row:
-        raise CredencialesAdminInvalidasError("Administrador de sucursal no encontrado en la base de datos.")
+        raise CredencialesAdminInvalidasError("Administrador no encontrado.")
 
-    pin_ok = False
-    if admin_row["pin_hash"]:
-        pin_ok = verify_password(pin, admin_row["pin_hash"])
-    if not pin_ok and admin_row["password_hash"]:
+    pin_ok = bool(admin_row["pin_hash"]) and verify_password(pin, admin_row["pin_hash"])
+    if not pin_ok:
         pin_ok = verify_password(pin, admin_row["password_hash"])
-    if not pin_ok and pin == "1234":
-        pin_ok = True
 
     if not pin_ok:
         raise CredencialesAdminInvalidasError("El PIN ingresado para el Administrador es incorrecto.")
@@ -634,6 +617,15 @@ async def crear_retiro(
             "No se pueden registrar retiros mientras el turno está en conteo o cierre."
         )
 
+    # RN: un retiro no puede dejar el efectivo esperado en negativo -- misma fórmula
+    # que _calcular_balance para "efectivo esperado", pero evaluada en el momento del
+    # retiro (sin depender del conteo de cierre, que aún no existe con el turno ABIERTA).
+    efectivo_disponible = await calcular_efectivo_disponible(
+        conn, payload.apertura_caja_id, Decimal(str(apertura["fondo_inicial"]))
+    )
+    if payload.monto > efectivo_disponible:
+        raise EfectivoInsuficienteError(efectivo_disponible)
+
     async with conn.transaction():
         row = await crear_retiro_parcial(
             conn,
@@ -668,6 +660,35 @@ async def crear_retiro(
     )
 
 
+async def efectivo_disponible_actual(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+    """Wrapper de calcular_efectivo_disponible que resuelve el fondo_inicial por
+    su cuenta, para llamadores (routers de pagos/reservaciones/estancias) que no
+    tienen la apertura ya cargada."""
+    apertura = await get_apertura_por_id(conn, apertura_caja_id)
+    if not apertura:
+        return Decimal("0")
+    return await calcular_efectivo_disponible(
+        conn, apertura_caja_id, Decimal(str(apertura["fondo_inicial"]))
+    )
+
+
+def advertencia_efectivo_insuficiente(disponible_antes: Decimal, cambio: Decimal) -> str | None:
+    """A diferencia de crear_retiro, dar cambio NUNCA bloquea el pago -- decisión
+    de negocio explícita: igual que una sucursal real completa la venta y pide
+    cambio prestado, el sistema deja pasar el pago y solo avisa para que el
+    cajero solicite un ingreso de efectivo.
+
+    Compara contra el efectivo que YA había en caja antes de esta venta, no
+    contra el saldo neto después de sumar el propio pago del cliente: un
+    billete de $200 no se puede partir para dar $70 de cambio si no había ya
+    billetes/monedas chicos en el cajón, aunque en lo agregado 200 - 70 dé
+    positivo. Es la misma regla física que ya bloquea los retiros parciales,
+    solo que aquí no bloquea, avisa."""
+    if cambio <= disponible_antes:
+        return None
+    return "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+
+
 async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[RetiroParcialResponse]:
     rows = await listar_retiros_por_apertura(conn, turno_id)
     return [
@@ -682,6 +703,33 @@ async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[Retiro
         )
         for r in rows
     ]
+
+
+async def crear_ingreso(
+    conn: asyncpg.Connection, user_id: str, payload: IngresoEfectivoCreate
+) -> IngresoEfectivoResponse:
+    apertura = await get_apertura_por_id(conn, payload.apertura_caja_id)
+    if not apertura or str(apertura["cajero_id"]) != user_id:
+        raise TurnoNoEncontradoError()
+
+    if apertura["estado"] != "ABIERTA":
+        raise TransicionInvalidaError(
+            "No se pueden registrar ingresos de efectivo mientras el turno está en conteo o cierre."
+        )
+
+    row = await registrar_ingreso_efectivo(
+        conn,
+        apertura_caja_id=payload.apertura_caja_id,
+        referencia_id=payload.apertura_caja_id,
+        monto=payload.monto,
+        creado_por=user_id,
+    )
+    return IngresoEfectivoResponse(
+        id=str(row["id"]),
+        apertura_caja_id=str(row["apertura_caja_id"]),
+        monto=Decimal(str(row["monto"])),
+        creado=row["creado"],
+    )
 
 
 async def confirmar_cierre(
@@ -824,6 +872,12 @@ async def obtener_detalle(
         for c in cambios_raw
     ]
 
+    ingresos_raw = await listar_ingresos_por_apertura(conn, apertura_caja_id)
+    ingresos = [
+        IngresoDetalle(id=str(i["id"]), monto=Decimal(str(i["monto"])), creado=i["creado"])
+        for i in ingresos_raw
+    ]
+
     return DetalleArqueoResponse(
         id=str(cierre["id"]),
         cajero_nombre=cierre["cajero_nombre"] or "—",
@@ -844,4 +898,5 @@ async def obtener_detalle(
         balance_por_metodo=balance,
         retiros=retiros,
         cambios=cambios,
+        ingresos=ingresos,
     )

@@ -20,6 +20,8 @@ from app.schemas.caja import (
     DetalleArqueoResponse,
     FiltrosHistorial,
     HistorialArqueosResponse,
+    IngresoEfectivoCreate,
+    IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
     RetiroParcialCreate,
     RetiroParcialResponse,
@@ -221,6 +223,20 @@ async def registrar_retiro(
     conn: asyncpg.Connection = Depends(get_db),
 ) -> RetiroParcialResponse:
     return await turnos_caja_service.crear_retiro(conn, current_user.sub, payload)
+
+
+@router.post(
+    "/ingreso-efectivo",
+    response_model=IngresoEfectivoResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registra un ingreso de efectivo sobre el turno activo (solo en estado OPERANDO)",
+)
+async def registrar_ingreso(
+    payload: IngresoEfectivoCreate,
+    current_user: TokenData = Depends(require_permission("turnos_caja:ingreso_efectivo")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> IngresoEfectivoResponse:
+    return await turnos_caja_service.crear_ingreso(conn, current_user.sub, payload)
 
 
 @router.get(

@@ -4,10 +4,11 @@
 -- a la BD compartida: sólo lo invoca ./scripts/reset_db_local.sh --seed.
 --
 -- Las migraciones ya siembran roles, permisos y tipos_evento; aquí sólo va lo
--- que falta para poder entrar a la app y ver el catálogo: una sucursal, los
--- usuarios de acceso, productos para "alimentos incluidos" y paquetes con
--- rangos de invitados escalonados que se solapan a propósito, para poder
--- comprobar el filtrado del asistente de reservación.
+-- que falta para poder entrar a la app y probar el flujo completo: una
+-- sucursal, usuarios de acceso, tarifa de estancia, pulseras, productos para
+-- "alimentos incluidos" y paquetes con rangos de invitados escalonados que se
+-- solapan a propósito, para poder comprobar el filtrado del asistente de
+-- reservación.
 --
 -- Contraseña de todos los usuarios: 12345678
 -- =============================================================================
@@ -39,9 +40,8 @@ VALUES
    'Cajero Local', 3)
 ON CONFLICT (id) DO NOTHING;
 
--- El rol Administrador (2) y Cajero (3) exigen sucursal asignada; el
--- AdministradorSistema (1) va sin fila aquí a propósito, porque su acceso es
--- global.
+-- El rol Administrador (2) exige sucursal asignada; el AdministradorSistema (1)
+-- va sin fila aquí a propósito, porque su acceso es global.
 INSERT INTO public.usuarios_sucursal (usuario_id, sucursal_id)
 VALUES ('22222222-2222-2222-2222-222222222222',
         '11111111-1111-1111-1111-111111111111'),
@@ -49,7 +49,63 @@ VALUES ('22222222-2222-2222-2222-222222222222',
         '11111111-1111-1111-1111-111111111111')
 ON CONFLICT (usuario_id, sucursal_id) DO NOTHING;
 
--- 3. Productos (para los alimentos incluidos del paquete) ----------------------
+-- 3. Cajas locales ------------------------------------------------------------
+-- Las cajas se registran por sucursal; los turnos horarios ya los crea la
+-- migración 020, así que aquí sólo dejamos terminales listas para abrir.
+
+INSERT INTO public.cajas (id, sucursal_id, codigo, nombre, numero, creado_por)
+VALUES
+  ('55555555-5555-5555-5555-555555555551',
+   '11111111-1111-1111-1111-111111111111',
+   'CAJA 01', 'Caja Principal 01', 1,
+   '22222222-2222-2222-2222-222222222222'),
+  ('55555555-5555-5555-5555-555555555552',
+   '11111111-1111-1111-1111-111111111111',
+   'CAJA 02', 'Caja Secundaria 02', 2,
+   '22222222-2222-2222-2222-222222222222')
+ON CONFLICT (codigo, sucursal_id) DO UPDATE SET
+  nombre = EXCLUDED.nombre,
+  numero = EXCLUDED.numero,
+  activo = TRUE,
+  modificado = NOW();
+
+-- 4. Tarifa de estancia -------------------------------------------------------
+-- Se cobra por hora y cubre las opciones de 1 a 5 horas del registro.
+
+INSERT INTO public.productos
+    (id, nombre, precio_unitario, tipo, sucursal_id, descripcion,
+     config_estancia, es_combo)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-000000000004',
+   'Estancia infantil', 0.00, 'E',
+   '11111111-1111-1111-1111-111111111111',
+   'Tarifa local para estancia infantil por niño y hora',
+   '[{"min_horas": 1, "max_horas": 5, "precio": 150.00}]'::jsonb,
+   FALSE)
+ON CONFLICT (id) DO UPDATE SET
+  nombre = EXCLUDED.nombre,
+  precio_unitario = EXCLUDED.precio_unitario,
+  tipo = EXCLUDED.tipo,
+  sucursal_id = EXCLUDED.sucursal_id,
+  descripcion = EXCLUDED.descripcion,
+  config_estancia = EXCLUDED.config_estancia,
+  es_combo = EXCLUDED.es_combo,
+  activo = TRUE,
+  modificado = NOW();
+
+-- 5. Pulseras disponibles -----------------------------------------------------
+-- Códigos RFID de ejemplo de 10 caracteres para probar el escaneo y la
+-- transición Disponible -> Usada al asignarlos a un visitante.
+
+INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, numero_lote, creado_por)
+SELECT '11111111-1111-1111-1111-111111111111'::uuid,
+       'LOC' || lpad(serie::text, 7, '0'),
+       'LOTE-LOCAL-001',
+       '22222222-2222-2222-2222-222222222222'::uuid
+  FROM generate_series(1, 20) AS datos(serie)
+ON CONFLICT (pulsera_rfid, sucursal_id) DO NOTHING;
+
+-- 6. Productos (para los alimentos incluidos del paquete) -------------------
 
 INSERT INTO public.productos (id, nombre, precio_unitario, tipo, sucursal_id)
 VALUES
@@ -61,27 +117,58 @@ VALUES
    '11111111-1111-1111-1111-111111111111')
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Paquetes con rangos escalonados ------------------------------------------
+-- 7. Paquetes con rangos escalonados ------------------------------------------
 -- Los rangos se solapan a propósito para probar el filtro del asistente:
 --     8 niños  -> sólo Pequeño
 --    15 niños  -> Pequeño y Mediano
 --    28 niños  -> Mediano y Grande
 --    60 niños  -> ninguno (debe mostrar el mensaje de "sin paquetes")
 
-INSERT INTO public.paquetes
-    (id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-     precio_base, precio_hora_pulsera)
-VALUES
-  ('bbbbbbbb-0000-0000-0000-000000000001',
-   '11111111-1111-1111-1111-111111111111',
-   'Paquete Pequeño', 'Ideal para fiestas íntimas', 5, 15, 2500.00, 120.00),
-  ('bbbbbbbb-0000-0000-0000-000000000002',
-   '11111111-1111-1111-1111-111111111111',
-   'Paquete Mediano', 'El más contratado', 12, 30, 4200.00, 150.00),
-  ('bbbbbbbb-0000-0000-0000-000000000003',
-   '11111111-1111-1111-1111-111111111111',
-   'Paquete Grande', 'Para grupos escolares', 25, 50, 7000.00, 180.00)
-ON CONFLICT (id) DO NOTHING;
+-- El nombre precio_hora_pulsera existe en algunos volúmenes locales antiguos.
+-- El esquema actual usa precio_pulsera; se soportan ambos para poder reusar
+-- el seed sin borrar la información local.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'paquetes'
+       AND column_name = 'precio_pulsera'
+  ) THEN
+    EXECUTE $sql$
+      INSERT INTO public.paquetes
+          (id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
+           precio_base, precio_pulsera)
+      VALUES
+        ('bbbbbbbb-0000-0000-0000-000000000001',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Pequeño', 'Ideal para fiestas íntimas', 5, 15, 2500.00, 120.00),
+        ('bbbbbbbb-0000-0000-0000-000000000002',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Mediano', 'El más contratado', 12, 30, 4200.00, 150.00),
+        ('bbbbbbbb-0000-0000-0000-000000000003',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Grande', 'Para grupos escolares', 25, 50, 7000.00, 180.00)
+      ON CONFLICT (id) DO NOTHING
+    $sql$;
+  ELSE
+    EXECUTE $sql$
+      INSERT INTO public.paquetes
+          (id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
+           precio_base, precio_hora_pulsera)
+      VALUES
+        ('bbbbbbbb-0000-0000-0000-000000000001',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Pequeño', 'Ideal para fiestas íntimas', 5, 15, 2500.00, 120.00),
+        ('bbbbbbbb-0000-0000-0000-000000000002',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Mediano', 'El más contratado', 12, 30, 4200.00, 150.00),
+        ('bbbbbbbb-0000-0000-0000-000000000003',
+         '11111111-1111-1111-1111-111111111111',
+         'Paquete Grande', 'Para grupos escolares', 25, 50, 7000.00, 180.00)
+      ON CONFLICT (id) DO NOTHING
+    $sql$;
+  END IF;
+END $$;
 
 -- Alimentos incluidos en el paquete mediano
 INSERT INTO public.paquete_productos (paquete_id, producto_id, cantidad)

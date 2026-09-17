@@ -36,7 +36,8 @@ class ComandaCreate(BaseModel):
     notas_generales: str | None = None
     estado_actual: EstadoComanda = EstadoComanda.PENDIENTE
     detalles_comanda: list[DetalleCreate]
-    ticket_numero: str
+    # max_length=10 coincide con comandas.ticket_numero VARCHAR(10) en BD.
+    ticket_numero: str = Field(..., max_length=10)
     total_final: Decimal
     sucursal_id: uuid.UUID | None = None
     nombre_cliente: str | None = None

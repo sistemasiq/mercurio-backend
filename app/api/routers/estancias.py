@@ -23,6 +23,7 @@ from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoEstanciaExtraRequest
+from app.services import turnos_caja_service
 from app.schemas.registros import (
     CheckoutRequest,
     CheckoutResponse,
@@ -92,7 +93,12 @@ async def onboarding(
 
     usuario_id = UUID(current_user.sub)
 
-    return await create_estancia(conn, data, fotoIne, fotosLlegada, usuario_id, apertura_id)
+    disponible_antes = await turnos_caja_service.efectivo_disponible_actual(conn, apertura_id)
+    resultado = await create_estancia(conn, data, fotoIne, fotosLlegada, usuario_id, apertura_id)
+    resultado["advertenciaEfectivo"] = turnos_caja_service.advertencia_efectivo_insuficiente(
+        disponible_antes, data.cambio
+    )
+    return resultado
 
 
 @router.post(
