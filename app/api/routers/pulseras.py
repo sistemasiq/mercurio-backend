@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends, status
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.pulseras import PulseraCrear, PulseraOut, PulseraResponse, PulseraUpdate
+from app.schemas.pulseras import (
+    InventarioPulserasOut,
+    PulseraCrear,
+    PulseraOut,
+    PulseraResponse,
+    PulseraUpdate,
+)
 from app.services import pulseras as pulseras_service
 from app.services.pulseras import get_pulseras_disponibles_by_sucursal_id
 
@@ -25,6 +31,25 @@ async def get_pulseras_disponibles(
     _: TokenData = Depends(require_permission("estancias:checkin")),
 ) -> list[PulseraResponse]:
     return await get_pulseras_disponibles_by_sucursal_id(conn, sucursal_id)
+
+
+@router.get(
+    "/inventario/{sucursal_id}",
+    response_model=InventarioPulserasOut,
+    summary="Total de pulseras activas de una sucursal",
+    description=(
+        "Devuelve sólo el conteo, para que el asistente de reservación pueda avisar "
+        "si el número de niños rebasa las pulseras de la sucursal. Se protege con "
+        "`reservaciones:crear` y no con `pulseras:listar` porque quien levanta una "
+        "reservación suele ser Cajero, rol que no administra el inventario."
+    ),
+)
+async def obtener_inventario_pulseras(
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reservaciones:crear")),
+) -> InventarioPulserasOut:
+    return await pulseras_service.obtener_inventario(conn, sucursal_id)
 
 
 @router.get(
