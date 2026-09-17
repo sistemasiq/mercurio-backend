@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import app.services.pago_service as svc
 from app.api.deps import apertura_operando_id, require_permission
+from app.services import turnos_caja_service
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pagos import (
@@ -67,8 +68,13 @@ async def completar_pago(
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
     sucursal_id = _get_active_branch(current_user)
+    disponible_antes = await turnos_caja_service.efectivo_disponible_actual(conn, apertura_id)
     comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id, apertura_id)
-    return asdict(comanda)
+    resultado = asdict(comanda)
+    resultado["advertenciaEfectivo"] = turnos_caja_service.advertencia_efectivo_insuficiente(
+        disponible_antes, body.cambio
+    )
+    return resultado
 
 
 @router.get(
