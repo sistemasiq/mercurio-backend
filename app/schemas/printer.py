@@ -21,6 +21,12 @@ class PrinterConfigPayload(BaseModel):
     override_manual: bool = False
 
 
+class PrinterFormatoPayload(BaseModel):
+    tipo: str = Field(default="ticket", pattern="^(ticket|etiqueta)$", description="ticket|etiqueta")
+    ancho_mm: int = Field(description="58|80|60|210")
+    alto_mm: int | None = None
+
+
 class PrinterConfigResponse(BaseModel):
     id: str
     sucursal_id: str

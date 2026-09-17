@@ -91,6 +91,177 @@ def generar_pdf_ticket(
     return buf.getvalue()
 
 
+def generar_pdf_ticket_wysiwyg(
+    orden: dict,
+    ancho_mm: int = 80,
+) -> bytes:
+    """PDF WYSIWYG dinámico — respeta diseno JSON y ancho 58/80."""
+    from reportlab.lib.colors import HexColor
+
+    import logging
+
+    log = logging.getLogger(__name__)
+    log.info("WYSIWYG orden titulo=%s detalles=%s metodos=%s", orden.get("titulo"), len(orden.get("detalles") or []), len(orden.get("metodos_pago") or []))
+
+    # Diseño fijo WOOW KIDS — se mantiene simple como pidió el usuario
+    hdr_titulo = "WOOW KIDS"
+    hdr_l1 = "Nigromante 391, Peña"
+    hdr_l2 = "59375 La Piedad de Cabadas, Michoacán."
+    foot_l1 = "*** GRACIAS POR SU COMPRA ***"
+    foot_l2 = "ESTE NO ES UN COMPROBANTE FISCAL"
+    mostrar_footer = True
+    label_total = "TOTAL VENTA"
+
+    # ancho y escala 58mm más pequeño
+    if ancho_mm not in (58, 80, 60, 210):
+        ancho_mm = 80
+    is_narrow = ancho_mm == 58
+    scale = 0.85 if is_narrow else 1.0
+    margin = 3 * mm if is_narrow else 4 * mm
+    ancho_pt = ancho_mm * mm
+    detalles = orden.get("detalles") or []
+    principales = [d for d in detalles if not d.get("nombre_combo_padre")]
+    hijos = [d for d in detalles if d.get("nombre_combo_padre")]
+    filas: list[dict] = []
+    for p in principales:
+        filas.append(p)
+        filas.extend([h for h in hijos if h.get("nombre_combo_padre") == p.get("producto_nombre")])
+
+    alto_pt = 28 * mm + len(filas) * 5 * mm + len(orden.get("metodos_pago") or []) * 5 * mm + 38 * mm
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=(ancho_pt, alto_pt))
+
+    def draw_centered(text: str, y: float, size: float = 7, bold: bool = False):
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", size * scale)
+        c.drawCentredString(ancho_pt / 2, y, text[:48])
+
+    def draw_text(text: str, x: float, y: float, size: float = 7, bold: bool = False):
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", size * scale)
+        c.drawString(x, y, text[:64])
+
+    def draw_dashed(y: float):
+        c.setDash(2, 2)
+        c.setStrokeColor(HexColor(0x000000))
+        c.line(margin, y, ancho_pt - margin, y)
+        c.setDash()
+
+    def draw_line(y: float):
+        c.setStrokeColor(HexColor(0x000000))
+        c.line(margin, y, ancho_pt - margin, y)
+
+    y = alto_pt - 8 * mm
+    draw_centered(hdr_titulo, y, size=11, bold=True)
+    y -= 5 * mm
+    draw_centered(hdr_l1, y, size=6)
+    y -= 3.5 * mm
+    draw_centered(hdr_l2, y, size=6)
+    y -= 5 * mm
+    draw_dashed(y)
+    y -= 5 * mm
+
+    fecha_raw = orden.get("fecha_hora") or ""
+    try:
+        from datetime import datetime
+
+        d = datetime.fromisoformat(fecha_raw.replace("Z", "+00:00"))
+        fecha_str = d.strftime("%d %b %Y")
+        hora_str = d.strftime("%I:%M %p")
+    except:
+        fecha_str = str(fecha_raw)[:10]
+        hora_str = ""
+
+    titulo = orden.get("titulo") or orden.get("ticket_numero") or ""
+    col_desc_x = 12 * mm if is_narrow else 16 * mm
+    col_imp_off = 12 * mm if is_narrow else 14 * mm
+    fecha_off = 24 * mm if is_narrow else 28 * mm
+    draw_text(f"TICKET: {titulo}", margin, y, size=6, bold=True)
+    draw_text(f"FECHA: {fecha_str}", ancho_pt - fecha_off, y, size=6, bold=True)
+    y -= 4 * mm
+    draw_text(f"CAJERO: {(orden.get('creado_por_nombre') or 'N/A').split(' ')[0]}", margin, y, size=6, bold=True)
+    draw_text(f"HORA: {hora_str}", ancho_pt - fecha_off, y, size=6, bold=True)
+    y -= 4 * mm
+    if orden.get("nombre_cliente"):
+        draw_text(f"CLIENTE: {orden.get('nombre_cliente')}", margin, y, size=6)
+        y -= 4 * mm
+    y -= 1 * mm
+    draw_dashed(y)
+    y -= 5 * mm
+
+    draw_text("CANT", margin, y, size=6, bold=True)
+    draw_text("DESCRIPCIÓN", col_desc_x, y, size=6, bold=True)
+    draw_text("Importe", ancho_pt - col_imp_off, y, size=6, bold=True)
+    y -= 3 * mm
+    draw_line(y)
+    y -= 5 * mm
+
+    for item in filas:
+        if item.get("nombre_combo_padre"):
+            draw_text(f"  - {item.get('cantidad')}x {item.get('producto_nombre')}", col_desc_x, y, size=6)
+            y -= 4 * mm
+            continue
+        cant = str(item.get("cantidad") or "")
+        max_n = 20 if is_narrow else 28
+        nombre = str(item.get("producto_nombre") or "")[:max_n]
+        importe = f"${float(item.get('importe') or 0):.2f}"
+        draw_text(cant, margin, y, size=6)
+        draw_text(nombre, col_desc_x, y, size=6, bold=True)
+        c.setFont("Helvetica", 6 * scale)
+        w = c.stringWidth(importe, "Helvetica", 6 * scale)
+        c.drawString(ancho_pt - margin - w, y, importe)
+        y -= 4 * mm
+        if item.get("notas_especiales"):
+            draw_text(f"* {item.get('notas_especiales')}", col_desc_x, y, size=5)
+            y -= 3.5 * mm
+        if int(item.get("cantidad") or 1) > 1:
+            try:
+                pu = f"${float(item.get('precio_unitario') or 0):.2f} c/u"
+                draw_text(pu, col_desc_x, y, size=5)
+                y -= 3.5 * mm
+            except:
+                pass
+        y -= 1 * mm
+        if y < 15 * mm:
+            break
+
+    y -= 1 * mm
+    c.setDash(1, 2)
+    c.setStrokeColor(HexColor(0x888888))
+    c.line(margin, y, ancho_pt - margin, y)
+    c.setDash()
+    y -= 5 * mm
+
+    for mp in (orden.get("metodos_pago") or []):
+        nombre = str(mp.get("metodo_pago_nombre") or "PAGO").upper()
+        monto = f"${float(mp.get('monto') or 0):.2f}"
+        draw_text(f"PAGO {nombre}", margin, y, size=6)
+        w = c.stringWidth(monto, "Helvetica", 6 * scale)
+        c.drawString(ancho_pt - margin - w, y, monto)
+        y -= 4 * mm
+
+    y -= 1 * mm
+    c.setLineWidth(0.6 * mm)
+    draw_line(y)
+    c.setLineWidth(0.25 * mm)
+    y -= 6 * mm
+    total = f"${float(orden.get('total_final') or 0):.2f}"
+    draw_text(label_total, margin, y, size=8, bold=True)
+    w = c.stringWidth(total, "Helvetica-Bold", 8 * scale)
+    c.drawString(ancho_pt - margin - w, y, total)
+    y -= 7 * mm
+    c.setLineWidth(0.6 * mm)
+    draw_line(y)
+    c.setLineWidth(0.25 * mm)
+    y -= 6 * mm
+
+    draw_centered(foot_l1, y, size=6, bold=True)
+    y -= 4 * mm
+    draw_centered(foot_l2, y, size=6, bold=True)
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 def generar_pdf_base64(lineas: list[str], ancho_mm: int = 58, **kw) -> str:
     pdf = generar_pdf_ticket(lineas, ancho_mm=ancho_mm, **kw)
     return base64.b64encode(pdf).decode("ascii")

@@ -96,6 +96,51 @@ async def upsert_config(
     return dict(row)
 
 
+async def upsert_formato(
+    conn: asyncpg.Connection,
+    sucursal_id: str,
+    tipo: str,
+    ancho_mm: int,
+    alto_mm: int | None = None,
+    modificado_por: str | None = None,
+) -> dict[str, Any]:
+    now = get_mexico_now()
+    if tipo == "etiqueta":
+        tipo_detectado = "etiqueta_60x40"
+        ancho_mm = 60
+        alto_mm = alto_mm or 40
+    elif ancho_mm == 80:
+        tipo_detectado = "ticket_80"
+    elif ancho_mm == 58:
+        tipo_detectado = "ticket_58"
+    elif ancho_mm == 210:
+        tipo_detectado = "a4"
+    else:
+        tipo_detectado = "desconocida"
+    existing = await get_config_por_tipo(conn, sucursal_id, tipo)
+    if existing:
+        row = await conn.fetchrow(
+            """
+            UPDATE public.config_impresora SET ancho_mm=$3, alto_mm=$4, tipo_detectado=$5::tipo_impresora_detectado, modificado=$6, modificado_por=$7
+            WHERE sucursal_id=$1 AND tipo=$2::tipo_impresora_tipo
+            RETURNING id, sucursal_id, tipo, nombre_impresora, ancho_mm, alto_mm, driver_detectado, tipo_detectado, paper_names, override_manual
+            """,
+            uuid.UUID(sucursal_id), tipo, ancho_mm, alto_mm, tipo_detectado, now, uuid.UUID(modificado_por) if modificado_por else None,
+        )
+        assert row is not None
+        return dict(row)
+    row = await conn.fetchrow(
+        """
+        INSERT INTO public.config_impresora (sucursal_id, tipo, nombre_impresora, ancho_mm, alto_mm, tipo_detectado, paper_names, override_manual, creado_por, creado, modificado, modificado_por)
+        VALUES ($1, $2::tipo_impresora_tipo, $3, $4, $5, $6::tipo_impresora_detectado, $7, $8, $9, $10, $10, $9)
+        RETURNING id, sucursal_id, tipo, nombre_impresora, ancho_mm, alto_mm, driver_detectado, tipo_detectado, paper_names, override_manual
+        """,
+        uuid.UUID(sucursal_id), tipo, "__SIN_ASIGNAR__", ancho_mm, alto_mm, tipo_detectado, [], False, uuid.UUID(modificado_por) if modificado_por else None, now,
+    )
+    assert row is not None
+    return dict(row)
+
+
 async def delete_config(conn: asyncpg.Connection, sucursal_id: str, tipo: str) -> bool:
     result = await conn.execute(
         """

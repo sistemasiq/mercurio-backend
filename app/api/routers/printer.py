@@ -18,12 +18,14 @@ from app.repositories.printer_repository import (
     get_config_por_sucursal,
     get_config_por_tipo,
     upsert_config,
+    upsert_formato,
 )
 from app.schemas.auth import TokenData
 from app.schemas.printer import (
     PrintTicketPayload,
     PrinterConfigPayload,
     PrinterConfigResponse,
+    PrinterFormatoPayload,
     PrinterMeta,
 )
 from app.services.printer.detection import detectar_tipo, paper_size_para_tipo
@@ -177,6 +179,21 @@ async def guardar_config(
     )
 
 
+@router.put("/config-formato", response_model=PrinterConfigResponse, summary="Guarda solo formato (ancho) desacoplado")
+async def guardar_formato(
+    payload: PrinterFormatoPayload,
+    current_user: TokenData = Depends(require_permission("cajas:crear")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> PrinterConfigResponse:
+    sucursal_id = _branch_id(current_user)
+    if payload.tipo == "etiqueta":
+        payload.ancho_mm = 60
+        payload.alto_mm = 40
+    elif payload.ancho_mm not in (58, 80, 60, 210):
+        raise HTTPException(status_code=400, detail="ancho debe ser 58,80,60,210")
+    row = await upsert_formato(conn, sucursal_id, payload.tipo, payload.ancho_mm, payload.alto_mm, modificado_por=current_user.sub)
+    return PrinterConfigResponse(id=str(row["id"]), sucursal_id=str(row["sucursal_id"]), tipo=row["tipo"], nombre_impresora=row["nombre_impresora"], ancho_mm=row["ancho_mm"], alto_mm=row["alto_mm"], driver_detectado=row["driver_detectado"], tipo_detectado=row["tipo_detectado"], paper_names=row["paper_names"] or [], override_manual=row["override_manual"])
+
 @router.delete("/config-impresora/{tipo}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina config de un tipo", response_model=None)
 async def eliminar_config(
     tipo: str,
@@ -186,7 +203,6 @@ async def eliminar_config(
     if tipo not in ("ticket", "etiqueta"):
         raise HTTPException(status_code=400, detail="Tipo debe ser ticket|etiqueta")
     await delete_config(conn, _branch_id(current_user), tipo)
-
 
 # ── Print / Preview ─────────────────────────────────────────────────────────
 
@@ -230,8 +246,10 @@ async def print_ticket(
     svc = get_printer_service()
     sucursal_id = _branch_id(current_user) if current_user.branch_id else None
 
-    # Resolver impresora: payload.printerName > config por tipo > primera detectada
+    # Resolver impresora: payload.printerName > config por tipo > primera detectada (ignora placeholder)
     printer_name = payload.printerName
+    if printer_name == "__SIN_ASIGNAR__":
+        printer_name = None
     config_row = None
     if sucursal_id and payload.tipo:
         try:
@@ -239,7 +257,9 @@ async def print_ticket(
         except Exception:
             config_row = None
         if not printer_name and config_row:
-            printer_name = config_row["nombre_impresora"]
+            cand = config_row["nombre_impresora"]
+            if cand and cand != "__SIN_ASIGNAR__":
+                printer_name = cand
 
     if not printer_name:
         # Intentar primera impresora detectada

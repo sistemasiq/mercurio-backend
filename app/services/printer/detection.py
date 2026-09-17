@@ -11,35 +11,34 @@ import re
 _RE_ETIQUETA = re.compile(r"zebra|tsc|label|gx\d|zd\d|gk\d|argox|bixolon.*label", re.I)
 _RE_TICKET_80 = re.compile(r"80\s*mm|80mm", re.I)
 _RE_TICKET_58 = re.compile(r"58\s*mm|58mm", re.I)
-_RE_TERMAL = re.compile(r"pos|thermal|receipt|tm-t20|tm-m30|tm-u|generic.*text|epson.*pos|bixolon.*pos|3nstar|star.*tsp", re.I)
-_RE_A4 = re.compile(r"microsoft.*pdf|microsoft.*xps|a4|laserjet|deskjet", re.I)
+_RE_TERMAL = re.compile(r"pos|thermal|receipt|tm-t20|tm-m30|tm-u|generic.*text|epson.*pos|bixolon.*pos|3nstar|star.*tsp|xp-\d+|sprt|woosim|citizen|custom.*vkp", re.I)
+_RE_A4 = re.compile(r"microsoft.*pdf|microsoft.*xps|a4|laserjet|deskjet|onecnote", re.I)
 
 
-def detectar_tipo(driver_name: str | None, paper_names: list[str] | None) -> str:
+def detectar_tipo(
+    driver_name: str | None,
+    paper_names: list[str] | None,
+    printer_name: str | None = None,
+) -> str:
     driver = (driver_name or "").strip()
+    printer = (printer_name or "").strip()
     papers = [p.lower() for p in (paper_names or [])]
 
-    # Etiqueta tiene prioridad
-    if driver and _RE_ETIQUETA.search(driver):
+    def _match(re: re.Pattern[str]) -> bool:
+        return bool((driver and re.search(driver)) or (printer and re.search(printer)))
+
+    if _match(_RE_ETIQUETA):
         return "etiqueta_60x40"
-
-    # 80mm explícito en driver o papers
-    if (driver and _RE_TICKET_80.search(driver)) or any("80" in p for p in papers):
+    if _match(_RE_TICKET_80) or any("80" in p for p in papers):
         return "ticket_80"
-
-    # 58mm explícito
-    if (driver and _RE_TICKET_58.search(driver)) or any("58" in p for p in papers):
+    if _match(_RE_TICKET_58) or any("58" in p for p in papers):
         return "ticket_58"
-
-    # Genérico térmico sin tamaño -> asumir 58mm
-    if driver and _RE_TERMAL.search(driver):
-        # si no hay papers que indiquen 80, asumimos 58
+    if _match(_RE_TERMAL):
         return "ticket_58"
-
-    # A4 / PDF virtual
-    if driver and _RE_A4.search(driver):
+    if printer and re.search(r"ticket|receipt|80|58", printer, re.I):
+        return "ticket_80" if "80" in printer else "ticket_58"
+    if _match(_RE_A4):
         return "a4"
-
     return "desconocida"
 
 
