@@ -128,3 +128,17 @@ CREATE TABLE IF NOT EXISTS public.cargos_extra_estancia (
     creado                TIMESTAMPTZ NOT NULL DEFAULT now(),
     creado_por            UUID        REFERENCES public.usuarios(id)
 );
+
+-- Eliminar columna pulseras_tutor_id de registros si existe
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'registros'
+        AND column_name = 'pulseras_tutor_id'
+        AND table_schema = 'public'
+    ) THEN
+        ALTER TABLE public.registros DROP COLUMN pulseras_tutor_id;
+    END IF;
+END $$;
