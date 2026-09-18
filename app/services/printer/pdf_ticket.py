@@ -196,19 +196,28 @@ def generar_pdf_ticket_wysiwyg(
 
     for item in filas:
         if item.get("nombre_combo_padre"):
-            draw_text(f"  - {item.get('cantidad')}x {item.get('producto_nombre')}", col_desc_x, y, size=6)
-            y -= 4 * mm
+            # hijos de combo: también wrap para no cortar en 58mm
+            hijo_txt = f"  - {item.get('cantidad')}x {item.get('producto_nombre')}"
+            for part in textwrap.wrap(hijo_txt, width=24 if is_narrow else 32) or [hijo_txt[:32]]:
+                draw_text(part, col_desc_x, y, size=6)
+                y -= 4 * mm
             continue
         cant = str(item.get("cantidad") or "")
         max_n = 20 if is_narrow else 28
-        nombre = str(item.get("producto_nombre") or "")[:max_n]
+        nombre_full = str(item.get("producto_nombre") or "")
+        # wrap en vez de truncar para no perder texto en tickets angostos
+        wrapped = textwrap.wrap(nombre_full, width=max_n) or [nombre_full[:max_n]]
         importe = f"${float(item.get('importe') or 0):.2f}"
-        draw_text(cant, margin, y, size=6)
-        draw_text(nombre, col_desc_x, y, size=6, bold=True)
-        c.setFont("Helvetica", 6 * scale)
-        w = c.stringWidth(importe, "Helvetica", 6 * scale)
-        c.drawString(ancho_pt - margin - w, y, importe)
-        y -= 4 * mm
+        for idx, part in enumerate(wrapped):
+            if idx == 0:
+                draw_text(cant, margin, y, size=6)
+                draw_text(part, col_desc_x, y, size=6, bold=True)
+                c.setFont("Helvetica", 6 * scale)
+                w = c.stringWidth(importe, "Helvetica", 6 * scale)
+                c.drawString(ancho_pt - margin - w, y, importe)
+            else:
+                draw_text(part, col_desc_x, y, size=6, bold=True)
+            y -= 4 * mm
         if item.get("notas_especiales"):
             draw_text(f"* {item.get('notas_especiales')}", col_desc_x, y, size=5)
             y -= 3.5 * mm
