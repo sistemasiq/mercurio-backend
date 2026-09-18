@@ -36,7 +36,7 @@ async def crear(conn: asyncpg.Connection, body: PulseraCrear, creado_por: UUID) 
         raise Conflicto("Ya existe una pulsera con ese RFID en esta sucursal.") from exc
     except asyncpg.StringDataRightTruncationError as exc:
         raise DatosInvalidos(
-            "El RFID excede la longitud máxima permitida (50 caracteres)."
+            "El RFID excede la longitud máxima permitida (10 caracteres)."
         ) from exc
     return PulseraOut.model_validate(row)
 
@@ -50,7 +50,7 @@ async def actualizar(conn: asyncpg.Connection, pulsera_id: UUID, body: PulseraUp
         raise Conflicto("Ya existe una pulsera con ese RFID en esta sucursal.") from exc
     except asyncpg.StringDataRightTruncationError as exc:
         raise DatosInvalidos(
-            "El RFID excede la longitud máxima permitida (50 caracteres)."
+            "El RFID excede la longitud máxima permitida (10 caracteres)."
         ) from exc
     if not row:
         raise NoEncontrado("Pulsera")
