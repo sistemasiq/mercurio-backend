@@ -32,7 +32,7 @@ class GdiAdapter:
     async def print(self, data: dict, printer_name: str, ancho_mm: int = 58) -> dict:
         orden = data.get("orden")
         if isinstance(orden, dict) and orden.get("titulo"):
-            pdf_bytes = generar_pdf_ticket_wysiwyg(orden, ancho_mm=80)
+            pdf_bytes = generar_pdf_ticket_wysiwyg(orden, ancho_mm=ancho_mm)
             pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
             # Opción A: GDI texto con negritas (Consolas Bold) 1 botón, sin abrir PDF
             try:
@@ -55,13 +55,13 @@ class GdiAdapter:
                     lineas_gdi.append(f"PAGO {mp.get('metodo_pago_nombre')} ${float(mp.get('monto') or 0):.2f}")
                 lineas_gdi.append(f"TOTAL VENTA ${float(orden.get('total_final') or 0):.2f}")
                 bold_idx.add(len(lineas_gdi) - 1)
-                await imprimir_gdi(printer_name, lineas_gdi, ancho_mm=80, bold_lines=bold_idx)
-                return {"pdfBase64": pdf_b64, "printer": printer_name, "ancho_mm": 80}
+                await imprimir_gdi(printer_name, lineas_gdi, ancho_mm=ancho_mm, bold_lines=bold_idx)
+                return {"pdfBase64": pdf_b64, "printer": printer_name, "ancho_mm": ancho_mm}
             except Exception as e:
                 import logging
 
                 logging.getLogger(__name__).warning("GDI A falló, fallback: %s", e)
-                return {"pdfBase64": pdf_b64, "printer": printer_name, "ancho_mm": 80, "fallback": True, "error": str(e)[:200]}
+                return {"pdfBase64": pdf_b64, "printer": printer_name, "ancho_mm": ancho_mm, "fallback": True, "error": str(e)[:200]}
         lineas: list[str] = data.get("lineas") or data.get("raw_lines") or []
         if not lineas and data.get("texto"):
             lineas = str(data["texto"]).split("\n")
@@ -74,7 +74,7 @@ class GdiAdapter:
     async def preview(self, data: dict, ancho_mm: int = 58) -> bytes:
         orden = data.get("orden")
         if isinstance(orden, dict) and orden.get("titulo"):
-            return generar_pdf_ticket_wysiwyg(orden, ancho_mm=80)
+            return generar_pdf_ticket_wysiwyg(orden, ancho_mm=ancho_mm)
         lineas: list[str] = data.get("lineas") or data.get("raw_lines") or []
         if not lineas and data.get("texto"):
             lineas = str(data["texto"]).split("\n")
@@ -92,9 +92,9 @@ class PdfAdapter:
     async def print(self, data: dict, printer_name: str, ancho_mm: int = 58) -> dict:
         orden = data.get("orden")
         if isinstance(orden, dict) and orden.get("titulo"):
-            pdf_bytes = generar_pdf_ticket_wysiwyg(orden, ancho_mm=80)
+            pdf_bytes = generar_pdf_ticket_wysiwyg(orden, ancho_mm=ancho_mm)
             pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            return {"pdfBase64": pdf_b64, "printer": printer_name or "PDF", "ancho_mm": 80, "fallback": True}
+            return {"pdfBase64": pdf_b64, "printer": printer_name or "PDF", "ancho_mm": ancho_mm, "fallback": True}
         lineas: list[str] = data.get("lineas") or data.get("raw_lines") or []
         if not lineas and data.get("texto"):
             lineas = str(data["texto"]).split("\n")
@@ -106,7 +106,7 @@ class PdfAdapter:
     async def preview(self, data: dict, ancho_mm: int = 58) -> bytes:
         orden = data.get("orden")
         if isinstance(orden, dict) and orden.get("titulo"):
-            return generar_pdf_ticket_wysiwyg(orden, ancho_mm=80)
+            return generar_pdf_ticket_wysiwyg(orden, ancho_mm=ancho_mm)
         lineas: list[str] = data.get("lineas") or data.get("raw_lines") or []
         if not lineas and data.get("texto"):
             lineas = str(data["texto"]).split("\n")

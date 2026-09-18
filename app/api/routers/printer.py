@@ -126,7 +126,7 @@ async def listar_config(
 @router.put("/config-impresora", response_model=PrinterConfigResponse, summary="Guarda impresora por defecto (ticket o etiqueta)")
 async def guardar_config(
     payload: PrinterConfigPayload,
-    current_user: TokenData = Depends(require_permission("cajas:crear")),
+    current_user: TokenData = Depends(require_permission("impresion:configurar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> PrinterConfigResponse:
     sucursal_id = _branch_id(current_user)
@@ -182,7 +182,7 @@ async def guardar_config(
 @router.put("/config-formato", response_model=PrinterConfigResponse, summary="Guarda solo formato (ancho) desacoplado")
 async def guardar_formato(
     payload: PrinterFormatoPayload,
-    current_user: TokenData = Depends(require_permission("cajas:crear")),
+    current_user: TokenData = Depends(require_permission("impresion:configurar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> PrinterConfigResponse:
     sucursal_id = _branch_id(current_user)
@@ -197,7 +197,7 @@ async def guardar_formato(
 @router.delete("/config-impresora/{tipo}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina config de un tipo", response_model=None)
 async def eliminar_config(
     tipo: str,
-    current_user: TokenData = Depends(require_permission("cajas:crear")),
+    current_user: TokenData = Depends(require_permission("impresion:configurar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> None:
     if tipo not in ("ticket", "etiqueta"):
