@@ -71,6 +71,9 @@ async def crear(
         monto=body.monto,
         fecha_pago=datetime.now(UTC),
         notas=body.notas,
+        # Sin esto la columna quedaba siempre en NULL y el historial no podía
+        # decir quién cobró el evento, a diferencia de las ventas de mostrador.
+        creado_por=usuario_id,
     )
 
     await registrar_movimiento_caja(

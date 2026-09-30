@@ -50,11 +50,13 @@ async def crear(
     monto: Decimal,
     fecha_pago: datetime,
     notas: str | None,
+    creado_por: UUID | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         """
-        INSERT INTO pagos_reservacion (reservacion_id, metodo_pago_id, monto, fecha_pago, notas)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO pagos_reservacion
+            (reservacion_id, metodo_pago_id, monto, fecha_pago, notas, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, reservacion_id, metodo_pago_id, monto, fecha_pago, notas, creado_por
         """,
         reservacion_id,
@@ -62,6 +64,7 @@ async def crear(
         monto,
         fecha_pago,
         notas,
+        creado_por,
     )
     return dict(row)
 

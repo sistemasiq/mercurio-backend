@@ -21,6 +21,7 @@ from app.repositories.productos import (
     get_precio_pulsera_by_reserva_id,
     get_productos_estancia_by_sucursal_id,
 )
+from app.repositories.pulseras import esta_disponible_para_asignar
 from app.repositories.registros import (
     EstadoRegistro,
     change_registro_estado,
@@ -33,6 +34,25 @@ from app.schemas.registros import OnboardingRequest
 from app.schemas.reservaciones import EventoDelDiaOut
 from app.services import lealtad_service
 from app.services.validaciones_pago import validar_cambio
+
+
+async def _validar_pulseras_disponibles(
+    conn: asyncpg.Connection, sucursal_id: UUID, detalles: list[Any]
+) -> None:
+    """Valida que cada pulsera sea activa, de la sucursal y de un solo uso."""
+    pulseras_validadas: set[UUID] = set()
+
+    for detalle in detalles:
+        pulsera_id = detalle.pulseraId
+        if pulsera_id in pulseras_validadas:
+            raise HTTPException(
+                409, "Una pulsera no puede asignarse a más de un niño en el mismo registro"
+            )
+
+        if not await esta_disponible_para_asignar(conn, pulsera_id, sucursal_id):
+            raise HTTPException(409, "La pulsera seleccionada ya fue usada o no está disponible")
+
+        pulseras_validadas.add(pulsera_id)
 
 
 async def create_estancia(
@@ -52,6 +72,8 @@ async def create_estancia(
     )
 
     async with conn.transaction():
+        await _validar_pulseras_disponibles(conn, data.sucursalId, data.detalles)
+
         if data.reservacionId is not None:
             evento_dict = await obtener_evento_mas_cercano(conn, data.sucursalId)
             if evento_dict is None:
@@ -265,13 +287,24 @@ async def create_estancia(
                     if min_h <= horas_solicitadas <= max_h:
                         precio = p_val
                         break
-
+                    
                 if precio is None:
-                    raise HTTPException(
-                        400,
-                        "No se encontró un precio válido para la duración especificada "
-                        f"({d.cantidad} hrs)",
-                    )
+                    precio_mas_bajo = None
+                    min_horas_mas_bajo = float('inf')
+                    
+                    for config in precios:
+                        min_h = float(config["min_horas"])
+                        if min_h < min_horas_mas_bajo:
+                            min_horas_mas_bajo = min_h
+                            precio_mas_bajo = Decimal(str(config["precio"]))
+                    
+                    if precio_mas_bajo is not None:
+                        precio = precio_mas_bajo
+                    else:
+                        raise HTTPException(
+                            400, 
+                            "No se encontró ningún precio disponible en la configuración de estancia"
+                        )
 
                 await insert_detalle_registro(
                     conn,

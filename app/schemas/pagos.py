@@ -9,7 +9,7 @@ from app.schemas.comanda import DetalleCreate
 
 class PagoIn(BaseModel):
     metodoPagoId: UUID  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
-    monto: float
+    monto: float = Field(..., gt=0)
 
 
 class PagoEstanciaExtraRequest(BaseModel):
@@ -61,13 +61,19 @@ class PagoCompletoRequest(BaseModel):
     persiste.
     """
 
-    ticket_numero: str
+    # max_length=10 coincide con comandas.ticket_numero VARCHAR(10) en BD —
+    # sin esto, un valor más largo tronaba con un 500 crudo de Postgres en vez
+    # de un 422 limpio (mismo criterio que nombre_cliente, abajo).
+    ticket_numero: str = Field(..., max_length=10)
     total_final: Decimal = Field(..., gt=0)
     detalles_comanda: list[DetalleCreate]
     notas_generales: str | None = None
     pagos: list[PaymentItem] = Field(..., min_length=1)
     celular_cliente: str | None = None
-    nombre_cliente: str | None = None
+    # max_length=150 coincide con comandas.nombre_cliente VARCHAR(150) en BD —
+    # sin esto, un valor más largo tronaba con un 500 crudo de Postgres en vez
+    # de un 422 limpio (mismo criterio que AbrirTurnoPayload.terminal).
+    nombre_cliente: str | None = Field(default=None, max_length=150)
     puntos_a_redimir: int = Field(0, ge=0)
     cambio: Decimal = Field(Decimal("0"), ge=0)
 

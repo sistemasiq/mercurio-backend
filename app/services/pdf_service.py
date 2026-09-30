@@ -372,6 +372,50 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         story.append(Paragraph("No se registraron retiros parciales en este turno.", _ESTILO_VACIO))
     story.append(_separador())
 
+    # ── Ingresos de efectivo ─────────────────────────────────────────────
+    story.append(Paragraph("Ingresos de Efectivo", _ESTILO_SECCION))
+    if detalle.ingresos:
+        data = [
+            [
+                Paragraph("Monto", _ESTILO_TABLA_HEADER),
+                Paragraph("Hora", _ESTILO_TABLA_HEADER),
+            ]
+        ]
+        total_ingresos = 0.0
+        for ingreso in detalle.ingresos:
+            data.append(
+                [
+                    Paragraph(_fmt_moneda(ingreso.monto), _ESTILO_TABLA_CELDA),
+                    Paragraph(_fmt_fecha(str(ingreso.creado)), _ESTILO_TABLA_CELDA),
+                ]
+            )
+            total_ingresos += float(ingreso.monto)
+        data.append(
+            [
+                Paragraph(_fmt_moneda(total_ingresos), _ESTILO_TABLA_CELDA_BOLD),
+                "",
+            ]
+        )
+        tabla_ingresos = Table(
+            data,
+            colWidths=[_CONTENT_WIDTH * 0.5, _CONTENT_WIDTH * 0.5],
+            repeatRows=1,
+        )
+        tabla_ingresos.setStyle(
+            TableStyle(
+                [
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        story.append(tabla_ingresos)
+    else:
+        story.append(Paragraph("No se registraron ingresos de efectivo en este turno.", _ESTILO_VACIO))
+    story.append(_separador())
+
     # ── Observaciones ────────────────────────────────────────────────────
     story.append(Paragraph("Observaciones", _ESTILO_SECCION))
     texto_obs = escape(detalle.observaciones or "Sin observaciones registradas.")
