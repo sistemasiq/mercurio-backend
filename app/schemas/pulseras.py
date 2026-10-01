@@ -26,13 +26,13 @@ class InventarioPulserasOut(BaseModel):
 
 class PulseraCrear(BaseModel):
     sucursal_id: UUID
-    pulsera_rfid: str = Field(..., max_length=50)
+    pulsera_rfid: str = Field(..., max_length=10, pattern=_RFID_PATTERN)
     activo: bool = True
     numero_lote: str | None = Field(None, max_length=50)
 
 
 class PulseraUpdate(BaseModel):
-    pulsera_rfid: str | None = Field(None, max_length=50)
+    pulsera_rfid: str | None = Field(None, max_length=10, pattern=_RFID_PATTERN)
     activo: bool | None = None
 
 
