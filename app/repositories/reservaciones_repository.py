@@ -114,6 +114,56 @@ async def marcar_comanda_enviada(conn: asyncpg.Connection, reservacion_id: UUID)
         "UPDATE reservaciones SET comanda_enviada = TRUE WHERE id = $1", reservacion_id
     )
 
+
+async def listar_vencidas_sin_liquidar(
+    conn: asyncpg.Connection, dias_limite: int
+) -> list[dict[str, Any]]:
+    """Reservaciones que ya pasaron su fecha límite de liquidación y siguen debiendo.
+
+    Se excluyen los eventos que ya ocurrieron (`fecha_evento >= CURRENT_DATE`):
+    cancelar una fiesta que ya se celebró no tiene sentido —se dio el servicio y
+    el adeudo sigue siendo real—, y hacerlo destruiría el histórico. El plazo
+    sólo tiene efecto sobre eventos que todavía no suceden.
+    """
+    rows = await conn.fetch(
+        _SELECT
+        + """
+        WHERE activo = TRUE
+          AND estado IN ('pendiente', 'confirmada')
+          AND anticipo < precio_total
+          AND fecha_evento >= CURRENT_DATE
+          AND fecha_evento - make_interval(days => $1) <= CURRENT_DATE
+        ORDER BY fecha_evento
+        """,
+        dias_limite,
+    )
+    return [dict(r) for r in rows]
+
+
+async def cancelar_por_falta_de_pago(
+    conn: asyncpg.Connection, reservacion_id: UUID, motivo: str
+) -> None:
+    """Cancela la reservación dejando constancia del motivo en sus notas.
+
+    El motivo se antepone a las notas existentes en vez de reemplazarlas: lo que
+    el staff haya anotado sobre el evento sigue siendo información válida.
+    """
+    await conn.execute(
+        """
+        UPDATE reservaciones
+           SET estado = 'cancelada',
+               notas = CASE
+                   WHEN notas IS NULL OR notas = '' THEN $2
+                   ELSE $2 || E'\\n' || notas
+               END,
+               modificado = NOW()
+         WHERE id = $1
+        """,
+        reservacion_id,
+        motivo,
+    )
+
+
 async def get_reservacion_id_by_detalle_registro_id(conn: asyncpg.Connection, detalle_registro_id: UUID) -> UUID | None:
     result = await conn.fetchval(
         """

@@ -11,7 +11,17 @@ class PulseraResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-_RFID_PATTERN = r"^WK-[0-9]{7}$"
+class InventarioPulserasOut(BaseModel):
+    """Conteo de pulseras de una sucursal, sin exponer el listado.
+
+    Lo consume el asistente de reservación para avisar si el número de niños
+    rebasa lo que la sucursal puede pulsear. Se devuelve sólo el número porque
+    quien levanta la reservación suele ser Cajero, y ese rol no tiene permiso
+    para ver el inventario de pulseras.
+    """
+
+    sucursal_id: UUID
+    total_activas: int
 
 
 class PulseraCrear(BaseModel):
@@ -31,6 +41,7 @@ class PulseraOut(BaseModel):
     sucursal_id: UUID
     pulsera_rfid: str
     activo: bool
+    usada: bool
     numero_lote: str | None = None
     creado: datetime | None
     creado_por: UUID | None

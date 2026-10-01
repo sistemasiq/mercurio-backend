@@ -44,6 +44,7 @@ from app.core.config import settings
 from app.core.database import close_pool, create_pool, get_pool
 from app.core.object_storage import ensure_bucket
 from app.services.comanda_evento_scheduler import loop_comandas_eventos
+from app.services.reservaciones_vencidas_scheduler import loop_reservaciones_vencidas
 
 logger = logging.getLogger("mercury.debug")
 logging.basicConfig(level=logging.INFO)
@@ -58,8 +59,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await load_cache(conn)
     await ensure_bucket()
     scheduler_task = asyncio.create_task(loop_comandas_eventos())
+    # Libera las fechas de los eventos que no se liquidaron a tiempo. Va como
+    # loop propio y no dentro del anterior porque tienen cadencias muy distintas:
+    # aquél revisa cada 5 minutos, éste una vez por hora.
+    vencidas_task = asyncio.create_task(loop_reservaciones_vencidas())
     yield
     scheduler_task.cancel()
+    vencidas_task.cancel()
     await close_pool()
 
 

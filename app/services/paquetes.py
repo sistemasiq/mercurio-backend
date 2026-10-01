@@ -40,7 +40,7 @@ async def crear(conn: asyncpg.Connection, body: PaquetesCreate) -> PaquetesOut:
             min_invitados=body.min_invitados,
             max_invitados=body.max_invitados,
             precio_base=body.precio_base,
-            precio_pulsera=body.precio_pulsera,
+            precio_hora_pulsera=body.precio_hora_pulsera,
         )
         if body.productos_incluidos:
             items_dict = [item.model_dump() for item in body.productos_incluidos]
