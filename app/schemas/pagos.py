@@ -147,6 +147,9 @@ class DetalleProductoOut(BaseModel):
     importe: float
     notas_especiales: str | None = None
     nombre_combo_padre: str | None = None
+    # QA #34: agrupa los hijos de una misma instancia de combo (migración 038).
+    # None para productos sueltos o cuando el dato no existe (estancias/reservaciones).
+    id_combo_padre: str | None = None
 
 
 class MetodoPagoDetalle(BaseModel):

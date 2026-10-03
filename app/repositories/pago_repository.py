@@ -243,6 +243,7 @@ _SELECT_DETALLE_PRODUCTOS = """
         dc.importe,
         dc.notas_especiales,
         dc.nombre_combo_padre,
+        dc.id_combo_padre,
         p.nombre AS producto_nombre
     FROM detalles_comanda dc
     LEFT JOIN productos p ON p.id = dc.producto_id
@@ -279,6 +280,10 @@ async def detalle_por_comanda(
             "importe": float(dict(row)["importe"]),
             "notas_especiales": dict(row)["notas_especiales"],
             "nombre_combo_padre": dict(row)["nombre_combo_padre"],
+            # QA #34: agrupa hijos de combo por instancia en vez de por orden.
+            "id_combo_padre": (
+                str(dict(row)["id_combo_padre"]) if dict(row).get("id_combo_padre") else None
+            ),
         }
         for row in productos_rows
     ]
