@@ -79,6 +79,10 @@ class AbrirTurnoPayload(BaseModel):
     turno_id: str | None = None
     # Solo relevante para AdministradorSistema, que no tiene sucursal propia en el JWT.
     sucursal_id: str | None = None
+    # C1: PIN del cajero que abre el turno (o su contraseña, mientras no tenga
+    # PIN configurado). Se valida en el service, no aquí, para devolver el
+    # mismo código de error estructurado que el resto de validaciones de abrir_turno.
+    pin: str | None = None
 
 
 class MovimientoResumen(BaseModel):
