@@ -186,6 +186,10 @@ class DetalleOrdenOut(BaseModel):
     # Campos de compatibilidad: solo se llenan para ventas tipo comanda.
     comanda_id: str | None = None
     ticket_numero: str | None = None
+    # B9 B.3: puntos de lealtad otorgados por esta comanda (join a
+    # movimientos_puntos); null si no aplica (no hubo celular, o el origen no
+    # es comanda).
+    puntos_ganados: int | None = None
 
 
 # ---------------------------------------------------------------------------

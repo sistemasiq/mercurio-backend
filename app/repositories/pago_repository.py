@@ -237,6 +237,12 @@ _SELECT_DETALLE_PAGOS = """
     WHERE po.comanda_id = $1
 """
 
+_SELECT_PUNTOS_GANADOS_COMANDA = """
+    SELECT SUM(puntos)
+    FROM public.movimientos_puntos
+    WHERE comanda_id = $1 AND tipo = 'O'
+"""
+
 _SELECT_DETALLE_PRODUCTOS = """
     SELECT
         dc.id,
@@ -263,6 +269,7 @@ async def detalle_por_comanda(
 
     pagos_rows = await conn.fetch(_SELECT_DETALLE_PAGOS, comanda_id)
     productos_rows = await conn.fetch(_SELECT_DETALLE_PRODUCTOS, comanda_id)
+    puntos_ganados = await conn.fetchval(_SELECT_PUNTOS_GANADOS_COMANDA, comanda_id)
 
     c = dict(comanda_row)
     metodos_pago = [
@@ -305,6 +312,7 @@ async def detalle_por_comanda(
         "nombre_cliente": c.get("nombre_cliente"),
         "metodos_pago": metodos_pago,
         "detalles": detalles,
+        "puntos_ganados": int(puntos_ganados) if puntos_ganados is not None else None,
     }
 
 
