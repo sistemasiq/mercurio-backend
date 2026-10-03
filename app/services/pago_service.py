@@ -140,6 +140,7 @@ async def completar_pago(
             notas_generales=body.notas_generales,
             sucursal_id=sucursal_id,
             nombre_cliente=body.nombre_cliente,
+            mesa=body.mesa,
         )
 
         comanda = await comanda_repository.crear_comanda_con_detalles(

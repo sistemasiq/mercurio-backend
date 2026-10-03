@@ -41,6 +41,9 @@ class ComandaCreate(BaseModel):
     total_final: Decimal
     sucursal_id: uuid.UUID | None = None
     nombre_cliente: str | None = None
+    # B9 B.2: mesa del pedido, opcional. max_length=20 coincide con
+    # comandas.mesa VARCHAR(20) en BD.
+    mesa: str | None = Field(default=None, max_length=20)
 
 
 # Esquema para cancelación parcial (eliminar productos de una comanda Pendiente)
@@ -75,6 +78,7 @@ class Comanda(BaseModel):
     sucursal_id: UUID4
     estado_actual: EstadoComanda
     fecha_hora: datetime
+    mesa: str | None = None
 
     class Config:
         from_attributes = True

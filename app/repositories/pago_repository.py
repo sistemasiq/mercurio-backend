@@ -220,6 +220,7 @@ _SELECT_DETALLE_COMANDA = """
         c.fecha_hora,
         c.motivo_cancelacion,
         c.nombre_cliente,
+        c.mesa,
         u.nombre_completo  AS creado_por_nombre
     FROM comandas c
     LEFT JOIN usuarios u ON u.id = c.creado_por
@@ -310,6 +311,7 @@ async def detalle_por_comanda(
         "motivo_cancelacion": c.get("motivo_cancelacion"),
         "creado_por_nombre": c["creado_por_nombre"],
         "nombre_cliente": c.get("nombre_cliente"),
+        "mesa": c.get("mesa"),
         "metodos_pago": metodos_pago,
         "detalles": detalles,
         "puntos_ganados": int(puntos_ganados) if puntos_ganados is not None else None,

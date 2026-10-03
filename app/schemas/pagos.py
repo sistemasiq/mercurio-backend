@@ -89,6 +89,9 @@ class PagoCompletoRequest(BaseModel):
     # sin esto, un valor más largo tronaba con un 500 crudo de Postgres en vez
     # de un 422 limpio (mismo criterio que AbrirTurnoPayload.terminal).
     nombre_cliente: str | None = Field(default=None, max_length=150)
+    # B9 B.2: mesa del pedido, opcional. max_length=20 coincide con
+    # comandas.mesa VARCHAR(20) en BD.
+    mesa: str | None = Field(default=None, max_length=20)
     puntos_a_redimir: int = Field(0, ge=0)
     cambio: Decimal = Field(Decimal("0"), ge=0)
 
@@ -190,6 +193,8 @@ class DetalleOrdenOut(BaseModel):
     # movimientos_puntos); null si no aplica (no hubo celular, o el origen no
     # es comanda).
     puntos_ganados: int | None = None
+    # B9 B.2: mesa del pedido, opcional (solo aplica a comandas).
+    mesa: str | None = None
 
 
 # ---------------------------------------------------------------------------
