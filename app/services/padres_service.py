@@ -7,16 +7,33 @@ from uuid import UUID
 import asyncpg
 
 from app.core.security import create_access_token
+from app.repositories import lealtad_repository
 from app.repositories.branch_repository import get_sucursal_by_id
 from app.repositories.tutores import get_tutor_by_id
 from app.schemas.padres import (
+    LealtadPadreInfo,
     NinoActivoResponse,
     PadreDashboardResponse,
     PadreNinosActivosResponse,
     SucursalInfo,
     TutorInfo,
 )
+from app.services.lealtad_service import DIAS_POR_VENCER
 from app.services.permission_service import get_permissions
+
+
+async def _get_lealtad_tutor(
+    conn: asyncpg.Connection, sucursal_id: UUID, telefono: str
+) -> LealtadPadreInfo:
+    """WP B4, pendiente 5 — saldo de puntos de lealtad del tutor (celular =
+    telefono del tutor), para la tarjeta "Tus puntos Woow" del portal de
+    padres. No requiere que exista configuracion_lealtad para la sucursal:
+    sin movimientos, el saldo simplemente es 0."""
+    saldo = await lealtad_repository.calcular_saldo(conn, sucursal_id, telefono)
+    por_vencer = await lealtad_repository.calcular_por_vencer(
+        conn, sucursal_id, telefono, DIAS_POR_VENCER
+    )
+    return LealtadPadreInfo(saldo=saldo, por_vencer=por_vencer)
 
 
 class TokenAccesoInvalidoError(Exception):
@@ -137,6 +154,7 @@ async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreD
 
     hijos = await _get_hijos_visita(conn, registro_id)
     now = datetime.now(UTC)
+    lealtad = await _get_lealtad_tutor(conn, sucursal["id"], tutor["telefono"])
 
     expires_delta = timedelta(hours=2)
     access_token = create_access_token(
@@ -162,6 +180,7 @@ async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreD
                 id=sucursal["id"],
                 nombre=sucursal["nombre"],
             ),
+            lealtad=lealtad,
         ),
         ninosActivos=[_build_nino_activo(h, now) for h in hijos],
     )

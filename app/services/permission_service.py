@@ -6,6 +6,8 @@ from app.core.roles import ROL_SISTEMA, ROLES_SIN_SUCURSAL_FIJA
 from app.repositories.permission_repository import (
     PermisoRecord,
     RolRecord,
+    contar_usuarios_de_rol,
+    contar_usuarios_por_rol,
     get_all_permisos,
     get_all_rol_permisos_cache,
     get_all_roles,
@@ -70,7 +72,9 @@ def _permiso_to_response(r: PermisoRecord) -> PermisoResponse:
     )
 
 
-def _rol_to_response(rol: RolRecord, permisos: list[PermisoRecord]) -> RolConPermisosResponse:
+def _rol_to_response(
+    rol: RolRecord, permisos: list[PermisoRecord], usuarios_count: int = 0
+) -> RolConPermisosResponse:
     return RolConPermisosResponse(
         id=rol["id"],
         nombre=rol["nombre"],
@@ -79,15 +83,17 @@ def _rol_to_response(rol: RolRecord, permisos: list[PermisoRecord]) -> RolConPer
         requiere_sucursal=rol["nombre"] not in ROLES_SIN_SUCURSAL_FIJA,
         permisos_editables=rol["nombre"] != ROL_SISTEMA,
         permisos=[_permiso_to_response(p) for p in permisos],
+        usuarios_count=usuarios_count,
     )
 
 
 async def list_roles(conn: asyncpg.Connection) -> list[RolConPermisosResponse]:
     roles = await get_all_roles(conn)
+    conteos = await contar_usuarios_por_rol(conn)
     result = []
     for rol in roles:
         permisos = await get_permisos_por_rol(conn, rol["id"])
-        result.append(_rol_to_response(rol, permisos))
+        result.append(_rol_to_response(rol, permisos, conteos.get(rol["id"], 0)))
     return result
 
 
@@ -96,7 +102,8 @@ async def get_rol(conn: asyncpg.Connection, rol_id: int) -> RolConPermisosRespon
     if rol is None:
         raise RolNotFoundError
     permisos = await get_permisos_por_rol(conn, rol_id)
-    return _rol_to_response(rol, permisos)
+    usuarios_count = await contar_usuarios_de_rol(conn, rol_id)
+    return _rol_to_response(rol, permisos, usuarios_count)
 
 
 async def list_permisos(conn: asyncpg.Connection) -> list[PermisoResponse]:
@@ -126,7 +133,8 @@ async def update_rol_permisos(
     await load_cache(conn)
 
     permisos = await get_permisos_por_rol(conn, rol_id)
-    return _rol_to_response(rol, permisos)
+    usuarios_count = await contar_usuarios_de_rol(conn, rol_id)
+    return _rol_to_response(rol, permisos, usuarios_count)
 
 
 async def create_rol(
@@ -150,7 +158,7 @@ async def create_rol(
     rol = await get_rol_by_id(conn, rol_id)
     assert rol is not None
     permisos = await get_permisos_por_rol(conn, rol_id)
-    return _rol_to_response(rol, permisos)
+    return _rol_to_response(rol, permisos, usuarios_count=0)
 
 
 async def update_rol(
@@ -187,4 +195,5 @@ async def update_rol(
     rol = await get_rol_by_id(conn, rol_id)
     assert rol is not None
     permisos = await get_permisos_por_rol(conn, rol_id)
-    return _rol_to_response(rol, permisos)
+    usuarios_count = await contar_usuarios_de_rol(conn, rol_id)
+    return _rol_to_response(rol, permisos, usuarios_count)

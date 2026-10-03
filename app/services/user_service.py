@@ -59,10 +59,13 @@ def _to_response(record: UsuarioRecord) -> UserResponse:
     return UserResponse(
         id=record["id"],
         full_name=record["nombre_completo"],
+        apellidos=record["apellidos"],
+        telefono=record["telefono"],
         email=record["email"],
         role=record["rol"],
         branch_id=record["sucursal_id"],
         is_active=record["activo"],
+        ultimo_acceso=record["ultimo_acceso"],
     )
 
 
@@ -126,6 +129,8 @@ async def create_user(
             nombre_completo=data.full_name,
             rol=data.role,
             creado_por=creator_id,
+            apellidos=data.apellidos,
+            telefono=data.telefono,
         )
         if branch_id is not None:
             await assign_usuario_to_branch(conn, user_id, branch_id, creator_id)
@@ -182,6 +187,9 @@ async def update_user(
             rol=data.role,
             password_hash=password_hash,
             modificado_por=editor_id,
+            apellidos=data.apellidos,
+            telefono=data.telefono,
+            activo=data.is_active,
         )
         if not updated:
             raise UserNotFoundError

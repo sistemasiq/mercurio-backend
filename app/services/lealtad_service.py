@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -9,12 +10,16 @@ from app.exceptions import DatosInvalidos, NoEncontrado, SaldoInsuficienteError
 from app.repositories import lealtad_repository
 from app.schemas.auth import TokenData
 from app.schemas.lealtad import (
+    ClienteLealtadOut,
     ConfiguracionLealtadBase,
     ConfiguracionLealtadOut,
     MovimientoPuntoOut,
     ReporteLealtadOut,
     SaldoPuntosOut,
+    TopClienteLealtadOut,
 )
+
+DIAS_POR_VENCER = 30
 
 
 def resolver_sucursal(current_user: TokenData, sucursal_id: UUID | None) -> UUID:
@@ -57,6 +62,7 @@ async def actualizar_configuracion(
         otorga_puntos_comandas=body.otorga_puntos_comandas,
         otorga_puntos_reservaciones=body.otorga_puntos_reservaciones,
         otorga_puntos_checkin=body.otorga_puntos_checkin,
+        minimo_canje=body.minimo_canje,
     )
     return ConfiguracionLealtadOut.model_validate(row)
 
@@ -157,6 +163,11 @@ async def redimir_puntos(
 
     lotes = await lealtad_repository.lotes_vigentes_for_update(conn, sucursal_id, celular)
     disponible = sum(lote["puntos_disponibles"] for lote in lotes)
+    minimo_canje = config.get("minimo_canje", 0)
+    if disponible < minimo_canje:
+        raise DatosInvalidos(
+            f"Mínimo para canjear: {minimo_canje} pts (saldo disponible: {disponible})."
+        )
     if disponible < puntos:
         raise SaldoInsuficienteError(disponible)
 
@@ -235,7 +246,70 @@ async def consultar_saldo(
 ) -> SaldoPuntosOut:
     scope = resolver_sucursal(current_user, sucursal_id)
     saldo = await lealtad_repository.calcular_saldo(conn, scope, celular)
-    return SaldoPuntosOut(sucursal_id=scope, celular=celular, saldo=saldo)
+    por_vencer = await lealtad_repository.calcular_por_vencer(conn, scope, celular, DIAS_POR_VENCER)
+    return SaldoPuntosOut(sucursal_id=scope, celular=celular, saldo=saldo, por_vencer=por_vencer)
+
+
+async def ajustar_puntos(
+    conn: asyncpg.Connection,
+    current_user: TokenData,
+    sucursal_id: UUID | None,
+    celular: str,
+    puntos: int,
+    motivo: str,
+) -> MovimientoPuntoOut:
+    """Ajuste manual de puntos (WP B4): `puntos` positivo otorga (crea un
+    lote propio, sin origen de venta, que caduca igual que uno normal);
+    `puntos` negativo descuenta de los lotes vigentes FIFO, igual que un
+    canje, validando que el saldo no quede negativo."""
+    scope = resolver_sucursal(current_user, sucursal_id)
+    usuario_id = UUID(current_user.sub)
+
+    if puntos > 0:
+        config = await lealtad_repository.obtener_configuracion(conn, scope)
+        if not config:
+            raise DatosInvalidos("No hay configuración de lealtad para esta sucursal.")
+        fecha_caducidad = datetime.now(UTC) + timedelta(days=config["dias_caducidad"])
+        lote = await lealtad_repository.crear_lote(
+            conn, scope, celular, puntos, fecha_caducidad, usuario_id
+        )
+        saldo = await lealtad_repository.calcular_saldo(conn, scope, celular)
+        movimiento = await lealtad_repository.registrar_movimiento_devolviendo(
+            conn, scope, celular, lote["id"], None, "A", puntos, saldo, motivo, usuario_id
+        )
+        return MovimientoPuntoOut.model_validate(movimiento)
+
+    consumir_total = -puntos
+    lotes = await lealtad_repository.lotes_vigentes_for_update(conn, scope, celular)
+    disponible = sum(lote["puntos_disponibles"] for lote in lotes)
+    if disponible < consumir_total:
+        raise SaldoInsuficienteError(disponible, contexto="realizar el ajuste")
+
+    restante = consumir_total
+    saldo_actual = disponible
+    ultimo_movimiento: dict[str, Any] | None = None
+    for lote in lotes:
+        if restante <= 0:
+            break
+        consumir = min(lote["puntos_disponibles"], restante)
+        await lealtad_repository.descontar_lote(conn, lote["id"], consumir)
+        restante -= consumir
+        saldo_actual -= consumir
+        ultimo_movimiento = await lealtad_repository.registrar_movimiento_devolviendo(
+            conn, scope, celular, lote["id"], None, "A", -consumir, saldo_actual, motivo, usuario_id
+        )
+
+    # disponible >= consumir_total > 0 garantiza al menos una vuelta del for.
+    assert ultimo_movimiento is not None
+    return MovimientoPuntoOut.model_validate(ultimo_movimiento)
+
+
+async def buscar_clientes(
+    conn: asyncpg.Connection, current_user: TokenData, sucursal_id: UUID | None, q: str
+) -> list[ClienteLealtadOut]:
+    scope = resolver_sucursal(current_user, sucursal_id)
+    rows = await lealtad_repository.buscar_clientes(conn, scope, q)
+    return [ClienteLealtadOut.model_validate(r) for r in rows]
 
 
 async def listar_movimientos(
@@ -252,8 +326,17 @@ async def listar_movimientos(
 
 
 async def obtener_reporte(
-    conn: asyncpg.Connection, current_user: TokenData, sucursal_id: UUID | None
+    conn: asyncpg.Connection,
+    current_user: TokenData,
+    sucursal_id: UUID | None,
+    desde: date | None = None,
+    hasta: date | None = None,
 ) -> ReporteLealtadOut:
     scope = resolver_sucursal(current_user, sucursal_id)
-    data = await lealtad_repository.reporte_agregado(conn, scope)
-    return ReporteLealtadOut(sucursal_id=scope, **data)
+    data = await lealtad_repository.reporte_agregado(conn, scope, desde, hasta)
+    top = await lealtad_repository.top_clientes(conn, scope, desde, hasta)
+    return ReporteLealtadOut(
+        sucursal_id=scope,
+        **data,
+        top_clientes=[TopClienteLealtadOut.model_validate(r) for r in top],
+    )
