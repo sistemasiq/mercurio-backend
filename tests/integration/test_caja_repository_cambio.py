@@ -1,9 +1,11 @@
 """Verifica que el cambio se registra como su propio tipo de movimiento y
 nunca se cuenta como venta."""
+
 import uuid
 from decimal import Decimal
 
 from app.repositories import caja_repository
+
 from tests.integration.conftest import EFECTIVO_ID
 
 

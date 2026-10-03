@@ -1,10 +1,12 @@
 """Verifica que el ingreso de efectivo se excluye de las ventas y se puede
 sumar aparte (a diferencia de retiro/cambio, que restan del efectivo
 esperado, el ingreso suma)."""
+
 import uuid
 from decimal import Decimal
 
 from app.repositories import caja_repository
+
 from tests.integration.conftest import EFECTIVO_ID
 
 

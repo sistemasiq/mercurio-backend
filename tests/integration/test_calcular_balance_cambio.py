@@ -1,10 +1,12 @@
 """Verifica que _calcular_balance resta el cambio dado del efectivo
 esperado."""
+
 import uuid
 from decimal import Decimal
 
 from app.repositories import caja_repository
 from app.services import turnos_caja_service
+
 from tests.integration.conftest import EFECTIVO_ID
 
 
@@ -27,9 +29,12 @@ async def test_calcular_balance_resta_el_cambio_del_esperado(conn, apertura_prue
 
     apertura = await caja_repository.get_apertura_por_id(conn, apertura_prueba)
 
-    total_esperado, _total_declarado, _diferencia, _balance = await turnos_caja_service._calcular_balance(
-        conn, apertura, apertura_prueba
-    )
+    (
+        total_esperado,
+        _total_declarado,
+        _diferencia,
+        _balance,
+    ) = await turnos_caja_service._calcular_balance(conn, apertura, apertura_prueba)
 
     # fondo_inicial (1000.00, fijado por la fixture) + venta (200.00) - cambio (80.00) = 1120.00
     assert total_esperado == Decimal("1120.00")

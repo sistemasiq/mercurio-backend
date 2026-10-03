@@ -159,7 +159,9 @@ async def asociar_productos_a_paquete(
     await conn.execute(sql, *argumentos)
 
 
-async def obtener_items_de_paquete(conn: asyncpg.Connection, paquete_id: UUID) -> list[dict[str, Any]]:
+async def obtener_items_de_paquete(
+    conn: asyncpg.Connection, paquete_id: UUID
+) -> list[dict[str, Any]]:
     """Retorna los productos incluidos en el paquete junto con su detalle base."""
     sql = """
         SELECT pp.producto_id, p.nombre, p.precio_unitario, p.tipo, pp.cantidad
@@ -197,7 +199,8 @@ async def desasociar_todos_los_productos_de_paquete(
     """Desactiva lógicamente todos los productos incluidos de un paquete. Útil antes de una
     actualización completa de la lista de incluidos."""
     await conn.execute(
-        "UPDATE public.paquete_productos SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
+        "UPDATE public.paquete_productos "
+        "SET activo = FALSE, modificado = NOW(), modificado_por = $2 "
         "WHERE paquete_id = $1",
         paquete_id,
         usuario_id,

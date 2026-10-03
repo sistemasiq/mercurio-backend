@@ -2,19 +2,20 @@
 real -- el hallazgo de mayor severidad de la revisión: antes de este fix,
 un pago 100% tarjeta con `cambio` declarado generaba una salida de efectivo
 fantasma en el corte de caja."""
+
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
-
+from app.core import ws_manager
 from app.exceptions import DatosInvalidos
 from app.models.comanda import Comanda
 from app.repositories import comanda_repository
 from app.schemas.pagos import PagoCompletoRequest, PaymentItem
 from app.services import comanda_service, inventario_service, pago_service
-from app.core import ws_manager
+
 from tests.integration.conftest import EFECTIVO_ID, TARJETA_ID
 
 SUCURSAL_ID = "5e16533e-8d60-453a-9708-306bd64ad326"
@@ -47,11 +48,15 @@ def _parchar_colaboradores(monkeypatch, total_final: Decimal):
     async def fake_expandir_detalles_comanda(_conn, detalles):
         return detalles
 
-    monkeypatch.setattr(comanda_repository, "crear_comanda_con_detalles", fake_crear_comanda_con_detalles)
+    monkeypatch.setattr(
+        comanda_repository, "crear_comanda_con_detalles", fake_crear_comanda_con_detalles
+    )
     monkeypatch.setattr(inventario_service, "descontar_por_venta", fake_descontar_por_venta)
     monkeypatch.setattr(pago_service.pago_repository, "crear_pagos", fake_crear_pagos)
     monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
-    monkeypatch.setattr(comanda_service, "expandir_detalles_comanda", fake_expandir_detalles_comanda)
+    monkeypatch.setattr(
+        comanda_service, "expandir_detalles_comanda", fake_expandir_detalles_comanda
+    )
 
 
 async def test_tarjeta_con_cambio_se_rechaza(conn, apertura_prueba, monkeypatch):
@@ -64,7 +69,9 @@ async def test_tarjeta_con_cambio_se_rechaza(conn, apertura_prueba, monkeypatch)
         cambio=Decimal("80.00"),
     )
     with pytest.raises(DatosInvalidos):
-        await pago_service.completar_pago(conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba)
+        await pago_service.completar_pago(
+            conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba
+        )
 
 
 async def test_pago_mixto_invalido_se_rechaza(conn, apertura_prueba, monkeypatch):
@@ -82,10 +89,14 @@ async def test_pago_mixto_invalido_se_rechaza(conn, apertura_prueba, monkeypatch
         # Se corrige abajo con el valor que sí debe rechazarse.
     )
     # Con 100 de efectivo, un cambio de 80 es válido (80 <= 100) -- no debe lanzar.
-    await pago_service.completar_pago(conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba)
+    await pago_service.completar_pago(
+        conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba
+    )
 
 
-async def test_pago_mixto_cambio_mayor_al_efectivo_aportado_se_rechaza(conn, apertura_prueba, monkeypatch):
+async def test_pago_mixto_cambio_mayor_al_efectivo_aportado_se_rechaza(
+    conn, apertura_prueba, monkeypatch
+):
     _parchar_colaboradores(monkeypatch, Decimal("20.00"))
     body = PagoCompletoRequest(
         ticket_numero="TICK-TEST",
@@ -98,7 +109,9 @@ async def test_pago_mixto_cambio_mayor_al_efectivo_aportado_se_rechaza(conn, ape
         cambio=Decimal("150.00"),  # excedente total = 180, pero efectivo aportado = 100 < 150.
     )
     with pytest.raises(DatosInvalidos):
-        await pago_service.completar_pago(conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba)
+        await pago_service.completar_pago(
+            conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba
+        )
 
 
 async def test_cambio_excede_excedente_agregado_aunque_quepa_en_efectivo_se_rechaza(
@@ -120,4 +133,6 @@ async def test_cambio_excede_excedente_agregado_aunque_quepa_en_efectivo_se_rech
         cambio=Decimal("50.00"),
     )
     with pytest.raises(DatosInvalidos):
-        await pago_service.completar_pago(conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba)
+        await pago_service.completar_pago(
+            conn, body, UUID(CAJERO_ID), UUID(SUCURSAL_ID), apertura_prueba
+        )

@@ -109,6 +109,7 @@ async def exists_registro(
     )
     return bool(result)
 
+
 async def exists_registro_by_reservacion_id(
     conn: asyncpg.Connection,
     reservacion_id: UUID,

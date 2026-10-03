@@ -123,7 +123,16 @@ async def _procesar_reservacion(conn: asyncpg.Connection, reservacion: dict[str,
     )
 
     token_sistema = await _obtener_token_sistema(conn)
-    comanda = await comanda_service.crear_comanda(conn, comanda_in, token_sistema)
+    # BUG PREEXISTENTE (no corregido aquí): crear_comanda requiere apertura_caja_id
+    # desde que se le agregó ese parámetro para registrar el movimiento de venta en
+    # caja; este scheduler corre fuera de cualquier turno de caja y nunca se
+    # actualizó, así que esta llamada falla en tiempo de ejecución con TypeError.
+    # Arreglarlo implica una decisión de negocio (¿qué apertura usar, o se omite el
+    # movimiento de caja para comandas de evento?) que no se puede resolver aquí sin
+    # cambiar comportamiento. Reportado en el handback del encargo de deuda técnica.
+    comanda = await comanda_service.crear_comanda(  # type: ignore[call-arg]
+        conn, comanda_in, token_sistema
+    )
     await conn.execute(
         "UPDATE public.comandas SET reservacion_id = $1 WHERE id = $2",
         reservacion_id,

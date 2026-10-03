@@ -23,7 +23,7 @@ class PrecioEstanciaOut(BaseModel):
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
+    def parsear_config_estancia(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -82,8 +82,9 @@ class ProductoOut(ProductoBase):
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
-        """Si la BD retorna una cadena de texto JSON en lugar de una lista, la parsea automáticamente."""
+    def parsear_config_estancia(cls, v: Any) -> Any:
+        """Si la BD retorna una cadena de texto JSON en lugar de una lista,
+        la parsea automáticamente."""
         if isinstance(v, str):
             try:
                 return json.loads(v)

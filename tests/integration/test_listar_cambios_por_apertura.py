@@ -1,5 +1,6 @@
 """Verifica que listar_cambios_por_apertura expone los movimientos de cambio
 para trazabilidad en el arqueo -- mismo patrón que listar_retiros_por_apertura."""
+
 import uuid
 from decimal import Decimal
 

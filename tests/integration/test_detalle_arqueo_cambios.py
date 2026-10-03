@@ -1,12 +1,12 @@
 """Verifica que el detalle de arqueo expone los movimientos de cambio del
 turno, con el mismo nivel de trazabilidad que ya tienen los retiros
 parciales."""
+
 import json
 import uuid
 from decimal import Decimal
 
 import pytest_asyncio
-
 from app.repositories import caja_repository
 from app.services import turnos_caja_service
 
@@ -16,10 +16,15 @@ async def cierre_con_cambio(conn, apertura_prueba):
     """Crea un cierre confirmado sobre la apertura de prueba, con un
     movimiento de cambio ya registrado, y lo limpia al terminar."""
     await caja_repository.registrar_cambio_caja(
-        conn, apertura_caja_id=apertura_prueba, referencia_id=str(uuid.uuid4()), monto=Decimal("80.00")
+        conn,
+        apertura_caja_id=apertura_prueba,
+        referencia_id=str(uuid.uuid4()),
+        monto=Decimal("80.00"),
     )
     await caja_repository.actualizar_conteo_apertura(
-        conn, apertura_prueba, Decimal("1000.00"),
+        conn,
+        apertura_prueba,
+        Decimal("1000.00"),
         json.dumps({"desglose_efectivo": {"total": 1000.00}, "metodos_pago": []}),
     )
     apertura = await caja_repository.get_apertura_por_id(conn, apertura_prueba)

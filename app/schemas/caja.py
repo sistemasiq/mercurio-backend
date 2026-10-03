@@ -6,6 +6,7 @@ Esquemas Pydantic para el módulo de Cierre de Caja, Apertura, Retiros y Catálo
 import uuid
 from datetime import datetime, time
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -280,8 +281,8 @@ class ResumenHistorialArqueosOut(BaseModel):
 
 
 class DesgloseEfectivoDetalle(BaseModel):
-    billetes: list[dict] = []
-    monedas: list[dict] = []
+    billetes: list[dict[str, Any]] = []
+    monedas: list[dict[str, Any]] = []
     total: Decimal
 
 

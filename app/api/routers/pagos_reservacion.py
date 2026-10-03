@@ -8,7 +8,6 @@ from app.api.deps import apertura_operando_id, require_permission
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.schemas.auth import TokenData
-from app.services import turnos_caja_service
 from app.schemas.pagos_reservacion import (
     PagosReservacionCompletarRequest,
     PagosReservacionCompletarResponse,
@@ -16,6 +15,7 @@ from app.schemas.pagos_reservacion import (
     PagosReservacionOut,
     PagosReservacionUpdate,
 )
+from app.services import turnos_caja_service
 
 router = APIRouter(prefix="/api/pagos-reservacion", tags=["Pagos de Reservación"])
 

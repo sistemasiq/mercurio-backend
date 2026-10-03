@@ -84,7 +84,7 @@ from app.schemas.caja import (
 
 
 class TurnoNoEncontradoError(HTTPException):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -125,7 +125,7 @@ class CredencialesAdminInvalidasError(HTTPException):
 
 
 class SucursalNoAutorizadaError(HTTPException):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -391,7 +391,7 @@ async def enviar_conteo(
 
 
 async def _calcular_balance(
-    conn: asyncpg.Connection, apertura: dict, turno_id: str
+    conn: asyncpg.Connection, apertura: dict[str, Any], turno_id: str
 ) -> tuple[Decimal, Decimal, Decimal, list[FilaBalance]]:
     """Balance real del cierre. Devuelve dos vistas distintas:
     - `balance` (por método): el renglón "efectivo" compara el dinero físico —
@@ -599,7 +599,7 @@ async def validar_pin_cajero(
     user_id: str,
     turno_id: str,
     pin: str,
-) -> dict:
+) -> dict[str, Any]:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -635,7 +635,7 @@ async def validar_pin_admin(
     turno_id: str,
     admin_email: str,
     pin: str,
-) -> dict:
+) -> dict[str, Any]:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -1031,6 +1031,8 @@ async def obtener_detalle(
 
     apertura_caja_id = str(cierre["apertura_caja_id"])
     apertura = await get_apertura_por_id(conn, apertura_caja_id)
+    if not apertura:
+        raise TurnoNoEncontradoError()
     _, _, _, balance = await _calcular_balance(conn, apertura, apertura_caja_id)
     retiros_raw = await listar_retiros_por_apertura(conn, apertura_caja_id)
     retiros = [

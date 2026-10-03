@@ -50,7 +50,7 @@ async def obtener_evento_cercano(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_db),
     _: TokenData = Depends(require_permission("reservaciones:ver")),
-) -> EventoDelDiaOut:
+) -> EventoDelDiaOut | None:
     return await svc.obtener_evento_cercano(conn, sucursal_id)
 
 
