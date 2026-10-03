@@ -24,11 +24,15 @@ WHERE r.id = o.id;
 
 -- La secuencia continúa después del folio más alto ya asignado, para que la
 -- siguiente reservación creada por la aplicación (nextval) no choque con el
--- backfill.
+-- backfill. Sin reservaciones no hay folio previo: setval no acepta 0, así que
+-- se deja en 1 con is_called = false y el primer nextval devuelve 1.
 SELECT setval(
     'public.reservaciones_folio_seq',
-    COALESCE(
-        (SELECT MAX(SUBSTRING(folio FROM 3)::int) FROM public.reservaciones WHERE folio ~ '^R-\d+$'),
-        0
-    )
-);
+    COALESCE(m.maximo, 1),
+    m.maximo IS NOT NULL
+)
+FROM (
+    SELECT MAX(SUBSTRING(folio FROM 3)::int) AS maximo
+    FROM public.reservaciones
+    WHERE folio ~ '^R-\d+$'
+) m;
