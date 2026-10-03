@@ -23,7 +23,7 @@ class PrecioEstanciaOut(BaseModel):
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
+    def parsear_config_estancia(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -43,6 +43,7 @@ class ProductoBase(BaseModel):
     tipo: TipoProducto
     descripcion: str | None = None
     imagen: str | None = None
+    codigo: str | None = Field(None, max_length=50)
 
 
 class ProductoCrear(ProductoBase):
@@ -57,6 +58,7 @@ class ProductoUpdate(BaseModel):
     tipo: TipoProducto | None = None
     descripcion: str | None = None
     imagen: str | None = None
+    codigo: str | None = Field(None, max_length=50)
     activo: bool | None = None
     productos_combo: list[ComboItem] | None = None
     config_estancia: list[TramoEstanciaSchema] | None = None
@@ -73,13 +75,16 @@ class ProductoOut(ProductoBase):
     modificado_por: UUID | None = None
     productos_combo: list[dict[str, Any]] | None = None
     config_estancia: list[TramoEstanciaSchema] | None = None
+    # Solo lo puebla el listado de administración (costo de la receta).
+    costo_receta: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
     @field_validator("config_estancia", mode="before")
     @classmethod
-    def parsear_config_estancia(cls, v: Any):
-        """Si la BD retorna una cadena de texto JSON en lugar de una lista, la parsea automáticamente."""
+    def parsear_config_estancia(cls, v: Any) -> Any:
+        """Si la BD retorna una cadena de texto JSON en lugar de una lista,
+        la parsea automáticamente."""
         if isinstance(v, str):
             try:
                 return json.loads(v)

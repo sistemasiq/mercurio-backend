@@ -4,16 +4,18 @@ pago en efectivo excede el total. Los colaboradores de otros módulos
 sustituyen por dobles de prueba -- no son responsabilidad de Cierre de Caja
 y fabricar un catálogo de productos/insumos real no aporta nada a esta
 prueba."""
+
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+from app.core import ws_manager
 from app.models.comanda import Comanda
 from app.repositories import caja_repository, comanda_repository
 from app.schemas.pagos import PagoCompletoRequest, PaymentItem
 from app.services import comanda_service, inventario_service, pago_service
-from app.core import ws_manager
+
 from tests.integration.conftest import EFECTIVO_ID
 
 SUCURSAL_ID = "5e16533e-8d60-453a-9708-306bd64ad326"
@@ -48,11 +50,15 @@ async def test_completar_pago_registra_el_cambio_cuando_excede_el_total(
     async def fake_expandir_detalles_comanda(_conn, detalles):
         return detalles
 
-    monkeypatch.setattr(comanda_repository, "crear_comanda_con_detalles", fake_crear_comanda_con_detalles)
+    monkeypatch.setattr(
+        comanda_repository, "crear_comanda_con_detalles", fake_crear_comanda_con_detalles
+    )
     monkeypatch.setattr(inventario_service, "descontar_por_venta", fake_descontar_por_venta)
     monkeypatch.setattr(pago_service.pago_repository, "crear_pagos", fake_crear_pagos)
     monkeypatch.setattr(ws_manager.manager, "broadcast", fake_broadcast)
-    monkeypatch.setattr(comanda_service, "expandir_detalles_comanda", fake_expandir_detalles_comanda)
+    monkeypatch.setattr(
+        comanda_service, "expandir_detalles_comanda", fake_expandir_detalles_comanda
+    )
 
     body = PagoCompletoRequest(
         ticket_numero="TICK-TEST",

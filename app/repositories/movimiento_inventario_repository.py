@@ -138,3 +138,65 @@ async def reporte_cogs(
         *params,
     )
     return [dict(r) for r in rows]
+
+
+async def resumen_costo_ventas(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> dict[str, Any]:
+    """KPIs del reporte de costo de ventas (B7 pendiente #3): ventas totales
+    de comandas en el periodo, costo de lo vendido (motivo venta_comanda),
+    margen (ventas - costo) y merma (motivo merma, por separado del costo
+    de venta)."""
+    conditions_mov = ["mi.sucursal_id = $1"]
+    conditions_com = ["c.sucursal_id = $1", "c.estado_actual <> 'C'"]
+    params: list[Any] = [sucursal_id]
+    if desde is not None:
+        params.append(desde)
+        idx = len(params)
+        conditions_mov.append(f"mi.creado >= ${idx}")
+        conditions_com.append(f"c.fecha_hora >= ${idx}")
+    if hasta is not None:
+        params.append(hasta)
+        idx = len(params)
+        conditions_mov.append(f"mi.creado < ${idx}::date + interval '1 day'")
+        conditions_com.append(f"c.fecha_hora < ${idx}::date + interval '1 day'")
+
+    where_mov = " AND ".join(conditions_mov)
+    where_com = " AND ".join(conditions_com)
+
+    costo_venta_row = await conn.fetchrow(
+        f"""
+        SELECT COALESCE(SUM(mi.costo_total), 0) AS costo_ventas
+        FROM public.movimientos_inventario mi
+        WHERE {where_mov} AND mi.motivo = 'venta_comanda'
+        """,
+        *params,
+    )
+    merma_row = await conn.fetchrow(
+        f"""
+        SELECT COALESCE(SUM(mi.costo_total), 0) AS merma
+        FROM public.movimientos_inventario mi
+        WHERE {where_mov} AND mi.motivo = 'merma'
+        """,
+        *params,
+    )
+    ventas_row = await conn.fetchrow(
+        f"""
+        SELECT COALESCE(SUM(c.total_final), 0) AS ventas_totales
+        FROM public.comandas c
+        WHERE {where_com}
+        """,
+        *params,
+    )
+    costo_ventas = Decimal(str(costo_venta_row["costo_ventas"]))
+    merma = Decimal(str(merma_row["merma"]))
+    ventas_totales = Decimal(str(ventas_row["ventas_totales"]))
+    return {
+        "ventas_totales": ventas_totales,
+        "costo_ventas": costo_ventas,
+        "margen": ventas_totales - costo_ventas,
+        "merma": merma,
+    }

@@ -12,6 +12,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import require_permission
 from app.core.database import get_db
@@ -22,8 +23,21 @@ from app.schemas.movimiento_inventario import (
     MovimientoManualCreate,
 )
 from app.services import inventario_service
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/insumos", tags=["Movimientos de Inventario"])
+
+_KARDEX_CSV_CAMPOS = [
+    "creado",
+    "insumo_nombre",
+    "tipo",
+    "motivo",
+    "cantidad",
+    "stock_resultante",
+    "costo_total",
+    "notas",
+    "creado_por",
+]
 
 
 @router.get("/{insumo_id}/movimientos", response_model=list[MovimientoInventarioOut])
@@ -37,6 +51,22 @@ async def listar_movimientos(
     """Historial de movimientos del insumo (kardex), opcionalmente acotado
     a un rango de fechas con `desde`/`hasta` (YYYY-MM-DD)."""
     return await inventario_service.listar_movimientos(conn, insumo_id, desde, hasta)
+
+
+@router.get(
+    "/{insumo_id}/movimientos/export",
+    summary="Exporta el kardex del insumo a CSV",
+)
+async def exportar_movimientos(
+    insumo_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("inventario:ver_movimientos")),
+) -> StreamingResponse:
+    movimientos = await inventario_service.listar_movimientos(conn, insumo_id, desde, hasta)
+    filas = (m.model_dump() for m in movimientos)
+    return csv_streaming_response(_KARDEX_CSV_CAMPOS, filas, f"kardex_{insumo_id}.csv")
 
 
 @router.post(

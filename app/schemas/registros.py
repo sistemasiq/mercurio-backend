@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.schemas.ninos import NinoIn
 from app.schemas.pagos import PagoIn
 from app.schemas.producto import TramoEstanciaSchema
@@ -76,6 +77,8 @@ class DetalleActivoResponse(BaseModel):
     pulsera: str
     minutosPagados: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
     minutosTranscurridos: float  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    horaEntrada: str  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
+    cargoExtra: float = 0.0  # noqa: N815 — camelCase requerido por el contrato JSON del frontend
 
 
 class ProductoEstanciaResponse(BaseModel):

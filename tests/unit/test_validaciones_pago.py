@@ -1,11 +1,11 @@
 """Pruebas unitarias de validar_cambio: sin DB, sin async -- es una función
 pura. Cubre los casos adversariales de integridad de efectivo del módulo de
 Caja."""
+
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-
 from app.exceptions import DatosInvalidos
 from app.services.validaciones_pago import validar_cambio
 

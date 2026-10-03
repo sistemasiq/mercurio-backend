@@ -123,7 +123,11 @@ async def _procesar_reservacion(conn: asyncpg.Connection, reservacion: dict[str,
     )
 
     token_sistema = await _obtener_token_sistema(conn)
-    comanda = await comanda_service.crear_comanda(conn, comanda_in, token_sistema)
+    # Sin movimiento de caja (apertura_caja_id=None): el scheduler corre fuera de
+    # cualquier turno y el ingreso del evento ya se cobró en pagos_reservacion.
+    comanda = await comanda_service.crear_comanda(
+        conn, comanda_in, token_sistema, apertura_caja_id=None
+    )
     await conn.execute(
         "UPDATE public.comandas SET reservacion_id = $1 WHERE id = $2",
         reservacion_id,

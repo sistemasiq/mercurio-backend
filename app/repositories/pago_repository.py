@@ -9,10 +9,10 @@ from app.schemas.pagos import PaymentItem
 
 _INSERT = """
     INSERT INTO pagos_ordenes
-        (comanda_id, metodo_pago_id, monto, notas_pago, sucursal_id, creado_por)
-    VALUES ($1, $2, $3, $4, $5, $6)
+        (comanda_id, metodo_pago_id, monto, notas_pago, ultimos4, sucursal_id, creado_por)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING
-        id, comanda_id, metodo_pago_id, monto, notas_pago,
+        id, comanda_id, metodo_pago_id, monto, notas_pago, ultimos4,
         sucursal_id, creado, creado_por
 """
 
@@ -121,6 +121,16 @@ _SELECT_HISTORIAL = f"""
     WHERE v.sucursal_id = $1
       AND v.creado >= $2::timestamptz
       AND ($3::timestamptz IS NULL OR v.creado <= $3::timestamptz)
+      AND (
+          $5::uuid IS NULL
+          OR EXISTS (
+              SELECT 1
+              FROM public.movimientos_caja mc
+              JOIN public.apertura_caja ac ON ac.id = mc.apertura_caja_id
+              WHERE mc.referencia_id = v.referencia_id
+                AND ac.caja_id = $5::uuid
+          )
+      )
     GROUP BY
         v.referencia_id, v.tipo_origen, v.titulo, v.estado_actual, v.sucursal_id
     HAVING (
@@ -128,8 +138,44 @@ _SELECT_HISTORIAL = f"""
         OR ($4 = 'pagado' AND NOT bool_or(v.es_cancelado))
         OR ($4 = 'cancelado' AND bool_or(v.es_cancelado))
     )
+    AND ($6::uuid IS NULL OR bool_or(v.metodo_pago_id = $6::uuid))
     ORDER BY MAX(v.creado) DESC
 """
+
+
+_SELECT_IDEMPOTENCIA = """
+    SELECT clave, sucursal_id, usuario_id, hash_payload, comanda_id, creado
+    FROM public.pagos_idempotencia
+    WHERE clave = $1
+"""
+
+_INSERT_IDEMPOTENCIA = """
+    INSERT INTO public.pagos_idempotencia
+        (clave, sucursal_id, usuario_id, hash_payload, comanda_id)
+    VALUES ($1, $2, $3, $4, $5)
+"""
+
+
+async def obtener_idempotencia(
+    conn: asyncpg.Connection,
+    clave: str,
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(_SELECT_IDEMPOTENCIA, clave)
+    return dict(row) if row else None
+
+
+async def registrar_idempotencia(
+    conn: asyncpg.Connection,
+    clave: str,
+    sucursal_id: UUID,
+    usuario_id: UUID,
+    hash_payload: str,
+    comanda_id: UUID,
+) -> None:
+    """Se llama dentro de la misma transacción del cobro (QA #20)."""
+    await conn.execute(
+        _INSERT_IDEMPOTENCIA, clave, sucursal_id, usuario_id, hash_payload, comanda_id
+    )
 
 
 async def crear_pagos(
@@ -147,6 +193,7 @@ async def crear_pagos(
             pago.metodo_pago_id,
             pago.monto,
             pago.notas_pago or "",
+            pago.ultimos4,
             sucursal_id,
             usuario_id,
         )
@@ -160,8 +207,12 @@ async def historial(
     desde: datetime,
     estado: str = "todos",
     hasta: datetime | None = None,
+    caja_id: UUID | None = None,
+    metodo_pago_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
-    rows = await conn.fetch(_SELECT_HISTORIAL, sucursal_id, desde, hasta, estado)
+    rows = await conn.fetch(
+        _SELECT_HISTORIAL, sucursal_id, desde, hasta, estado, caja_id, metodo_pago_id
+    )
     resultados: list[dict[str, Any]] = []
     for r in rows:
         d = dict(r)
@@ -184,6 +235,7 @@ _SELECT_DETALLE_COMANDA = """
         c.fecha_hora,
         c.motivo_cancelacion,
         c.nombre_cliente,
+        c.mesa,
         u.nombre_completo  AS creado_por_nombre
     FROM comandas c
     LEFT JOIN usuarios u ON u.id = c.creado_por
@@ -194,10 +246,17 @@ _SELECT_DETALLE_PAGOS = """
     SELECT
         mp.nombre  AS metodo_pago_nombre,
         po.monto,
-        po.notas_pago
+        po.notas_pago,
+        po.ultimos4
     FROM pagos_ordenes po
     JOIN metodos_pago mp ON mp.id = po.metodo_pago_id
     WHERE po.comanda_id = $1
+"""
+
+_SELECT_PUNTOS_GANADOS_COMANDA = """
+    SELECT SUM(puntos)
+    FROM public.movimientos_puntos
+    WHERE comanda_id = $1 AND tipo = 'O'
 """
 
 _SELECT_DETALLE_PRODUCTOS = """
@@ -208,6 +267,7 @@ _SELECT_DETALLE_PRODUCTOS = """
         dc.importe,
         dc.notas_especiales,
         dc.nombre_combo_padre,
+        dc.id_combo_padre,
         p.nombre AS producto_nombre
     FROM detalles_comanda dc
     LEFT JOIN productos p ON p.id = dc.producto_id
@@ -225,6 +285,7 @@ async def detalle_por_comanda(
 
     pagos_rows = await conn.fetch(_SELECT_DETALLE_PAGOS, comanda_id)
     productos_rows = await conn.fetch(_SELECT_DETALLE_PRODUCTOS, comanda_id)
+    puntos_ganados = await conn.fetchval(_SELECT_PUNTOS_GANADOS_COMANDA, comanda_id)
 
     c = dict(comanda_row)
     metodos_pago = [
@@ -232,6 +293,7 @@ async def detalle_por_comanda(
             "metodo_pago_nombre": dict(p)["metodo_pago_nombre"],
             "monto": float(dict(p)["monto"]),
             "notas_pago": dict(p)["notas_pago"],
+            "ultimos4": dict(p).get("ultimos4"),
         }
         for p in pagos_rows
     ]
@@ -244,6 +306,10 @@ async def detalle_por_comanda(
             "importe": float(dict(row)["importe"]),
             "notas_especiales": dict(row)["notas_especiales"],
             "nombre_combo_padre": dict(row)["nombre_combo_padre"],
+            # QA #34: agrupa hijos de combo por instancia en vez de por orden.
+            "id_combo_padre": (
+                str(dict(row)["id_combo_padre"]) if dict(row).get("id_combo_padre") else None
+            ),
         }
         for row in productos_rows
     ]
@@ -260,8 +326,10 @@ async def detalle_por_comanda(
         "motivo_cancelacion": c.get("motivo_cancelacion"),
         "creado_por_nombre": c["creado_por_nombre"],
         "nombre_cliente": c.get("nombre_cliente"),
+        "mesa": c.get("mesa"),
         "metodos_pago": metodos_pago,
         "detalles": detalles,
+        "puntos_ganados": int(puntos_ganados) if puntos_ganados is not None else None,
     }
 
 
@@ -392,9 +460,7 @@ def _armar_detalles(items_rows: list[asyncpg.Record]) -> list[dict[str, Any]]:
     ]
 
 
-async def _detalle_estancia(
-    conn: asyncpg.Connection, registro_id: UUID
-) -> dict[str, Any] | None:
+async def _detalle_estancia(conn: asyncpg.Connection, registro_id: UUID) -> dict[str, Any] | None:
     row = await conn.fetchrow(_SELECT_DETALLE_ESTANCIA, registro_id)
     if not row:
         return None

@@ -43,7 +43,7 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # Librerías sin stubs completos
-module = ["asyncpg.*", "passlib.*", "jose.*"]
+module = ["asyncpg.*", "passlib.*", "jose.*", "reportlab.*"]
 ignore_missing_imports = true
 
 # ----------------------------------------------------------------------

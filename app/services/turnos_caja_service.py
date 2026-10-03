@@ -7,19 +7,27 @@ Maneja las reglas de negocio (RN-APE, RN-CIE, RN-VAL), validaciones y segregaci�
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
+from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import asyncpg
 from fastapi import HTTPException, status
 
+from app.core.config import settings
 from app.core.security import verify_password
+from app.core.utils import get_mexico_now
+from app.exceptions import PinTokenRequeridoError
+from app.repositories import pin_token_repository
 from app.repositories.caja_repository import (
     actualizar_admin_autorizacion,
     actualizar_conteo_apertura,
     actualizar_estado_apertura,
     calcular_efectivo_disponible,
     contar_historial_cierres,
+    contar_ventas_apertura,
     crear_apertura_caja,
     crear_cierre_caja,
     crear_retiro_parcial,
@@ -39,12 +47,14 @@ from app.repositories.caja_repository import (
     registrar_ingreso_efectivo,
     registrar_movimiento_caja,
     resetear_conteo_apertura,
+    resumen_historial_cierres,
     sumar_cambio_apertura,
     sumar_ingresos_por_apertura,
     sumar_retiros_por_apertura,
     sumar_total_ventas_apertura,
     sumar_ventas_efectivo_apertura,
 )
+from app.repositories.user_repository import get_usuario_by_id
 from app.schemas.caja import (
     AbrirTurnoPayload,
     ArqueoResumen,
@@ -63,6 +73,7 @@ from app.schemas.caja import (
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
     MovimientoResumen,
+    ResumenHistorialArqueosOut,
     RetiroParcialCreate,
     RetiroParcialResponse,
     RevisionAdminPayload,
@@ -73,10 +84,13 @@ from app.schemas.caja import (
 
 
 class TurnoNoEncontradoError(HTTPException):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TURNO_NO_ENCONTRADO", "message": "No se encontró un turno activo para esta sesión."},
+            detail={
+                "code": "TURNO_NO_ENCONTRADO",
+                "message": "No se encontró un turno activo para esta sesión.",
+            },
         )
 
 
@@ -111,7 +125,7 @@ class CredencialesAdminInvalidasError(HTTPException):
 
 
 class SucursalNoAutorizadaError(HTTPException):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -121,7 +135,9 @@ class SucursalNoAutorizadaError(HTTPException):
         )
 
 
-async def obtener_cajas(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[CajaResponse]:
+async def obtener_cajas(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[CajaResponse]:
     rows = await listar_cajas_por_sucursal(conn, sucursal_id)
     return [
         CajaResponse(
@@ -172,6 +188,26 @@ async def abrir_turno(
             )
         return await obtener_turno_activo(conn, user_id, sucursal)
 
+    # C1: el cajero que abre el turno debe validar su PIN (o su contraseña,
+    # mientras no tenga PIN configurado), igual que ya se exige en el cierre.
+    if not payload.pin:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "PIN_REQUERIDO",
+                "message": "Debes ingresar tu PIN de caja para abrir el turno.",
+            },
+        )
+    cajero_row = await get_usuario_by_id(conn, uuid.UUID(str(user_id)))
+    if not cajero_row:
+        raise CredencialesAdminInvalidasError("Usuario no encontrado.")
+    cajero_pin_hash = cajero_row["pin_hash"]
+    pin_ok = verify_password(payload.pin, cajero_pin_hash) if cajero_pin_hash else False
+    if not pin_ok:
+        pin_ok = verify_password(payload.pin, cajero_row["password_hash"])
+    if not pin_ok:
+        raise CredencialesAdminInvalidasError("El PIN ingresado es incorrecto.")
+
     if not sucursal:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -183,14 +219,22 @@ async def abrir_turno(
     if not payload.terminal:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "TERMINAL_REQUERIDA", "message": "Debes seleccionar una caja o terminal."},
+            detail={
+                "code": "TERMINAL_REQUERIDA",
+                "message": "Debes seleccionar una caja o terminal.",
+            },
         )
 
     caja = await get_caja_por_codigo(conn, sucursal, payload.terminal)
     if not caja:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "CAJA_NO_ENCONTRADA", "message": "La caja seleccionada no existe. Solicita al administrador que la registre."},
+            detail={
+                "code": "CAJA_NO_ENCONTRADA",
+                "message": (
+                    "La caja seleccionada no existe. " "Solicita al administrador que la registre."
+                ),
+            },
         )
 
     caja_id = str(caja["id"])
@@ -200,7 +244,10 @@ async def abrir_turno(
     if caja_activa:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "CAJA_OCUPADA", "message": "La caja física seleccionada ya cuenta con un turno activo."},
+            detail={
+                "code": "CAJA_OCUPADA",
+                "message": "La caja física seleccionada ya cuenta con un turno activo.",
+            },
         )
 
     if not payload.turno_id:
@@ -246,26 +293,36 @@ async def obtener_turno_activo(
 
     apertura_id = str(activa["id"])
     total_ventas = await sumar_total_ventas_apertura(conn, apertura_id)
+    numero_ventas = await contar_ventas_apertura(conn, apertura_id)
     total_retiros = await sumar_retiros_por_apertura(conn, apertura_id)
     total_ingresos = await sumar_ingresos_por_apertura(conn, apertura_id)
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
 
     movimientos = [
-        MovimientoResumen(metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"])))
+        MovimientoResumen(
+            metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"]))
+        )
         for r in movs_raw
     ]
 
     # apertura_caja.estado solo distingue ABIERTA/EN_CORTE/CERRADA — el sub-estado real
     # de EN_CORTE (¿el cajero ya envió su conteo y quedó congelado, o todavía lo está
-    # llenando?) se infiere de monto_declarado. Sin esto, recargar la página después de
-    # enviar el conteo mostraba otra vez el formulario vacío en vez del modal de espera
-    # del administrador, y un segundo "Enviar conteo" chocaba con el ya congelado.
+    # llenando, o ya autenticó un admin?) se infiere de monto_declarado/token_admin_jti.
+    # Sin esto, recargar la página después de enviar el conteo mostraba otra vez el
+    # formulario vacío en vez del modal de espera del administrador, y recargar tras
+    # BALANCE_REVELADO perdía el balance (quedaba solo en sessionStorage, QA #8).
+    admin_email: str | None = None
+    balance_por_metodo: list[FilaBalance] = []
     if activa["estado"] != "EN_CORTE":
         estado_ui = "OPERANDO"
     elif activa["monto_declarado"] is None:
         estado_ui = "EN_CONTEO"
-    else:
+    elif activa.get("token_admin_jti") is None:
         estado_ui = "ESPERANDO_REVISION"
+    else:
+        estado_ui = "BALANCE_REVELADO"
+        admin_email = activa.get("admin_email")
+        _, _, _, balance_por_metodo = await _calcular_balance(conn, activa, apertura_id)
 
     return TurnoActivoResponse(
         id=apertura_id,
@@ -278,13 +335,19 @@ async def obtener_turno_activo(
         fondo_inicial=Decimal(str(activa["fondo_inicial"])),
         fecha_apertura=str(activa["fecha_apertura"]),
         total_ventas=total_ventas,
+        numero_ventas=numero_ventas,
+        total_vendido=total_ventas,
         total_retiros=total_retiros,
         total_ingresos=total_ingresos,
         movimientos=movimientos,
+        admin_email=admin_email,
+        balance_por_metodo=balance_por_metodo,
     )
 
 
-async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def iniciar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -298,7 +361,9 @@ async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) 
     return await obtener_turno_activo(conn, user_id)
 
 
-async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoPayload) -> TurnoActivoResponse:
+async def enviar_conteo(
+    conn: asyncpg.Connection, user_id: str, payload: ConteoPayload
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, payload.turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -326,7 +391,7 @@ async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoP
 
 
 async def _calcular_balance(
-    conn: asyncpg.Connection, apertura: dict, turno_id: str
+    conn: asyncpg.Connection, apertura: dict[str, Any], turno_id: str
 ) -> tuple[Decimal, Decimal, Decimal, list[FilaBalance]]:
     """Balance real del cierre. Devuelve dos vistas distintas:
     - `balance` (por método): el renglón "efectivo" compara el dinero físico —
@@ -436,7 +501,9 @@ async def _calcular_balance(
     return total_esperado_general, total_declarado_general, diferencia_neta_general, balance
 
 
-async def _verificar_credenciales_usuario(conn: asyncpg.Connection, email: str, password: str) -> asyncpg.Record:
+async def _verificar_credenciales_usuario(
+    conn: asyncpg.Connection, email: str, password: str
+) -> asyncpg.Record:
     """Busca el usuario por email y verifica su contraseña o PIN contra la BD.
     Lanza CredencialesAdminInvalidasError si no existe o las credenciales son incorrectas."""
     row = await conn.fetchrow(
@@ -466,7 +533,9 @@ async def autenticar_admin_revision(
     user_id: str,
     payload: RevisionAdminPayload,
 ) -> RevisionAdminResponse:
-    admin_row = await _verificar_credenciales_usuario(conn, payload.admin_email, payload.admin_password)
+    admin_row = await _verificar_credenciales_usuario(
+        conn, payload.admin_email, payload.admin_password
+    )
 
     # 3. Calcular montos esperados reales para el turno
     apertura = await get_apertura_por_id(conn, payload.turno_id)
@@ -501,12 +570,36 @@ async def autenticar_admin_revision(
     )
 
 
+async def _emitir_token_pin(
+    conn: asyncpg.Connection, usuario_id: str, turno_id: str, rol: str
+) -> str:
+    """QA #14: token de un solo uso con vigencia de 5 minutos, emitido al
+    validar el PIN del cajero o del administrador."""
+    token = secrets.token_urlsafe(32)
+    expira = get_mexico_now() + timedelta(minutes=5)
+    await pin_token_repository.crear_token(conn, token, usuario_id, turno_id, rol, expira)
+    return token
+
+
+async def _validar_y_consumir_token_pin(
+    conn: asyncpg.Connection, token: str, turno_id: str, rol: str
+) -> None:
+    fila = await pin_token_repository.obtener_token(conn, token, turno_id, rol)
+    if not fila:
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} no es válido para este turno.")
+    if fila["usado"]:
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} ya fue usado.")
+    if fila["expira"] < get_mexico_now():
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} expiró, vuelve a validar el PIN.")
+    await pin_token_repository.marcar_usado(conn, token)
+
+
 async def validar_pin_cajero(
     conn: asyncpg.Connection,
     user_id: str,
     turno_id: str,
     pin: str,
-) -> dict:
+) -> dict[str, Any]:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -529,7 +622,12 @@ async def validar_pin_cajero(
     if not pin_ok:
         raise CredencialesAdminInvalidasError("El PIN ingresado para el Cajero es incorrecto.")
 
-    return {"ok": True, "mensaje": "PIN del Cajero verificado correctamente."}
+    token = await _emitir_token_pin(conn, str(cajero_row["id"]), turno_id, "cajero")
+    return {
+        "ok": True,
+        "mensaje": "PIN del Cajero verificado correctamente.",
+        "token_pin": token,
+    }
 
 
 async def validar_pin_admin(
@@ -537,7 +635,7 @@ async def validar_pin_admin(
     turno_id: str,
     admin_email: str,
     pin: str,
-) -> dict:
+) -> dict[str, Any]:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -560,12 +658,21 @@ async def validar_pin_admin(
         pin_ok = verify_password(pin, admin_row["password_hash"])
 
     if not pin_ok:
-        raise CredencialesAdminInvalidasError("El PIN ingresado para el Administrador es incorrecto.")
+        raise CredencialesAdminInvalidasError(
+            "El PIN ingresado para el Administrador es incorrecto."
+        )
 
-    return {"ok": True, "mensaje": "PIN del Administrador verificado correctamente."}
+    token = await _emitir_token_pin(conn, str(admin_row["id"]), turno_id, "admin")
+    return {
+        "ok": True,
+        "mensaje": "PIN del Administrador verificado correctamente.",
+        "token_pin": token,
+    }
 
 
-async def cancelar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def cancelar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -594,7 +701,10 @@ async def obtener_apertura_operando_id(conn: asyncpg.Connection, user_id: str) -
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "TURNO_NO_ABIERTO",
-                "message": "Debes tener un turno de caja abierto (operando) para registrar ventas o pagos.",
+                "message": (
+                    "Debes tener un turno de caja abierto (operando) para "
+                    "registrar ventas o pagos."
+                ),
             },
         )
     return str(apertura["id"])
@@ -686,7 +796,9 @@ def advertencia_efectivo_insuficiente(disponible_antes: Decimal, cambio: Decimal
     solo que aquí no bloquea, avisa."""
     if cambio <= disponible_antes:
         return None
-    return "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    return (
+        "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    )
 
 
 async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[RetiroParcialResponse]:
@@ -750,6 +862,17 @@ async def confirmar_cierre(
     if apertura["token_admin_jti"] is None:
         raise TransicionInvalidaError("Aún no se ha autorizado la revisión de un administrador.")
 
+    # QA #14: exige y consume los tokens de un solo uso de cajero y admin.
+    if settings.exigir_pin_token:
+        if not payload.token_pin_cajero or not payload.token_pin_admin:
+            raise PinTokenRequeridoError()
+        await _validar_y_consumir_token_pin(
+            conn, payload.token_pin_cajero, payload.turno_id, "cajero"
+        )
+        await _validar_y_consumir_token_pin(
+            conn, payload.token_pin_admin, payload.turno_id, "admin"
+        )
+
     admin_id = str(apertura["token_admin_jti"])
     total_esperado, total_declarado, diferencia_neta, balance = await _calcular_balance(
         conn, apertura, payload.turno_id
@@ -793,22 +916,15 @@ async def obtener_metodos_pago_activo(
     return [MetodoPagoTurnoResponse(id=str(r["id"]), nombre=r["nombre"]) for r in rows]
 
 
-async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) -> HistorialArqueosResponse:
-    offset = (filtros.page - 1) * filtros.page_size
-    items_raw = await listar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-        offset=offset,
-        limit=filtros.page_size,
-    )
-    total = await contar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-    )
+def _parse_fecha_filtro(valor: str | None) -> datetime | None:
+    """`fecha_desde`/`fecha_hasta` llegan como 'YYYY-MM-DD' desde el front."""
+    if not valor:
+        return None
+    return datetime.fromisoformat(valor)
 
-    items = [
+
+def _arqueos_desde_filas(rows: list[dict[str, Any]]) -> list[ArqueoResumen]:
+    return [
         ArqueoResumen(
             id=str(r["id"]),
             cajero_nombre=r["cajero_nombre"] or "—",
@@ -825,8 +941,34 @@ async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) 
             admin_nombre=r["admin_nombre"],
             tipo_cierre=r["tipo_cierre"],
         )
-        for r in items_raw
+        for r in rows
     ]
+
+
+async def listar_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> HistorialArqueosResponse:
+    offset = (filtros.page - 1) * filtros.page_size
+    fecha_desde = _parse_fecha_filtro(filtros.fecha_desde)
+    fecha_hasta = _parse_fecha_filtro(filtros.fecha_hasta)
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        offset=offset,
+        limit=filtros.page_size,
+    )
+    total = await contar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+
+    items = _arqueos_desde_filas(items_raw)
 
     return HistorialArqueosResponse(
         items=items,
@@ -834,6 +976,44 @@ async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) 
         page=filtros.page,
         page_size=filtros.page_size,
     )
+
+
+async def resumen_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> ResumenHistorialArqueosOut:
+    """KPIs del periodo filtrado completo, no solo la página cargada
+    (B7 pendiente #2)."""
+    data = await resumen_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+    )
+    return ResumenHistorialArqueosOut(
+        total_arqueos=int(data["total_arqueos"]),
+        total_declarado=Decimal(str(data["total_declarado"])),
+        total_esperado=Decimal(str(data["total_esperado"])),
+        diferencia_neta=Decimal(str(data["diferencia_neta"])),
+        arqueos_con_diferencia=int(data["arqueos_con_diferencia"]),
+    )
+
+
+async def listar_historial_completo(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> list[ArqueoResumen]:
+    """Todos los arqueos que cumplen los filtros, sin paginar (para
+    exportar a CSV: B7 pendiente #4)."""
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+        offset=0,
+        limit=1_000_000,
+    )
+    return _arqueos_desde_filas(items_raw)
 
 
 async def obtener_detalle(
@@ -851,6 +1031,8 @@ async def obtener_detalle(
 
     apertura_caja_id = str(cierre["apertura_caja_id"])
     apertura = await get_apertura_por_id(conn, apertura_caja_id)
+    if not apertura:
+        raise TurnoNoEncontradoError()
     _, _, _, balance = await _calcular_balance(conn, apertura, apertura_caja_id)
     retiros_raw = await listar_retiros_por_apertura(conn, apertura_caja_id)
     retiros = [

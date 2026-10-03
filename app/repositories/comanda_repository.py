@@ -113,8 +113,8 @@ async def crear_comanda_con_detalles(
             """
             INSERT INTO public.comandas
                 (id, ticket_numero, estado_actual, total_final,
-                 sucursal_id, fecha_hora, creado_por, nombre_cliente)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 sucursal_id, fecha_hora, creado_por, nombre_cliente, mesa)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             comanda_id,
             comanda_in.ticket_numero,
@@ -124,6 +124,7 @@ async def crear_comanda_con_detalles(
             fecha,
             creado_por,
             comanda_in.nombre_cliente,
+            comanda_in.mesa,
         )
 
         detalles = (
@@ -363,7 +364,7 @@ async def get_comandas_pendientes(
         f"""
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
-            c.sucursal_id, c.fecha_hora, c.nombre_cliente,
+            c.sucursal_id, c.fecha_hora, c.nombre_cliente, c.mesa,
             dc.id AS detalle_id,
             dc.producto_id,
             dc.cantidad,
@@ -399,6 +400,7 @@ async def get_comandas_pendientes(
                 sucursal_id=str(row["sucursal_id"]),
                 fecha_hora=row.get("fecha_hora"),
                 nombre_cliente=row.get("nombre_cliente"),
+                mesa=row.get("mesa"),
                 detalles=[],
             )
         if row["detalle_id"] is not None:
@@ -436,7 +438,7 @@ async def get_comanda_por_id(
         """
         SELECT
             c.id, c.ticket_numero, c.estado_actual, c.total_final,
-            c.sucursal_id, c.fecha_hora, c.nombre_cliente,
+            c.sucursal_id, c.fecha_hora, c.nombre_cliente, c.mesa,
             dc.id              AS detalle_id,
             dc.producto_id,
             dc.cantidad,
@@ -468,6 +470,7 @@ async def get_comanda_por_id(
         sucursal_id=str(rows[0]["sucursal_id"]),
         fecha_hora=rows[0].get("fecha_hora"),
         nombre_cliente=rows[0].get("nombre_cliente"),
+        mesa=rows[0].get("mesa"),
         detalles=[],
     )
 

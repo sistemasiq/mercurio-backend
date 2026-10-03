@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+from typing import Any
 from xml.sax.saxutils import escape
 
 import pytz
@@ -34,17 +35,25 @@ _PAGE_WIDTH, _PAGE_HEIGHT = letter
 _CONTENT_WIDTH = _PAGE_WIDTH - 2 * _MARGIN
 
 _styles = getSampleStyleSheet()
-_ESTILO_TITULO = ParagraphStyle("titulo", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=16)
+_ESTILO_TITULO = ParagraphStyle(
+    "titulo", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=16
+)
 _ESTILO_SUBTITULO = ParagraphStyle(
     "subtitulo", parent=_styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.grey
 )
 _ESTILO_SECCION = ParagraphStyle(
     "seccion", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=12, spaceAfter=2 * mm
 )
-_ESTILO_LABEL = ParagraphStyle("label", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=10)
+_ESTILO_LABEL = ParagraphStyle(
+    "label", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=10
+)
 _ESTILO_VALOR = ParagraphStyle("valor", parent=_styles["Normal"], fontName="Helvetica", fontSize=10)
 _ESTILO_EXTRAORDINARIO = ParagraphStyle(
-    "extraordinario", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=11, textColor=colors.red
+    "extraordinario",
+    parent=_styles["Normal"],
+    fontName="Helvetica-Bold",
+    fontSize=11,
+    textColor=colors.red,
 )
 _ESTILO_OBSERVACIONES = ParagraphStyle(
     "observaciones", parent=_styles["Normal"], fontName="Helvetica", fontSize=10, leading=13
@@ -52,11 +61,15 @@ _ESTILO_OBSERVACIONES = ParagraphStyle(
 _ESTILO_TABLA_HEADER = ParagraphStyle(
     "tablaHeader", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=9
 )
-_ESTILO_TABLA_CELDA = ParagraphStyle("tablaCelda", parent=_styles["Normal"], fontName="Helvetica", fontSize=9)
+_ESTILO_TABLA_CELDA = ParagraphStyle(
+    "tablaCelda", parent=_styles["Normal"], fontName="Helvetica", fontSize=9
+)
 _ESTILO_TABLA_CELDA_BOLD = ParagraphStyle(
     "tablaCeldaBold", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=9
 )
-_ESTILO_VACIO = ParagraphStyle("vacio", parent=_styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.grey)
+_ESTILO_VACIO = ParagraphStyle(
+    "vacio", parent=_styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.grey
+)
 _ESTILO_TABLA_CELDA_SOBRANTE = ParagraphStyle(
     "tablaCeldaSobrante", parent=_ESTILO_TABLA_CELDA, textColor=colors.blue
 )
@@ -74,7 +87,7 @@ _ESTILO_FIRMA_LABEL = ParagraphStyle(
 )
 
 
-def _fmt_moneda(valor) -> str:
+def _fmt_moneda(valor: Any) -> str:
     return f"$ {float(valor):,.2f}"
 
 
@@ -106,14 +119,18 @@ def _fmt_fecha(valor: str) -> str:
     return dt.astimezone(_MEXICO_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _dibujar_pie(c, doc) -> None:
+def _dibujar_pie(c: Any, doc: Any) -> None:
     """Pie de página fijo, fuera del área de la Frame — nunca puede ser invadido
     por el contenido dinámico porque el bottomMargin del documento ya reserva
     ese espacio (ver SimpleDocTemplate más abajo)."""
     c.saveState()
     c.setFont("Helvetica-Oblique", 8)
     c.setFillColor(colors.grey)
-    c.drawString(_MARGIN, _MARGIN * 0.5, "Generado automáticamente por Mercurio — sistema de gestión de venue.")
+    c.drawString(
+        _MARGIN,
+        _MARGIN * 0.5,
+        "Generado automáticamente por Mercurio — sistema de gestión de venue.",
+    )
     c.drawRightString(_PAGE_WIDTH - _MARGIN, _MARGIN * 0.5, f"Página {doc.page}")
     c.restoreState()
 
@@ -125,7 +142,9 @@ def _separador() -> HRFlowable:
 
 
 def _tabla_datos(filas: list[tuple[str, str]]) -> Table:
-    data = [[Paragraph(label, _ESTILO_LABEL), Paragraph(valor, _ESTILO_VALOR)] for label, valor in filas]
+    data = [
+        [Paragraph(label, _ESTILO_LABEL), Paragraph(valor, _ESTILO_VALOR)] for label, valor in filas
+    ]
     tabla = Table(data, colWidths=[55 * mm, _CONTENT_WIDTH - 55 * mm])
     tabla.setStyle(
         TableStyle(
@@ -163,16 +182,23 @@ def _bloque_firmas(tipo_cierre: str) -> KeepTogether:
     # Cierre extraordinario se autoriza sin PIN del cajero, así que no tiene sentido
     # pedirle una firma que el flujo real nunca le exigió.
     if tipo_cierre == "EXTRAORDINARIO":
-        firmas: Table | list = _bloque_firma("Firma del Administrador que autoriza", 80 * mm)
+        firmas: Table = _bloque_firma("Firma del Administrador que autoriza", 80 * mm)
         firmas.hAlign = "CENTER"
         contenido = [firmas]
     else:
         col = _CONTENT_WIDTH / 2
         fila = Table(
-            [[_bloque_firma("Firma del Cajero", col - 5 * mm), _bloque_firma("Firma del Administrador que autoriza", col - 5 * mm)]],
+            [
+                [
+                    _bloque_firma("Firma del Cajero", col - 5 * mm),
+                    _bloque_firma("Firma del Administrador que autoriza", col - 5 * mm),
+                ]
+            ],
             colWidths=[col, col],
         )
-        fila.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        fila.setStyle(
+            TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "TOP")])
+        )
         contenido = [fila]
 
     return KeepTogether(
@@ -197,19 +223,27 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         rightMargin=_MARGIN,
     )
 
-    story: list = []
+    story: list[Any] = []
 
     # ── Encabezado ──────────────────────────────────────────────────────
     story.append(Paragraph("Comprobante de Cierre de Caja", _ESTILO_TITULO))
     story.append(Spacer(1, 2 * mm))
-    story.append(Paragraph("Documento interno de auditoría — no válido como comprobante fiscal", _ESTILO_SUBTITULO))
+    story.append(
+        Paragraph(
+            "Documento interno de auditoría — no válido como comprobante fiscal", _ESTILO_SUBTITULO
+        )
+    )
     story.append(_separador())
 
     story.append(Paragraph(f"Folio de arqueo: {escape(detalle.id)}", _ESTILO_LABEL))
     story.append(Spacer(1, 2 * mm))
 
     if detalle.tipo_cierre == "EXTRAORDINARIO":
-        story.append(Paragraph("⚠ CIERRE EXTRAORDINARIO — autorizado sin PIN del cajero", _ESTILO_EXTRAORDINARIO))
+        story.append(
+            Paragraph(
+                "⚠ CIERRE EXTRAORDINARIO — autorizado sin PIN del cajero", _ESTILO_EXTRAORDINARIO
+            )
+        )
         story.append(Spacer(1, 2 * mm))
 
     # ── Datos generales ─────────────────────────────────────────────────
@@ -255,7 +289,12 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
     )
     story.append(
         Table(
-            [[Paragraph("Diferencia neta:", _ESTILO_LABEL), Paragraph(etiqueta_diferencia, estilo_diferencia)]],
+            [
+                [
+                    Paragraph("Diferencia neta:", _ESTILO_LABEL),
+                    Paragraph(etiqueta_diferencia, estilo_diferencia),
+                ]
+            ],
             colWidths=[55 * mm, _CONTENT_WIDTH - 55 * mm],
             style=TableStyle(
                 [
@@ -303,7 +342,12 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         )
         tabla_metodos = Table(
             data,
-            colWidths=[_CONTENT_WIDTH * 0.3, _CONTENT_WIDTH * 0.23, _CONTENT_WIDTH * 0.23, _CONTENT_WIDTH * 0.24],
+            colWidths=[
+                _CONTENT_WIDTH * 0.3,
+                _CONTENT_WIDTH * 0.23,
+                _CONTENT_WIDTH * 0.23,
+                _CONTENT_WIDTH * 0.24,
+            ],
             repeatRows=1,
         )
         tabla_metodos.setStyle(
@@ -319,7 +363,9 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         )
         story.append(tabla_metodos)
     else:
-        story.append(Paragraph("Sin movimientos adicionales fuera de efectivo en este turno.", _ESTILO_VACIO))
+        story.append(
+            Paragraph("Sin movimientos adicionales fuera de efectivo en este turno.", _ESTILO_VACIO)
+        )
     story.append(_separador())
 
     # ── Retiros parciales ────────────────────────────────────────────────
@@ -354,7 +400,12 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         )
         tabla_retiros = Table(
             data,
-            colWidths=[_CONTENT_WIDTH * 0.35, _CONTENT_WIDTH * 0.25, _CONTENT_WIDTH * 0.2, _CONTENT_WIDTH * 0.2],
+            colWidths=[
+                _CONTENT_WIDTH * 0.35,
+                _CONTENT_WIDTH * 0.25,
+                _CONTENT_WIDTH * 0.2,
+                _CONTENT_WIDTH * 0.2,
+            ],
             repeatRows=1,
         )
         tabla_retiros.setStyle(
@@ -413,7 +464,9 @@ def generar_pdf_arqueo(detalle: DetalleArqueoResponse) -> bytes:
         )
         story.append(tabla_ingresos)
     else:
-        story.append(Paragraph("No se registraron ingresos de efectivo en este turno.", _ESTILO_VACIO))
+        story.append(
+            Paragraph("No se registraron ingresos de efectivo en este turno.", _ESTILO_VACIO)
+        )
     story.append(_separador())
 
     # ── Observaciones ────────────────────────────────────────────────────

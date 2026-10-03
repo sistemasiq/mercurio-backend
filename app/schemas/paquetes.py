@@ -23,6 +23,12 @@ class PaquetesBase(BaseModel):
     # Tarifa de la pulsera por invitado y por hora de evento:
     #   total = precio_base + precio_hora_pulsera * invitados * horas
     precio_hora_pulsera: Decimal = Field(Decimal(0), ge=0)
+    # Duración estimada del evento en horas (informativa).
+    duracion_horas: Decimal | None = Field(None, gt=0)
+    # Resalta el paquete en la selección (p. ej. Nueva reservación).
+    destacado: bool = False
+    # % de anticipo sugerido al cobrar la reservación de este paquete.
+    anticipo_porcentaje: Decimal | None = Field(None, gt=0, le=100)
 
     @model_validator(mode="after")
     def validar_rango(self) -> "PaquetesBase":
@@ -42,6 +48,9 @@ class PaquetesUpdate(BaseModel):
     max_invitados: int | None = Field(None, gt=0)
     precio_base: Decimal | None = Field(None, ge=0)
     precio_hora_pulsera: Decimal | None = Field(None, ge=0)
+    duracion_horas: Decimal | None = Field(None, gt=0)
+    destacado: bool | None = None
+    anticipo_porcentaje: Decimal | None = Field(None, gt=0, le=100)
     activo: bool | None = None
     productos_incluidos: list[PaqueteProductoItem] | None = None
 
@@ -66,6 +75,8 @@ class PaquetesOut(PaquetesBase):
     modificado: datetime | None
     modificado_por: UUID | None
     productos_incluidos: list[dict[str, Any]] | None = None
+    # Tipos de evento asociados vía paquete_tipos_evento: [{id, nombre}].
+    tipos_evento: list[dict[str, Any]] = []
     # Solo los puebla el listado; en crear/actualizar/obtener quedan en 0 / None.
     contrataciones: int = 0
     ultima_contratacion: datetime | None = None

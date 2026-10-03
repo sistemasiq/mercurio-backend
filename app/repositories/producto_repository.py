@@ -16,7 +16,16 @@ from app.models.producto import Producto
 
 _COLUMNS = """
     id, nombre, precio_unitario, tipo, sucursal_id, activo, es_combo,
-    descripcion, imagen, config_estancia, creado, creado_por, modificado, modificado_por
+    descripcion, imagen, codigo, config_estancia, creado, creado_por, modificado, modificado_por
+"""
+
+# Costo de la receta: suma de cantidad * costo_unitario vigente de cada insumo.
+# Un insumo sin costo registrado cuenta como 0; un producto sin receta da NULL.
+_COSTO_RECETA = """
+    (SELECT SUM(pi.cantidad * COALESCE(i.costo_unitario, 0))
+     FROM public.producto_insumos pi
+     JOIN public.insumos i ON i.id = pi.insumo_id
+     WHERE pi.producto_id = productos.id) AS costo_receta
 """
 
 
@@ -31,6 +40,12 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         es_combo=row.get("es_combo", False),
         descripcion=row.get("descripcion"),
         imagen=row.get("imagen"),
+        codigo=row.get("codigo"),
+        costo_receta=(
+            Decimal(str(row["costo_receta"]))
+            if "costo_receta" in row.keys() and row["costo_receta"] is not None
+            else None
+        ),
         config_estancia=row.get("config_estancia"),
         creado=row.get("creado"),
         creado_por=row.get("creado_por"),
@@ -60,11 +75,14 @@ async def listar_todos(conn: asyncpg.Connection, sucursal_id: UUID | None = None
     """Lista productos (activos e inactivos) para la pantalla de administración."""
     if sucursal_id:
         rows = await conn.fetch(
-            f"SELECT {_COLUMNS} FROM public.productos WHERE sucursal_id = $1 ORDER BY nombre ASC",
+            f"SELECT {_COLUMNS}, {_COSTO_RECETA} FROM public.productos "
+            "WHERE sucursal_id = $1 ORDER BY nombre ASC",
             sucursal_id,
         )
     else:
-        rows = await conn.fetch(f"SELECT {_COLUMNS} FROM public.productos ORDER BY nombre ASC")
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS}, {_COSTO_RECETA} FROM public.productos ORDER BY nombre ASC"
+        )
     return [_row_to_producto(r) for r in rows]
 
 
@@ -81,8 +99,9 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
-    config_estancia: list[dict] | None = None,
+    config_estancia: list[dict[str, Any]] | None = None,
     usuario_id: UUID | None = None,
+    codigo: str | None = None,
 ) -> Producto:
     es_combo = True if tipo == "C" else False
 
@@ -90,8 +109,9 @@ async def crear(
         row = await conn.fetchrow(
             f"""
             INSERT INTO public.productos
-                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, config_estancia, creado_por)
-            VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8)
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo,
+                 config_estancia, creado_por, codigo)
+            VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {_COLUMNS}
             """,
             nombre,
@@ -102,13 +122,15 @@ async def crear(
             es_combo,
             config_estancia,
             usuario_id,
+            codigo,
         )
     else:
         row = await conn.fetchrow(
             f"""
             INSERT INTO public.productos
-                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo,
+                 creado_por, codigo)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {_COLUMNS}
             """,
             nombre,
@@ -119,6 +141,7 @@ async def crear(
             imagen,
             es_combo,
             usuario_id,
+            codigo,
         )
     return _row_to_producto(row)
 
@@ -152,16 +175,34 @@ async def eliminar(
 async def get_catalogo_venta_by_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID
 ) -> list[dict[str, Any]]:
+    # disponible_estimado (C1 #3): el "rinde" ya existe para la pantalla de
+    # Insumos, pero esa consulta exige inventario:ver (el Cajero no lo tiene),
+    # así que el catálogo de venta expone su propia estimación — el mínimo de
+    # stock_actual / cantidad sobre los insumos de la receta, redondeado hacia
+    # abajo. NULL si el producto no tiene receta (producto_insumos vacío).
     sql_catalogo = """
-        SELECT id, nombre, precio_unitario, descripcion, tipo, imagen, es_combo
-        FROM productos
-        WHERE sucursal_id = $1
-          AND activo = TRUE
-          AND (tipo IN ('A', 'B') OR es_combo = TRUE)
-        ORDER BY es_combo ASC, nombre
+        SELECT
+            p.id, p.nombre, p.precio_unitario, p.descripcion, p.tipo, p.imagen, p.es_combo,
+            (
+                SELECT MIN(FLOOR(i.stock_actual / pi.cantidad))
+                FROM public.producto_insumos pi
+                JOIN public.insumos i ON i.id = pi.insumo_id
+                WHERE pi.producto_id = p.id AND pi.cantidad > 0
+            ) AS disponible_estimado
+        FROM productos p
+        WHERE p.sucursal_id = $1
+          AND p.activo = TRUE
+          AND (p.tipo IN ('A', 'B') OR p.es_combo = TRUE)
+        ORDER BY p.es_combo ASC, p.nombre
     """
     rows = await conn.fetch(sql_catalogo, sucursal_id)
-    return [dict(r) for r in rows]
+    resultado = []
+    for r in rows:
+        fila = dict(r)
+        if fila["disponible_estimado"] is not None:
+            fila["disponible_estimado"] = int(fila["disponible_estimado"])
+        resultado.append(fila)
+    return resultado
 
 
 async def es_producto_combo(conn: asyncpg.Connection, producto_id: str | UUID) -> bool:
@@ -192,10 +233,13 @@ async def get_combo_hijos(conn: asyncpg.Connection, combo_id: str) -> list[dict[
 async def get_by_id(conn: asyncpg.Connection, producto_id: str) -> asyncpg.Record | None:
     return await conn.fetchrow("SELECT * FROM productos WHERE id = $1", producto_id)
 
-async def get_producto_estancia_by_branch_id(conn: asyncpg.Connection, sucursal_id: str):
+
+async def get_producto_estancia_by_branch_id(
+    conn: asyncpg.Connection, sucursal_id: str
+) -> asyncpg.Record | None:
     row = await conn.fetchrow(
         """
-        SELECT id, config_estancia 
+        SELECT id, config_estancia
         FROM productos
         WHERE sucursal_id = $1
           AND activo = TRUE
@@ -205,4 +249,3 @@ async def get_producto_estancia_by_branch_id(conn: asyncpg.Connection, sucursal_
         sucursal_id,
     )
     return row if row else None
-

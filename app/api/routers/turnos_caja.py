@@ -5,8 +5,11 @@ Endpoints FastAPI para el módulo de Cierre de Caja (/api/turnos-caja).
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
@@ -23,6 +26,7 @@ from app.schemas.caja import (
     IngresoEfectivoCreate,
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
+    ResumenHistorialArqueosOut,
     RetiroParcialCreate,
     RetiroParcialResponse,
     RevisionAdminPayload,
@@ -32,8 +36,24 @@ from app.schemas.caja import (
 )
 from app.services import turnos_caja_service
 from app.services.pdf_service import generar_pdf_arqueo
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/turnos-caja", tags=["Turnos de Caja"])
+
+_ARQUEOS_CSV_CAMPOS = [
+    "id",
+    "cajero_nombre",
+    "terminal",
+    "sucursal_nombre",
+    "fecha_apertura",
+    "fecha_cierre",
+    "fondo_inicial",
+    "total_declarado",
+    "total_esperado",
+    "diferencia_neta",
+    "tipo_cierre",
+    "admin_nombre",
+]
 
 
 @router.get(
@@ -121,7 +141,7 @@ async def obtener_metodos_pago_activo(
     summary="Transiciona el turno a EN_CORTE (inicio de conteo físico)",
 )
 async def iniciar_conteo(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
@@ -173,10 +193,10 @@ async def confirmar_cierre(
     summary="Valida el PIN del cajero contra la base de datos",
 )
 async def validar_pin_cajero(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     turno_id = body.get("turno_id", "")
     pin = body.get("pin", "")
     return await turnos_caja_service.validar_pin_cajero(conn, current_user.sub, turno_id, pin)
@@ -187,10 +207,10 @@ async def validar_pin_cajero(
     summary="Valida el PIN del administrador contra la base de datos",
 )
 async def validar_pin_admin(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     turno_id = body.get("turno_id", "")
     admin_email = body.get("admin_email", "")
     pin = body.get("pin", "")
@@ -203,7 +223,7 @@ async def validar_pin_admin(
     summary="Cancela el conteo en curso y regresa el turno a ABIERTA",
 )
 async def cancelar_conteo(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(require_permission("turnos_caja:cancelar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
@@ -283,6 +303,61 @@ async def listar_historial(
         page_size=page_size,
     )
     return await turnos_caja_service.listar_historial(conn, filtros)
+
+
+@router.get(
+    "/historial/resumen",
+    response_model=ResumenHistorialArqueosOut,
+    summary="KPIs agregados del historial de arqueos (todo el periodo filtrado, no solo la página)",
+)
+async def resumen_historial(
+    sucursal_id: str | None = Query(None),
+    cajero_id: str | None = Query(None),
+    fecha_desde: str | None = Query(None),
+    fecha_hasta: str | None = Query(None),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> ResumenHistorialArqueosOut:
+    if current_user.role == "AdministradorSistema":
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+
+    filtros = FiltrosHistorial(
+        sucursal_id=sucursal_efectiva,
+        cajero_id=cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+    return await turnos_caja_service.resumen_historial(conn, filtros)
+
+
+@router.get(
+    "/historial/export",
+    summary="Exporta el historial de arqueos a CSV (mismos filtros que /historial, sin paginar)",
+)
+async def exportar_historial(
+    sucursal_id: str | None = Query(None),
+    cajero_id: str | None = Query(None),
+    fecha_desde: str | None = Query(None),
+    fecha_hasta: str | None = Query(None),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> StreamingResponse:
+    if current_user.role == "AdministradorSistema":
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+
+    filtros = FiltrosHistorial(
+        sucursal_id=sucursal_efectiva,
+        cajero_id=cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+    items = await turnos_caja_service.listar_historial_completo(conn, filtros)
+    filas = (i.model_dump() for i in items)
+    return csv_streaming_response(_ARQUEOS_CSV_CAMPOS, filas, "historial_arqueos.csv")
 
 
 def _sucursal_restringida(current_user: TokenData) -> str | None:

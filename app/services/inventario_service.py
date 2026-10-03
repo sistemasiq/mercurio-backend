@@ -29,6 +29,7 @@ from app.schemas.movimiento_inventario import (
     ConteoFisicoCreate,
     MovimientoInventarioOut,
     MovimientoManualCreate,
+    ResumenCogsOut,
 )
 from app.services import costeo_service
 
@@ -281,3 +282,16 @@ async def listar_cogs(
 ) -> list[CogsRenglonOut]:
     rows = await movimiento_inventario_repository.reporte_cogs(conn, sucursal_id, desde, hasta)
     return [CogsRenglonOut.model_validate(r) for r in rows]
+
+
+async def resumen_cogs(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> ResumenCogsOut:
+    """KPIs de ventas, margen y merma del periodo (B7 pendiente #3)."""
+    data = await movimiento_inventario_repository.resumen_costo_ventas(
+        conn, sucursal_id, desde, hasta
+    )
+    return ResumenCogsOut.model_validate(data)

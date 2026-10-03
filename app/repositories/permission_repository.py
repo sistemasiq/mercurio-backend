@@ -101,6 +101,23 @@ async def get_all_rol_permisos_cache(conn: asyncpg.Connection) -> dict[str, set[
     return result
 
 
+async def contar_usuarios_por_rol(conn: asyncpg.Connection) -> dict[int, int]:
+    """Usuarios activos por rol, para la columna 'usuarios' del Catálogo de Roles."""
+    rows = await conn.fetch(
+        "SELECT rol AS rol_id, COUNT(*) AS total FROM public.usuarios"
+        " WHERE activo = TRUE GROUP BY rol"
+    )
+    return {r["rol_id"]: r["total"] for r in rows}
+
+
+async def contar_usuarios_de_rol(conn: asyncpg.Connection, rol_id: int) -> int:
+    row = await conn.fetchrow(
+        "SELECT COUNT(*) AS total FROM public.usuarios WHERE rol = $1 AND activo = TRUE",
+        rol_id,
+    )
+    return int(row["total"]) if row else 0
+
+
 async def create_rol(conn: asyncpg.Connection, nombre: str, descripcion: str | None) -> int:
     row = await conn.fetchrow(
         "INSERT INTO public.roles (nombre, descripcion) VALUES ($1, $2) RETURNING id",

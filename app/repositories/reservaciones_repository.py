@@ -1,6 +1,7 @@
-from typing import Any
-from uuid import UUID
 import json
+from datetime import date
+from typing import Any, cast
+from uuid import UUID
 
 import asyncpg
 
@@ -13,11 +14,11 @@ _COLUMNS = """
     fecha_evento, hora_inicio, hora_fin,
     numero_personas, precio_base, precio_personas_extra, horas_reservadas, precio_horas,
     precio_productos, precio_extras, descuento, precio_total, anticipo, saldo_pendiente,
-    estado, notas, activo, comanda_enviada, creado, creado_por, modificado, modificado_por
+    estado, notas, activo, comanda_enviada, folio, creado, creado_por, modificado, modificado_por
 """
 
 _COLUMNAS_NECESARIAS_PARA_ESTANCIA = """
-   id,nombre_cliente,apellidos_cliente,telefono_cliente,hora_inicio,
+   id,folio,nombre_cliente,apellidos_cliente,telefono_cliente,hora_inicio,
    hora_fin,numero_personas,fecha_evento
 """
 
@@ -35,15 +36,59 @@ _SELECT_ESTANCIA = (
 )
 
 
-async def listar(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[dict[str, Any]]:
+async def listar(
+    conn: asyncpg.Connection,
+    sucursal_id: str | None = None,
+    desde: date | None = None,
+    hasta: date | None = None,
+) -> list[dict[str, Any]]:
+    """Lista reservaciones activas, opcionalmente acotadas a una sucursal y/o a
+    un rango de fechas [desde, hasta] (ambos límites inclusive) -- usado por el
+    calendario de eventos para sus vistas de Semana y Día sin tener que traer
+    todo el histórico."""
+    condiciones = ["activo = TRUE"]
+    valores: list[Any] = []
     if sucursal_id is not None:
-        rows = await conn.fetch(
-            _SELECT + " WHERE activo = TRUE AND sucursal_id = $1 ORDER BY fecha_evento",
-            sucursal_id,
-        )
-    else:
-        rows = await conn.fetch(_SELECT + " WHERE activo = TRUE ORDER BY fecha_evento")
+        valores.append(sucursal_id)
+        condiciones.append(f"sucursal_id = ${len(valores)}")
+    if desde is not None:
+        valores.append(desde)
+        condiciones.append(f"fecha_evento >= ${len(valores)}")
+    if hasta is not None:
+        valores.append(hasta)
+        condiciones.append(f"fecha_evento <= ${len(valores)}")
+
+    sql = _SELECT + " WHERE " + " AND ".join(condiciones) + " ORDER BY fecha_evento"
+    rows = await conn.fetch(sql, *valores)
     return [dict(r) for r in rows]
+
+
+async def listar_por_sucursal_y_fecha(
+    conn: asyncpg.Connection, sucursal_id: UUID, fecha: date
+) -> list[dict[str, Any]]:
+    """Reservaciones no canceladas de una sucursal en una fecha dada -- usado
+    para calcular la disponibilidad por bloque de horario."""
+    rows = await conn.fetch(
+        _SELECT
+        + """
+        WHERE activo = TRUE
+          AND sucursal_id = $1
+          AND fecha_evento = $2
+          AND estado != 'cancelada'
+        ORDER BY hora_inicio
+        """,
+        sucursal_id,
+        fecha,
+    )
+    return [dict(r) for r in rows]
+
+
+async def siguiente_folio(conn: asyncpg.Connection) -> str:
+    """Folio legible y secuencial ('R-0001', 'R-0002', ...) para una
+    reservación nueva. Usa la secuencia global `reservaciones_folio_seq`
+    (migración 053), que ya arranca después del folio más alto del backfill."""
+    numero = await conn.fetchval("SELECT nextval('public.reservaciones_folio_seq')")
+    return f"R-{numero:04d}"
 
 
 async def obtener(conn: asyncpg.Connection, reservacion_id: UUID) -> dict[str, Any] | None:
@@ -164,7 +209,9 @@ async def cancelar_por_falta_de_pago(
     )
 
 
-async def get_reservacion_id_by_detalle_registro_id(conn: asyncpg.Connection, detalle_registro_id: UUID) -> UUID | None:
+async def get_reservacion_id_by_detalle_registro_id(
+    conn: asyncpg.Connection, detalle_registro_id: UUID
+) -> UUID | None:
     result = await conn.fetchval(
         """
         SELECT r.reservacion_id
@@ -176,11 +223,14 @@ async def get_reservacion_id_by_detalle_registro_id(conn: asyncpg.Connection, de
         """,
         detalle_registro_id,
     )
-    return result
+    return cast(UUID | None, result)
 
-async def update_producto_estancia_add_config(conn: asyncpg.Connection, producto_id: UUID, config_estancia: dict[str, Any]) -> None:
-    result = await conn.fetchval(
-       """
+
+async def update_producto_estancia_add_config(
+    conn: asyncpg.Connection, producto_id: UUID, config_estancia: dict[str, Any]
+) -> None:
+    await conn.fetchval(
+        """
         UPDATE productos
         SET config_estancia = $1::jsonb
         WHERE id = $2
@@ -188,4 +238,3 @@ async def update_producto_estancia_add_config(conn: asyncpg.Connection, producto
         json.dumps(config_estancia),
         producto_id,
     )
-    return result

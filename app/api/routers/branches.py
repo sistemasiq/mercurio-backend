@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
+from app.schemas.branch import (
+    BranchCreateRequest,
+    BranchResponse,
+    BranchUpdateRequest,
+    IndicadoresSucursalResponse,
+)
 from app.services.branch_service import (
     AdministradorInvalidoError,
     BranchNotFoundError,
@@ -18,12 +25,16 @@ from app.services.branch_service import (
     create_branch,
     deactivate_branch,
     get_branch,
+    get_indicadores,
     list_branches,
     reactivate_branch,
     update_branch,
 )
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/sucursales", tags=["Sucursales"])
+
+_INDICADORES_CSV_CAMPOS = ["ventas", "ninos_atendidos", "eventos", "cajas_abiertas"]
 
 _NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
@@ -134,3 +145,41 @@ async def reactivate_branch_endpoint(
         return Response(status_code=status.HTTP_200_OK)
     except BranchNotFoundError:
         raise _NOT_FOUND from None
+
+
+@router.get("/{sucursal_id}/indicadores", response_model=IndicadoresSucursalResponse)
+async def get_indicadores_endpoint(
+    sucursal_id: UUID,
+    desde: date = Query(...),
+    hasta: date = Query(...),
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> IndicadoresSucursalResponse:
+    try:
+        return await get_indicadores(conn, sucursal_id, desde, hasta, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except InsufficientPermissionsError:
+        raise _FORBIDDEN from None
+
+
+@router.get(
+    "/{sucursal_id}/indicadores/export",
+    summary="Exporta los indicadores del periodo a CSV",
+)
+async def exportar_indicadores_endpoint(
+    sucursal_id: UUID,
+    desde: date = Query(...),
+    hasta: date = Query(...),
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> StreamingResponse:
+    """Mismos indicadores de `/indicadores` (B5/C2), como descarga CSV (patrón B7)."""
+    try:
+        indicadores = await get_indicadores(conn, sucursal_id, desde, hasta, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except InsufficientPermissionsError:
+        raise _FORBIDDEN from None
+    filas = iter([indicadores.model_dump()])
+    return csv_streaming_response(_INDICADORES_CSV_CAMPOS, filas, "indicadores_sucursal.csv")

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from math import ceil
 from typing import Any
 from uuid import UUID
-from decimal import Decimal
 
 import asyncpg
 from fastapi import HTTPException
@@ -21,15 +21,28 @@ from app.repositories.registros import (
     change_registro_estado,
     registro_add_total,
 )
-from app.repositories.productos import get_productos_estancia_by_sucursal_id, get_precio_pulsera_by_reserva_id
-from app.repositories.producto_repository import get_producto_estancia_by_branch_id
-from app.repositories.reservaciones_repository import get_reservacion_id_by_detalle_registro_id
 from app.schemas.pagos import PagoIn
-
 
 EXTRA_GRACE_MINUTES = 10
 
 CENTAVO = 0.01
+
+
+def _calcular_cargo_extra_sync(
+    salida_esperada: datetime, precio: Decimal | float, now: datetime
+) -> tuple[int, float]:
+    """Misma fórmula de horas/monto extra, sin HTTPException ni `await`, para
+    que consumidores de solo lectura (p. ej. el portal de padres) puedan
+    reusarla sin depender de FastAPI ni de un detalle completo."""
+    minutos_extra = (now - salida_esperada).total_seconds() / 60
+
+    extra_horas = 0
+    if minutos_extra > EXTRA_GRACE_MINUTES:
+        extra_horas = ceil((minutos_extra - EXTRA_GRACE_MINUTES) / 60)
+
+    total_extra = precio * extra_horas
+
+    return extra_horas, float(total_extra)
 
 
 async def _calcular_cargo_extra(detalle: dict[str, Any], now: datetime) -> tuple[int, float]:
@@ -41,16 +54,7 @@ async def _calcular_cargo_extra(detalle: dict[str, Any], now: datetime) -> tuple
     if salida_esperada is None:
         raise HTTPException(400, "Detalle sin salida esperada")
 
-    minutos_extra = (now - salida_esperada).total_seconds() / 60
-
-    extra_horas = 0
-    if minutos_extra > EXTRA_GRACE_MINUTES:
-        extra_horas = ceil((minutos_extra - EXTRA_GRACE_MINUTES) / 60)
-
-    precio = detalle["precio"]
-    total_extra = precio * extra_horas
-
-    return extra_horas, total_extra
+    return _calcular_cargo_extra_sync(salida_esperada, detalle["precio"], now)
 
 
 async def cotizar_checkout(conn: asyncpg.Connection, detalle_id: UUID) -> dict[str, Any]:
@@ -98,8 +102,9 @@ async def create_chekout(
 
         if total_extra > 0:
             monto_pagado = sum(Decimal(str(pago.monto)) for pago in pagos)
-            if abs(monto_pagado - total_extra) > CENTAVO:
-                # El detail va estructurado para que el frontend pueda reintentar con el monto correcto
+            if abs(monto_pagado - Decimal(str(total_extra))) > CENTAVO:
+                # El detail va estructurado para que el frontend pueda
+                # reintentar con el monto correcto
                 raise HTTPException(
                     409,
                     detail={

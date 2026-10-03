@@ -5,7 +5,6 @@ import asyncpg
 from app.exceptions import Conflicto, DatosInvalidos, NoEncontrado
 from app.repositories import pulseras as pulseras_repository
 from app.repositories.pulseras import get_pulseras_disponibles_por_sucursal
-from app.schemas.auth import TokenData
 from app.schemas.pulseras import (
     InventarioPulserasOut,
     PulseraCrear,

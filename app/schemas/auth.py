@@ -15,7 +15,9 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: Annotated[str, Field(alias="refreshToken")]
+    # Opcional desde QA #32: el refresh token puede llegar por la cookie
+    # HttpOnly en vez del body (clientes viejos siguen mandándolo en el body).
+    refresh_token: Annotated[str | None, Field(alias="refreshToken")] = None
 
     model_config = {"populate_by_name": True}
 
@@ -28,6 +30,10 @@ class UserOut(BaseModel):
     branch_id: UUID | None
     branch_name: str | None = None
     permissions: list[str] = []
+    # C1: para que Inicio pueda avisar "Configura tu PIN de caja" sin requerir
+    # usuarios:ver (que el Cajero no tiene). Default False: login/refresh no lo
+    # recalculan; /auth/me sí, que es a donde Inicio pregunta.
+    tiene_pin: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -60,3 +66,10 @@ class TokenData(BaseModel):
     permissions: list[str] = []
     jti: str
     exp: datetime
+
+
+class WsTicketResponse(BaseModel):
+    """QA #32 — ticket efímero de un solo uso para WebSockets (comandas, estancias)."""
+
+    ticket: str
+    expires_in: int

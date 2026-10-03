@@ -11,6 +11,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import require_permission
 from app.core.database import get_db
@@ -22,10 +23,25 @@ from app.schemas.insumo import (
     InsumoRecetaInversaOut,
     InsumoUpdate,
 )
-from app.schemas.movimiento_inventario import CogsRenglonOut
+from app.schemas.movimiento_inventario import CogsRenglonOut, ResumenCogsOut
 from app.services import insumo_service, inventario_service
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/insumos", tags=["Insumos"])
+
+_STOCK_CSV_CAMPOS = [
+    "id",
+    "nombre",
+    "stock_actual",
+    "stock_minimo",
+    "punto_reorden",
+    "stock_maximo",
+    "costo_unitario",
+    "proveedor_principal_id",
+    "activo",
+]
+
+_COGS_CSV_CAMPOS = ["insumo_id", "insumo_nombre", "cantidad_salida", "costo_total"]
 
 
 @router.get("", response_model=list[InsumoOut])
@@ -59,6 +75,43 @@ async def reporte_cogs(
 ) -> list[CogsRenglonOut]:
     """Costo de ventas (COGS): costo de lo consumido por insumo en el periodo."""
     return await inventario_service.listar_cogs(conn, sucursal_id, desde, hasta)
+
+
+@router.get("/reporte-cogs/resumen", response_model=ResumenCogsOut)
+async def resumen_cogs(
+    sucursal_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reportes:inventario")),
+) -> ResumenCogsOut:
+    """KPIs del periodo: ventas totales, costo de ventas, margen y merma."""
+    return await inventario_service.resumen_cogs(conn, sucursal_id, desde, hasta)
+
+
+@router.get("/export", summary="Exporta el reporte de stock a CSV")
+async def exportar_stock(
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reportes:inventario")),
+) -> StreamingResponse:
+    """Reporte de stock (igual que `listar_insumos`) como descarga CSV."""
+    insumos = await insumo_service.listar(conn, sucursal_id)
+    filas = (i.model_dump() for i in insumos)
+    return csv_streaming_response(_STOCK_CSV_CAMPOS, filas, "reporte_stock.csv")
+
+
+@router.get("/reporte-cogs/export", summary="Exporta el costo de ventas (COGS) a CSV")
+async def exportar_cogs(
+    sucursal_id: UUID,
+    desde: date | None = None,
+    hasta: date | None = None,
+    conn: asyncpg.Connection = Depends(get_db),
+    _: TokenData = Depends(require_permission("reportes:inventario")),
+) -> StreamingResponse:
+    renglones = await inventario_service.listar_cogs(conn, sucursal_id, desde, hasta)
+    filas = (r.model_dump() for r in renglones)
+    return csv_streaming_response(_COGS_CSV_CAMPOS, filas, "costo_de_ventas.csv")
 
 
 @router.get("/estimaciones", response_model=list[InsumoRecetaInversaOut])

@@ -1,10 +1,12 @@
 """Verifica que identificar 'efectivo' depende de metodos_pago.tipo='E' (la
 identidad fija e inmutable del catálogo global, migración 037) y no del
 nombre de la fila, que sí es editable por un AdministradorSistema."""
+
 import uuid
 from decimal import Decimal
 
 from app.repositories import caja_repository, metodos_pago_repository
+
 from tests.integration.conftest import EFECTIVO_ID
 
 
@@ -52,7 +54,9 @@ async def test_calcular_balance_ignora_el_nombre_renombrado(conn, apertura_prueb
             monto=Decimal("300.00"),
         )
         apertura = await get_apertura_por_id(conn, apertura_prueba)
-        _, _, _, balance = await turnos_caja_service._calcular_balance(conn, apertura, apertura_prueba)
+        _, _, _, balance = await turnos_caja_service._calcular_balance(
+            conn, apertura, apertura_prueba
+        )
         fila_efectivo = next(f for f in balance if f.metodo == "efectivo")
         # fondo_inicial (1000.00) + venta (300.00) = 1300.00 -- si el renombre
         # rompiera el reconocimiento, esta fila no incluiría los 300.00.

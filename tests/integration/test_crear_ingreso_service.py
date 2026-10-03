@@ -1,14 +1,14 @@
 """Verifica las reglas de negocio del servicio crear_ingreso: registra el
 ingreso sobre el turno abierto del cajero y rechaza si el turno no está en
 ABIERTA (mismo criterio que crear_retiro)."""
+
 from decimal import Decimal
 
 import pytest
-from fastapi import HTTPException
-
 from app.repositories.caja_repository import actualizar_estado_apertura
 from app.schemas.caja import IngresoEfectivoCreate
 from app.services import turnos_caja_service
+from fastapi import HTTPException
 
 
 async def test_crear_ingreso_registra_el_movimiento_sobre_el_turno_abierto(conn, apertura_prueba):

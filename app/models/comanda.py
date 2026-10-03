@@ -43,6 +43,7 @@ class Comanda:
     sucursal_id: str
     fecha_hora: datetime | None = None
     nombre_cliente: str | None = None
+    mesa: str | None = None
     # expandir_detalles_comanda() reemplaza esta lista por dicts (uno por
     # producto hijo cuando hay combos) — no siempre son DetalleComanda.
     detalles: list[DetalleComanda | dict[str, Any]] = field(default_factory=list)

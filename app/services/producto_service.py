@@ -6,11 +6,12 @@ SAD §3.2: el service orquesta repositorios, nunca escribe SQL directamente.
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 from uuid import UUID
-import json
+
 import asyncpg
 from fastapi import HTTPException, UploadFile, status
 
@@ -39,6 +40,13 @@ async def listar_activos(
 ) -> list[Producto]:
     """Retorna los productos activos, filtrados por sucursal si se indica."""
     return await producto_repository.get_productos_activos(conn, sucursal_id)
+
+
+def _mensaje_duplicado(exc: asyncpg.UniqueViolationError) -> str:
+    """El UNIQUE puede venir del nombre o del código (idx_productos_sucursal_codigo)."""
+    if "codigo" in (exc.constraint_name or ""):
+        return "Ya existe un producto con ese código en esta sucursal."
+    return "Ya existe un producto con ese nombre en esta sucursal."
 
 
 async def listar_todos(
@@ -72,19 +80,16 @@ async def crear(
         if body.tipo == "E":
             if not body.config_estancia:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Se necesita la configuración de estancia"
+                    status_code=400, detail="Se necesita la configuración de estancia"
                 )
 
             producto_estancia = await producto_repository.get_producto_estancia_by_branch_id(
-                conn,
-                body.sucursal_id
+                conn, str(body.sucursal_id)
             )
 
             if producto_estancia:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Ya existe un producto de estancia para esta sucursal"
+                    status_code=400, detail="Ya existe un producto de estancia para esta sucursal"
                 )
 
         config_estancia_data = (
@@ -92,7 +97,7 @@ async def crear(
             if body.config_estancia
             else None
         )
-                
+
         row = await producto_repository.crear(
             conn,
             nombre=body.nombre,
@@ -102,11 +107,12 @@ async def crear(
             descripcion=body.descripcion,
             imagen=body.imagen,
             usuario_id=usuario_id,
-            config_estancia=config_estancia_data
+            config_estancia=config_estancia_data,
+            codigo=body.codigo,
         )
 
     except asyncpg.UniqueViolationError as exc:
-        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
+        raise Conflicto(_mensaje_duplicado(exc)) from exc
     row_dict = asdict(row)
 
     if imagen is not None:
@@ -181,7 +187,7 @@ async def actualizar(
     if "config_estancia" in updates and updates["config_estancia"] is not None:
         tramos_dict = [
             item.model_dump(mode="json") if hasattr(item, "model_dump") else item
-            for item in body.config_estancia
+            for item in body.config_estancia or []
         ]
         updates["config_estancia"] = json.dumps(tramos_dict)
 
@@ -195,7 +201,7 @@ async def actualizar(
     try:
         row = await producto_repository.actualizar(conn, producto_id, updates)
     except asyncpg.UniqueViolationError as exc:
-        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
+        raise Conflicto(_mensaje_duplicado(exc)) from exc
 
     if not row:
         raise NoEncontrado("Producto")
@@ -235,12 +241,13 @@ async def obtener_productos_para_cajero(
         )
     return await producto_repository.get_catalogo_venta_by_sucursal(conn, current_user.branch_id)
 
+
 async def obtener_config_estancia_por_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID | str
 ) -> ProductoEstanciaResponse:
     """Retorna la configuración de estancia para una sucursal."""
     row = await producto_repository.get_producto_estancia_by_branch_id(conn, str(sucursal_id))
-    
+
     if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -256,6 +263,7 @@ async def obtener_config_estancia_por_sucursal(
             data["config_estancia"] = []
 
     return ProductoEstanciaResponse.model_validate(data)
+
 
 async def obtener_hijos_combo(conn: asyncpg.Connection, combo_id: UUID) -> list[dict[str, object]]:
     """Retorna los hijos de un combo con sus datos básicos para el carrito."""

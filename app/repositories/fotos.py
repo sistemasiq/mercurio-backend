@@ -1,21 +1,23 @@
 from enum import Enum
-from typing import List, Dict
+from typing import Any
 from uuid import UUID
 
 import asyncpg
 
+
 class TipoFoto(str, Enum):
     INE = "I"
     LLEGADA = "L"
+
+
 async def foto_create(
     conn: asyncpg.Connection,
     registro_id: UUID,
     tipo: TipoFoto,
     storage_url: str,
     usuario_id: UUID,
-    id: UUID = None,
+    id: UUID | None = None,
 ) -> None:
-
     if id is None:
         await conn.execute(
             """
@@ -53,10 +55,11 @@ async def foto_create(
             usuario_id,
         )
 
+
 async def get_fotos_llegada_by_registro_id(
     conn: asyncpg.Connection,
     registro_id: UUID,
-) -> List[Dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT storage_url

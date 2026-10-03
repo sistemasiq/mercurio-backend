@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 import asyncpg
@@ -10,6 +11,7 @@ from app.repositories.branch_repository import (
     create_sucursal,
     deactivate_sucursal,
     get_all_sucursales,
+    get_indicadores_sucursal,
     get_sucursal_by_id,
     nombre_exists,
     reactivate_sucursal,
@@ -21,7 +23,12 @@ from app.repositories.user_repository import (
     get_usuario_administrador_by_id,
 )
 from app.schemas.auth import TokenData
-from app.schemas.branch import BranchCreateRequest, BranchResponse, BranchUpdateRequest
+from app.schemas.branch import (
+    BranchCreateRequest,
+    BranchResponse,
+    BranchUpdateRequest,
+    IndicadoresSucursalResponse,
+)
 
 
 class NombreAlreadyExistsError(Exception):
@@ -49,6 +56,12 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
         id=record["id"],
         nombre=record["nombre"],
         direccion=record["direccion"],
+        ciudad=record["ciudad"],
+        estado=record["estado"],
+        codigo_postal=record["codigo_postal"],
+        zona_horaria=record["zona_horaria"],
+        hora_apertura=record["hora_apertura"],
+        hora_cierre=record["hora_cierre"],
         telefono=record["telefono"],
         correo=record["correo"],
         administrador_id=record["administrador_id"],
@@ -107,6 +120,12 @@ async def create_branch(
                 correo=data.correo,
                 clave=data.clave,
                 creado_por=creado_por,
+                ciudad=data.ciudad,
+                estado=data.estado,
+                codigo_postal=data.codigo_postal,
+                zona_horaria=data.zona_horaria,
+                hora_apertura=data.hora_apertura,
+                hora_cierre=data.hora_cierre,
             )
         except asyncpg.StringDataRightTruncationError as exc:
             raise TelefonoInvalidoError from exc
@@ -148,6 +167,12 @@ async def update_branch(
                 telefono=data.telefono,
                 correo=data.correo,
                 modificado_por=modificado_por,
+                ciudad=data.ciudad,
+                estado=data.estado,
+                codigo_postal=data.codigo_postal,
+                zona_horaria=data.zona_horaria,
+                hora_apertura=data.hora_apertura,
+                hora_cierre=data.hora_cierre,
             )
         except asyncpg.StringDataRightTruncationError as exc:
             raise TelefonoInvalidoError from exc
@@ -182,3 +207,24 @@ async def reactivate_branch(
     reactivated = await reactivate_sucursal(conn, branch_id, UUID(current_user.sub))
     if not reactivated:
         raise BranchNotFoundError
+
+
+async def get_indicadores(
+    conn: asyncpg.Connection,
+    branch_id: UUID,
+    desde: date,
+    hasta: date,
+    current_user: TokenData,
+) -> IndicadoresSucursalResponse:
+    if current_user.role == ROL_ADMINISTRADOR and current_user.branch_id != branch_id:
+        raise InsufficientPermissionsError
+    record = await get_sucursal_by_id(conn, branch_id)
+    if record is None:
+        raise BranchNotFoundError
+    indicadores = await get_indicadores_sucursal(conn, branch_id, desde, hasta)
+    return IndicadoresSucursalResponse(
+        ventas=indicadores["ventas"],
+        ninos_atendidos=indicadores["ninos_atendidos"],
+        eventos=indicadores["eventos"],
+        cajas_abiertas=indicadores["cajas_abiertas"],
+    )

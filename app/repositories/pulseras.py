@@ -21,7 +21,14 @@ _COLUMNS = """
             FROM public.detalles_registro dr
             WHERE dr.pulseras_id = p.id
         )
-    ) AS usada
+    ) AS usada,
+    (
+        SELECT n.nombre_completo
+        FROM public.detalles_registro dr
+        JOIN public.ninos n ON n.id = dr.ninos_id
+        WHERE dr.pulseras_id = p.id
+        LIMIT 1
+    ) AS asignada_a
 """
 
 
@@ -29,7 +36,8 @@ async def contar_activas_por_sucursal(conn: asyncpg.Connection, sucursal_id: UUI
     """Total de pulseras activas y todavía disponibles de una sucursal.
 
     Como son desechables, una pulsera asignada a un niño o tutor ya no cuenta
-    para la capacidad de un evento futuro.
+    para la capacidad de un evento futuro: a diferencia de una pulsera
+    reutilizable, una vez usada no vuelve a estar libre.
     """
     total = await conn.fetchval(
         """
@@ -111,7 +119,8 @@ async def esta_disponible_para_asignar(
 async def listar_todas(conn: asyncpg.Connection, sucursal_id: UUID) -> list[dict[str, Any]]:
     """Lista todas las pulseras de una sucursal (activas e inactivas), para administración."""
     rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.pulseras AS p WHERE p.sucursal_id = $1 ORDER BY p.pulsera_rfid",
+        f"SELECT {_COLUMNS} FROM public.pulseras AS p "
+        "WHERE p.sucursal_id = $1 ORDER BY p.pulsera_rfid",
         sucursal_id,
     )
     return [dict(r) for r in rows]
@@ -145,7 +154,7 @@ async def crear(
         numero_lote,
         creado_por,
     )
-    return dict(row) | {"usada": False}
+    return dict(row) | {"usada": False, "asignada_a": None}
 
 
 async def actualizar(

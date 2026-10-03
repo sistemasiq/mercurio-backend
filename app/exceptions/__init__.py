@@ -56,3 +56,28 @@ class SaldoInsuficienteError(HTTPException):
                 ),
             },
         )
+
+
+class IdempotenciaConflictoError(HTTPException):
+    """La misma Idempotency-Key llegó con un payload distinto al original (QA #20)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IDEMPOTENCIA_CONFLICTO",
+                "message": "Esta clave de idempotencia ya se usó con datos distintos.",
+            },
+        )
+
+
+class PinTokenRequeridoError(HTTPException):
+    """Falta token_pin de cajero/admin en /turnos-caja/confirmar (QA #14)."""
+
+    def __init__(
+        self, mensaje: str = "Se requieren los tokens de PIN de cajero y administrador."
+    ) -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "PIN_TOKEN_REQUERIDO", "message": mensaje},
+        )

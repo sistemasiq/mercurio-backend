@@ -3,11 +3,11 @@ from typing import Any, Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 
 import app.services.pago_service as svc
 from app.api.deps import apertura_operando_id, require_permission
-from app.services import turnos_caja_service
 from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.pagos import (
@@ -18,8 +18,20 @@ from app.schemas.pagos import (
     PaymentOut,
     PaymentRequest,
 )
+from app.services import turnos_caja_service
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/pagos", tags=["Pagos"])
+
+_HISTORIAL_CSV_CAMPOS = [
+    "tipo_origen",
+    "referencia_id",
+    "titulo",
+    "ticket_numero",
+    "total_final",
+    "estado_actual",
+    "creado",
+]
 
 
 def _get_active_branch(current_user: TokenData) -> UUID:
@@ -65,11 +77,14 @@ async def completar_pago(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
     apertura_id: str = Depends(apertura_operando_id),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
     sucursal_id = _get_active_branch(current_user)
     disponible_antes = await turnos_caja_service.efectivo_disponible_actual(conn, apertura_id)
-    comanda = await svc.completar_pago(conn, body, usuario_id, sucursal_id, apertura_id)
+    comanda = await svc.completar_pago(
+        conn, body, usuario_id, sucursal_id, apertura_id, idempotency_key
+    )
     resultado = asdict(comanda)
     resultado["advertenciaEfectivo"] = turnos_caja_service.advertencia_efectivo_insuficiente(
         disponible_antes, body.cambio
@@ -136,8 +151,35 @@ async def listar_historial(
     estado: str = Query("todos", regex="^(todos|pagado|cancelado)$"),
     fecha_inicio: str | None = Query(None),
     fecha_fin: str | None = Query(None),
+    caja_id: UUID | None = Query(None),
+    metodo_pago_id: UUID | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
 ) -> list[HistorialOut]:
     sucursal_id = _get_active_branch(current_user)
-    return await svc.obtener_historial(conn, sucursal_id, filtro, estado, fecha_inicio, fecha_fin)
+    return await svc.obtener_historial(
+        conn, sucursal_id, filtro, estado, fecha_inicio, fecha_fin, caja_id, metodo_pago_id
+    )
+
+
+@router.get(
+    "/historial/export",
+    summary="Exporta el historial de ventas y pagos a CSV",
+    description="Mismos filtros que `/pagos/historial`, entregado como descarga CSV.",
+)
+async def exportar_historial(
+    filtro: str = Query("hoy", regex="^(hoy|semana|mes)$"),
+    estado: str = Query("todos", regex="^(todos|pagado|cancelado)$"),
+    fecha_inicio: str | None = Query(None),
+    fecha_fin: str | None = Query(None),
+    caja_id: UUID | None = Query(None),
+    metodo_pago_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("restaurante:registrar_pago")),
+) -> StreamingResponse:
+    sucursal_id = _get_active_branch(current_user)
+    historial = await svc.obtener_historial(
+        conn, sucursal_id, filtro, estado, fecha_inicio, fecha_fin, caja_id, metodo_pago_id
+    )
+    filas = (h.model_dump() for h in historial)
+    return csv_streaming_response(_HISTORIAL_CSV_CAMPOS, filas, "historial_ventas.csv")

@@ -8,7 +8,7 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 
-from app.core.database import get_db
+from app.core.database import get_db as get_db
 from app.core.roles import ROL_SISTEMA
 from app.core.security import decode_access_token
 from app.repositories.token_repository import is_token_revoked
@@ -32,7 +32,10 @@ _SERVICE_UNAVAILABLE = HTTPException(
     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
     detail={
         "code": "SERVICE_UNAVAILABLE",
-        "message": "No se pudo verificar la sesión porque la base de datos no respondió. Intenta de nuevo en unos segundos.",
+        "message": (
+            "No se pudo verificar la sesión porque la base de datos no respondió. "
+            "Intenta de nuevo en unos segundos."
+        ),
     },
 )
 
@@ -107,6 +110,40 @@ async def get_current_user_ws(token: str, conn: asyncpg.Connection) -> TokenData
     token llega por query param (?token=...) en vez de header Authorization,
     porque el navegador no permite headers custom en la conexión WS nativa."""
     return await _resolve_token_data(token, conn)
+
+
+async def resolve_ws_auth(
+    conn: asyncpg.Connection,
+    ticket: str | None,
+    token: str | None,
+) -> TokenData:
+    """QA #32 — punto único de autenticación del handshake WS: prioriza el
+    ticket efímero de un solo uso; si no vino, cae al JWT crudo mientras
+    settings.WS_ACEPTA_JWT siga activo (clientes viejos). Lanza _INVALID_TOKEN
+    si no hay nada usable."""
+    from app.core.config import settings
+
+    if ticket:
+        return await get_current_user_ws_ticket(ticket, conn)
+    if token and settings.ws_acepta_jwt:
+        return await get_current_user_ws(token, conn)
+    raise _INVALID_TOKEN
+
+
+async def get_current_user_ws_ticket(ticket: str, conn: asyncpg.Connection) -> TokenData:
+    """QA #32 — autentica el handshake de un WebSocket con un ticket efímero
+    de un solo uso (?ticket=...) en vez del JWT crudo en la URL. El ticket se
+    canjea por los claims guardados al emitirlo (ver POST /auth/ws-ticket)."""
+    from app.core.security import hash_ws_ticket
+    from app.repositories.ws_ticket_repository import consume_ws_ticket
+
+    claims = await consume_ws_ticket(conn, hash_ws_ticket(ticket))
+    if claims is None:
+        raise _INVALID_TOKEN
+    try:
+        return TokenData(**claims)
+    except (TypeError, ValueError) as exc:
+        raise _INVALID_TOKEN from exc
 
 
 def require_role(

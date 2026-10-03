@@ -2,11 +2,8 @@
 este plan) sigue siendo atómico después de agregarle el registro de cambio
 en el Task 19 -- si el segundo pago de un lote falla, ni el primer pago ni
 el movimiento de cambio deben quedar persistidos."""
-import uuid
 
 import pytest
-
-from app.repositories.pagos_comanda import pago_create
 
 
 async def test_fallo_en_el_segundo_pago_no_deja_nada_persistido(conn, apertura_prueba, monkeypatch):

@@ -94,12 +94,12 @@ ON CONFLICT (id) DO UPDATE SET
   modificado = NOW();
 
 -- 5. Pulseras disponibles -----------------------------------------------------
--- Códigos RFID de ejemplo de 10 caracteres para probar el escaneo y la
--- transición Disponible -> Usada al asignarlos a un visitante.
+-- Códigos de ejemplo con el formato oficial WK-0000000 (CHECK de la migración
+-- 047) para probar el escaneo y la transición Disponible -> Usada.
 
 INSERT INTO public.pulseras (sucursal_id, pulsera_rfid, numero_lote, creado_por)
 SELECT '11111111-1111-1111-1111-111111111111'::uuid,
-       'LOC' || lpad(serie::text, 7, '0'),
+       'WK-' || lpad(serie::text, 7, '0'),
        'LOTE-LOCAL-001',
        '22222222-2222-2222-2222-222222222222'::uuid
   FROM generate_series(1, 20) AS datos(serie)

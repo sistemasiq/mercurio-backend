@@ -106,7 +106,13 @@ async def crear(conn: asyncpg.Connection, body: CompraCrear, creado_por: UUID) -
         )
 
     compra_id = await compra_repository.crear_con_detalles(
-        conn, body.sucursal_id, body.proveedor_id, body.notas, body.detalles, creado_por
+        conn,
+        body.sucursal_id,
+        body.proveedor_id,
+        body.notas,
+        body.detalles,
+        creado_por,
+        iva=body.iva,
     )
     return await obtener(conn, compra_id)
 

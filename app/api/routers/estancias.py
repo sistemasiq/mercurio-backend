@@ -17,13 +17,12 @@ from fastapi import (
 from pydantic import ValidationError
 from starlette import status
 
-from app.api.deps import apertura_operando_id, get_current_user_ws, require_permission
+from app.api.deps import apertura_operando_id, require_permission, resolve_ws_auth
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
 from app.core.ws_manager import CANAL_GLOBAL, manager
 from app.schemas.auth import TokenData
 from app.schemas.pagos import PagoEstanciaExtraRequest
-from app.services import turnos_caja_service
 from app.schemas.registros import (
     CheckoutRequest,
     CheckoutResponse,
@@ -33,6 +32,7 @@ from app.schemas.registros import (
     OnboardingResponse,
     ProductoResponse,
 )
+from app.services import turnos_caja_service
 from app.services.chekouts import cotizar_checkout, create_chekout
 from app.services.estancias import (
     create_estancia,
@@ -58,7 +58,6 @@ async def get_activos(
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("estancias:ver_activos")),
 ) -> list[dict[str, Any]]:
-
     scope = sucursal_scope(current_user)
     if scope is not None and str(sucursal_id) != scope:
         raise HTTPException(
@@ -164,9 +163,7 @@ async def checkout(
 ) -> dict[str, Any]:
     usuario_id = UUID(current_user.sub)
 
-    return await create_chekout(
-        conn, detalle_id, usuario_id, body.pagos, apertura_id
-    )
+    return await create_chekout(conn, detalle_id, usuario_id, body.pagos, apertura_id)
 
 
 @router.get(
@@ -186,17 +183,20 @@ async def get_productos(
 @router.websocket("/ws")
 async def estancias_ws(
     websocket: WebSocket,
-    token: str = Query(...),
+    ticket: str | None = Query(None),
+    token: str | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> None:
     """Canal en tiempo real de estancias: emite estancia_creada/estancia_checkout
     a los clientes de la sucursal correspondiente (ver app/core/ws_manager.py),
     para refrescar Control de Acceso sin necesidad de polling.
 
-    El JWT viaja por query param porque el handshake WS nativo del navegador no
-    admite headers custom (no se puede reusar require_permission tal cual)."""
+    QA #32: el ticket efímero (?ticket=..., ver POST /auth/ws-ticket) reemplaza
+    al JWT crudo en la URL; ?token=... se sigue aceptando mientras
+    settings.WS_ACEPTA_JWT sea true. Va por query param porque el handshake WS
+    nativo del navegador no admite headers custom."""
     try:
-        current_user = await get_current_user_ws(token, conn)
+        current_user = await resolve_ws_auth(conn, ticket, token)
     except HTTPException:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

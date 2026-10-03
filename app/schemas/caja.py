@@ -6,6 +6,7 @@ Esquemas Pydantic para el módulo de Cierre de Caja, Apertura, Retiros y Catálo
 import uuid
 from datetime import datetime, time
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -61,6 +62,14 @@ class TurnoResponse(BaseModel):
 # ── Apertura de Caja ────────────────────────────────────────────────────────
 
 
+class FilaBalance(BaseModel):
+    metodo: str
+    label: str
+    declarado: Decimal
+    esperado: Decimal
+    diferencia: Decimal
+
+
 class AbrirTurnoPayload(BaseModel):
     fondo_inicial: Decimal = Field(..., ge=0)
     # max_length=20 coincide con cajas.codigo VARCHAR(20) en BD — sin esto, un valor
@@ -71,6 +80,10 @@ class AbrirTurnoPayload(BaseModel):
     turno_id: str | None = None
     # Solo relevante para AdministradorSistema, que no tiene sucursal propia en el JWT.
     sucursal_id: str | None = None
+    # C1: PIN del cajero que abre el turno (o su contraseña, mientras no tenga
+    # PIN configurado). Se valida en el service, no aquí, para devolver el
+    # mismo código de error estructurado que el resto de validaciones de abrir_turno.
+    pin: str | None = None
 
 
 class MovimientoResumen(BaseModel):
@@ -91,7 +104,18 @@ class TurnoActivoResponse(BaseModel):
     total_ventas: Decimal = Decimal("0")
     total_retiros: Decimal = Decimal("0")
     total_ingresos: Decimal = Decimal("0")
+    # B9 B.4: "vendido en turno" para el cajero mientras el turno está
+    # abierto. Deliberadamente sin desglose por método ni efectivo esperado
+    # (el arqueo es a ciegas); total_vendido es el mismo monto que
+    # total_ventas, con el nombre que espera el front.
+    numero_ventas: int = 0
+    total_vendido: Decimal = Decimal("0")
     movimientos: list[MovimientoResumen] = []
+    # QA #8: solo se llenan cuando estado == "BALANCE_REVELADO" (el admin ya
+    # autenticó la revisión). El front deja de depender del sessionStorage
+    # local para estos dos campos cuando vienen poblados.
+    admin_email: str | None = None
+    balance_por_metodo: list[FilaBalance] = []
 
 
 # ── Retiros Parciales ───────────────────────────────────────────────────────
@@ -179,14 +203,6 @@ class RevisionAdminPayload(BaseModel):
     pin_hash: str | None = None
 
 
-class FilaBalance(BaseModel):
-    metodo: str
-    label: str
-    declarado: Decimal
-    esperado: Decimal
-    diferencia: Decimal
-
-
 class RevisionAdminResponse(BaseModel):
     autorizado: bool
     admin_nombre: str
@@ -203,6 +219,11 @@ class ConfirmarCierrePayload(BaseModel):
     turno_id: str
     observaciones: str | None = None
     tipo_cierre: TipoCierreEnum = TipoCierreEnum.NORMAL
+    # QA #14: tokens de un solo uso emitidos por /validar-pin-cajero y
+    # /validar-pin-admin. Opcionales por retrocompatibilidad: si
+    # settings.exigir_pin_token es False, su ausencia no bloquea el cierre.
+    token_pin_cajero: str | None = None
+    token_pin_admin: str | None = None
 
 
 class ConfirmarCierreResponse(BaseModel):
@@ -248,9 +269,20 @@ class HistorialArqueosResponse(BaseModel):
     page_size: int
 
 
+class ResumenHistorialArqueosOut(BaseModel):
+    """KPIs agregados de TODO el periodo filtrado (no solo la página
+    cargada por el front). B7 pendiente #2."""
+
+    total_arqueos: int
+    total_declarado: Decimal
+    total_esperado: Decimal
+    diferencia_neta: Decimal
+    arqueos_con_diferencia: int
+
+
 class DesgloseEfectivoDetalle(BaseModel):
-    billetes: list[dict] = []
-    monedas: list[dict] = []
+    billetes: list[dict[str, Any]] = []
+    monedas: list[dict[str, Any]] = []
     total: Decimal
 
 
