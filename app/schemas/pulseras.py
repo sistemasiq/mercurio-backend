@@ -42,6 +42,9 @@ class PulseraOut(BaseModel):
     pulsera_rfid: str
     activo: bool
     usada: bool
+    # Nombre del niño (detalles_registro) o del tutor (registros.pulseras_tutor_id)
+    # que tiene actualmente esta pulsera, si `usada` es true.
+    asignada_a: str | None = None
     numero_lote: str | None = None
     creado: datetime | None
     creado_por: UUID | None

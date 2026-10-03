@@ -26,7 +26,23 @@ _COLUMNS = """
             FROM public.registros r
             WHERE r.pulseras_tutor_id = p.id
         )
-    ) AS usada
+    ) AS usada,
+    COALESCE(
+        (
+            SELECT n.nombre_completo
+            FROM public.detalles_registro dr
+            JOIN public.ninos n ON n.id = dr.ninos_id
+            WHERE dr.pulseras_id = p.id
+            LIMIT 1
+        ),
+        (
+            SELECT t.nombre_completo
+            FROM public.registros r
+            JOIN public.tutores t ON t.id = r.tutores_id
+            WHERE r.pulseras_tutor_id = p.id
+            LIMIT 1
+        )
+    ) AS asignada_a
 """
 
 
@@ -166,7 +182,7 @@ async def crear(
         numero_lote,
         creado_por,
     )
-    return dict(row) | {"usada": False}
+    return dict(row) | {"usada": False, "asignada_a": None}
 
 
 async def actualizar(
