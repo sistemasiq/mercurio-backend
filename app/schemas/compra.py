@@ -23,6 +23,8 @@ class CompraCrear(BaseModel):
     sucursal_id: UUID
     proveedor_id: UUID
     notas: str | None = None
+    # Monto de IVA de la orden (se captura; el total sigue siendo la suma de líneas).
+    iva: Decimal = Field(Decimal("0"), ge=0)
     detalles: list[DetalleCompraItem] = Field(..., min_length=1)
 
 
@@ -37,6 +39,8 @@ class CompraEditar(BaseModel):
 
     proveedor_id: UUID
     notas: str | None = None
+    # None conserva el IVA ya capturado.
+    iva: Decimal | None = Field(None, ge=0)
     detalles: list[DetalleCompraItem] = Field(..., min_length=1)
 
 
@@ -77,6 +81,9 @@ class CompraOut(BaseModel):
     fecha_pedido: datetime
     fecha_recepcion: datetime | None
     total: Decimal
+    iva: Decimal = Decimal("0")
+    # Folio de OC secuencial por sucursal; None en compras anteriores a la 066.
+    folio: str | None = None
     notas: str | None
     activo: bool
     creado: datetime
