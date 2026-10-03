@@ -23,6 +23,7 @@ class RolConPermisosResponse(BaseModel):
     requiere_sucursal: bool
     permisos_editables: bool
     permisos: list[PermisoResponse]
+    usuarios_count: int = 0
 
 
 class UpdateRolPermisosRequest(BaseModel):

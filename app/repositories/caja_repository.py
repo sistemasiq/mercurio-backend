@@ -126,40 +126,64 @@ async def get_primer_turno(conn: asyncpg.Connection) -> dict | None:
 # ── Cajas: CRUD administrativo ───────────────────────────────────────────────
 
 
+def _row_to_caja_admin_dict(row: asyncpg.Record) -> dict:
+    d = {
+        "id": str(row["id"]),
+        "nombre": row["nombre"],
+        "numero": row["numero"],
+        "activo": row["activo"],
+        "impresora": row["impresora"],
+    }
+    if "sucursal_id" in row.keys():
+        d["sucursal_id"] = str(row["sucursal_id"])
+    turno_actual = None
+    if row.get("apertura_id") is not None:
+        turno_actual = {
+            "id": str(row["apertura_id"]),
+            "cajero": row["apertura_cajero"],
+            "apertura": row["apertura_fecha"],
+        }
+    d["turno_actual"] = turno_actual
+    return d
+
+
 async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list[dict]:
     rows = await conn.fetch(
         """
-        SELECT id, nombre, numero, activo
-        FROM public.cajas
-        WHERE sucursal_id = $1
-        ORDER BY numero ASC, nombre ASC
+        SELECT
+            c.id, c.nombre, c.numero, c.activo, c.impresora,
+            a.id AS apertura_id, a.creado AS apertura_fecha,
+            COALESCE(u.nombre_completo, u.email) AS apertura_cajero
+        FROM public.cajas c
+        LEFT JOIN public.apertura_caja a
+               ON a.caja_id = c.id AND a.estado IN ('ABIERTA', 'EN_CORTE')
+        LEFT JOIN public.usuarios u ON u.id = a.cajero_id
+        WHERE c.sucursal_id = $1
+        ORDER BY c.numero ASC, c.nombre ASC
         """,
         uuid.UUID(sucursal_id),
     )
-    return [
-        {"id": str(r["id"]), "nombre": r["nombre"], "numero": r["numero"], "activo": r["activo"]}
-        for r in rows
-    ]
+    return [_row_to_caja_admin_dict(r) for r in rows]
 
 
 async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict | None:
     row = await conn.fetchrow(
         """
-        SELECT id, sucursal_id, nombre, numero, activo
-        FROM public.cajas
-        WHERE id = $1
+        SELECT
+            c.id, c.sucursal_id, c.nombre, c.numero, c.activo, c.impresora,
+            a.id AS apertura_id, a.creado AS apertura_fecha,
+            COALESCE(u.nombre_completo, u.email) AS apertura_cajero
+        FROM public.cajas c
+        LEFT JOIN public.apertura_caja a
+               ON a.caja_id = c.id AND a.estado IN ('ABIERTA', 'EN_CORTE')
+        LEFT JOIN public.usuarios u ON u.id = a.cajero_id
+        WHERE c.id = $1
         """,
         uuid.UUID(caja_id),
     )
     if row is None:
         return None
-    return {
-        "id": str(row["id"]),
-        "sucursal_id": str(row["sucursal_id"]),
-        "nombre": row["nombre"],
-        "numero": row["numero"],
-        "activo": row["activo"],
-    }
+    return _row_to_caja_admin_dict(row)
 
 
 async def crear_caja_admin(
@@ -168,19 +192,22 @@ async def crear_caja_admin(
     nombre: str,
     numero: int,
     creado_por: str | None = None,
+    impresora: str | None = None,
 ) -> dict:
     now = get_mexico_now()
     codigo = f"CAJA {numero:02d}"
     row = await conn.fetchrow(
         """
-        INSERT INTO public.cajas (id, sucursal_id, codigo, nombre, numero, activo, creado, creado_por)
-        VALUES (gen_random_uuid(), $1, $2, $3, $4, TRUE, $5, $6)
-        RETURNING id, nombre, numero, activo
+        INSERT INTO public.cajas
+            (id, sucursal_id, codigo, nombre, numero, impresora, activo, creado, creado_por)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, TRUE, $6, $7)
+        RETURNING id, nombre, numero, activo, impresora
         """,
         uuid.UUID(sucursal_id),
         codigo,
         nombre,
         numero,
+        impresora,
         now,
         uuid.UUID(creado_por) if creado_por else None,
     )
@@ -189,6 +216,8 @@ async def crear_caja_admin(
         "nombre": row["nombre"],
         "numero": row["numero"],
         "activo": row["activo"],
+        "impresora": row["impresora"],
+        "turno_actual": None,
     }
 
 
@@ -199,6 +228,8 @@ async def actualizar_caja_admin(
     numero: int | None = None,
     activo: bool | None = None,
     modificado_por: str | None = None,
+    impresora: str | None = None,
+    actualizar_impresora: bool = False,
 ) -> dict | None:
     now = get_mexico_now()
     row = await conn.fetchrow(
@@ -207,18 +238,23 @@ async def actualizar_caja_admin(
         SET
             nombre     = COALESCE($2, nombre),
             numero     = COALESCE($3, numero),
-            codigo     = CASE WHEN $3 IS NOT NULL THEN 'CAJA ' || LPAD($3::text, 2, '0') ELSE codigo END,
+            codigo     = CASE WHEN $3 IS NOT NULL
+                              THEN 'CAJA ' || LPAD($3::text, 2, '0')
+                              ELSE codigo END,
             activo     = COALESCE($4, activo),
+            impresora  = CASE WHEN $7 THEN $6 ELSE impresora END,
             modificado = $5,
-            modificado_por = $6
+            modificado_por = $8
         WHERE id = $1
-        RETURNING id, nombre, numero, activo
+        RETURNING id, nombre, numero, activo, impresora
         """,
         uuid.UUID(caja_id),
         nombre,
         numero,
         activo,
         now,
+        impresora,
+        actualizar_impresora,
         uuid.UUID(modificado_por) if modificado_por else None,
     )
     if row is None:
@@ -228,6 +264,8 @@ async def actualizar_caja_admin(
         "nombre": row["nombre"],
         "numero": int(row["numero"]),
         "activo": row["activo"],
+        "impresora": row["impresora"],
+        "turno_actual": None,
     }
 
 

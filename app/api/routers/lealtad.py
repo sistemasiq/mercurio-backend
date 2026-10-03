@@ -10,6 +10,8 @@ from app.core.database import get_db
 from app.schemas.auth import TokenData
 from app.schemas.lealtad import (
     CELULAR_PATTERN,
+    AjustePuntosRequest,
+    ClienteLealtadOut,
     ConfiguracionLealtadBase,
     ConfiguracionLealtadOut,
     MovimientoPuntoOut,
@@ -64,7 +66,31 @@ async def listar_movimientos(
 @router.get("/reporte", response_model=ReporteLealtadOut)
 async def obtener_reporte(
     sucursal_id: UUID | None = Query(None),
+    desde: date | None = Query(None),
+    hasta: date | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
     current_user: TokenData = Depends(require_permission("lealtad:ver_reporte")),
 ) -> ReporteLealtadOut:
-    return await svc.obtener_reporte(conn, current_user, sucursal_id)
+    return await svc.obtener_reporte(conn, current_user, sucursal_id, desde, hasta)
+
+
+@router.get("/clientes", response_model=list[ClienteLealtadOut])
+async def buscar_clientes(
+    q: str = Query(..., min_length=1),
+    sucursal_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("lealtad:ver_saldo")),
+) -> list[ClienteLealtadOut]:
+    return await svc.buscar_clientes(conn, current_user, sucursal_id, q)
+
+
+@router.post("/ajustes", response_model=MovimientoPuntoOut)
+async def ajustar_puntos(
+    body: AjustePuntosRequest,
+    sucursal_id: UUID | None = Query(None),
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("lealtad:ajustar")),
+) -> MovimientoPuntoOut:
+    return await svc.ajustar_puntos(
+        conn, current_user, sucursal_id, body.celular, body.puntos, body.motivo
+    )

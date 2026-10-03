@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import TypedDict
 from uuid import UUID
 
@@ -11,6 +12,10 @@ class SucursalRecord(TypedDict):
     id: UUID
     nombre: str
     direccion: str | None
+    ciudad: str | None
+    estado: str | None
+    codigo_postal: str | None
+    zona_horaria: str
     telefono: str | None
     correo: str | None
     administrador_id: UUID | None
@@ -30,6 +35,10 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
         id=row["id"],
         nombre=row["nombre"],
         direccion=row["direccion"],
+        ciudad=row["ciudad"],
+        estado=row["estado"],
+        codigo_postal=row["codigo_postal"],
+        zona_horaria=row["zona_horaria"],
         telefono=row["telefono"],
         correo=row["correo"],
         administrador_id=row["administrador_id"],
@@ -54,7 +63,8 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
 # de una fila histórica para la misma sucursal (p. ej. datos previos a esta
 # migración), se toma como máximo una por sucursal (la más reciente).
 _SELECT = """
-    SELECT s.id, s.nombre, s.direccion, s.telefono, s.correo,
+    SELECT s.id, s.nombre, s.direccion, s.ciudad, s.estado, s.codigo_postal,
+           s.zona_horaria, s.telefono, s.correo,
            adm.id AS administrador_id, adm.nombre_completo AS administrador_name,
            s.clave, s.activo,
            s.creado, s.creado_por, uc.nombre_completo AS creador_name,
@@ -126,16 +136,25 @@ async def create_sucursal(
     correo: str | None,
     clave: str | None,
     creado_por: UUID,
+    ciudad: str | None = None,
+    estado: str | None = None,
+    codigo_postal: str | None = None,
+    zona_horaria: str = "America/Mexico_City",
 ) -> UUID:
     row = await conn.fetchrow(
         """
         INSERT INTO public.sucursales
-            (nombre, direccion, telefono, correo, clave, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6)
+            (nombre, direccion, ciudad, estado, codigo_postal, zona_horaria,
+             telefono, correo, clave, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id
         """,
         nombre,
         direccion,
+        ciudad,
+        estado,
+        codigo_postal,
+        zona_horaria,
         telefono,
         correo,
         clave,
@@ -153,21 +172,30 @@ async def update_sucursal(
     telefono: str | None,
     correo: str | None,
     modificado_por: UUID,
+    ciudad: str | None = None,
+    estado: str | None = None,
+    codigo_postal: str | None = None,
+    zona_horaria: str = "America/Mexico_City",
 ) -> bool:
     result = await conn.execute(
         """
         UPDATE public.sucursales
         SET nombre = $1, direccion = $2, telefono = $3, correo = $4,
             clave = $5,
-            modificado = NOW(), modificado_por = $6::uuid
-        WHERE id = $7::uuid
+            ciudad = $6, estado = $7, codigo_postal = $8, zona_horaria = $9,
+            modificado = NOW(), modificado_por = $10::uuid
+        WHERE id = $11::uuid
         """,
         nombre,  # $1
         direccion,  # $2
         telefono,  # $3
         correo,  # $4
         clave,  # $5
-        modificado_por,  # $6
+        ciudad,  # $6
+        estado,  # $7
+        codigo_postal,  # $8
+        zona_horaria,  # $9
+        modificado_por,  # $10
         sucursal_id,
     )
     return str(result) == "UPDATE 1"
@@ -186,6 +214,84 @@ async def deactivate_sucursal(
         sucursal_id,
     )
     return str(result) == "UPDATE 1"
+
+
+class IndicadoresSucursal(TypedDict):
+    ventas: Decimal
+    ninos_atendidos: int
+    eventos: int
+    cajas_abiertas: int
+
+
+async def get_indicadores_sucursal(
+    conn: asyncpg.Connection,
+    sucursal_id: UUID,
+    desde: date,
+    hasta: date,
+) -> IndicadoresSucursal:
+    """Indicadores de solo lectura sobre tablas ya existentes.
+
+    - ventas: comandas cobradas (estado_actual = 'T', entregado) en el rango.
+    - ninos_atendidos: niños distintos con un detalle de registro cuya
+      entrada cae en el rango.
+    - eventos: reservaciones activas, no canceladas, con fecha_evento en el
+      rango.
+    - cajas_abiertas: foto actual (no depende de desde/hasta) de cuántas
+      cajas de la sucursal tienen un turno abierto ahora mismo.
+    """
+    ventas = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(total_final), 0)
+        FROM public.comandas
+        WHERE sucursal_id = $1
+          AND estado_actual = 'T'
+          AND fecha_hora::date BETWEEN $2 AND $3
+        """,
+        sucursal_id,
+        desde,
+        hasta,
+    )
+    ninos_atendidos = await conn.fetchval(
+        """
+        SELECT COUNT(DISTINCT dr.ninos_id)
+        FROM public.detalles_registro dr
+        WHERE dr.sucursal_id = $1
+          AND dr.activo = TRUE
+          AND dr.entrada::date BETWEEN $2 AND $3
+        """,
+        sucursal_id,
+        desde,
+        hasta,
+    )
+    eventos = await conn.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM public.reservaciones
+        WHERE sucursal_id = $1
+          AND activo = TRUE
+          AND estado != 'cancelada'
+          AND fecha_evento BETWEEN $2 AND $3
+        """,
+        sucursal_id,
+        desde,
+        hasta,
+    )
+    cajas_abiertas = await conn.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM public.apertura_caja a
+        JOIN public.cajas c ON c.id = a.caja_id
+        WHERE c.sucursal_id = $1
+          AND a.estado IN ('ABIERTA', 'EN_CORTE')
+        """,
+        sucursal_id,
+    )
+    return IndicadoresSucursal(
+        ventas=ventas,
+        ninos_atendidos=ninos_atendidos,
+        eventos=eventos,
+        cajas_abiertas=cajas_abiertas,
+    )
 
 
 async def reactivate_sucursal(

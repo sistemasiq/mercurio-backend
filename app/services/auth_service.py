@@ -23,6 +23,7 @@ from app.repositories.user_repository import (
     get_sucursal_ids_activas,
     get_usuario_by_email,
     get_usuario_by_id,
+    update_ultimo_acceso,
 )
 from app.schemas.auth import (
     BranchOption,
@@ -115,6 +116,8 @@ async def login(
     )
 
     branch_name = await get_sucursal_nombre(conn, sucursal_efectiva) if sucursal_efectiva else None
+
+    await update_ultimo_acceso(conn, usuario["id"])
 
     return LoginResponse(
         token=token,

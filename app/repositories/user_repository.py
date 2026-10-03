@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TypedDict
 from uuid import UUID
 
@@ -13,9 +14,12 @@ class UsuarioRecord(TypedDict):
     email: str
     password_hash: str
     nombre_completo: str
+    apellidos: str | None
+    telefono: str | None
     rol: str
     sucursal_id: UUID | None
     activo: bool
+    ultimo_acceso: datetime | None
 
 
 def _row_to_record(row: asyncpg.Record) -> UsuarioRecord:
@@ -24,9 +28,12 @@ def _row_to_record(row: asyncpg.Record) -> UsuarioRecord:
         email=row["email"],
         password_hash=row["password_hash"],
         nombre_completo=row["nombre_completo"],
+        apellidos=row["apellidos"],
+        telefono=row["telefono"],
         rol=row["rol"],
         sucursal_id=row["sucursal_id"],
         activo=row["activo"],
+        ultimo_acceso=row["ultimo_acceso"],
     )
 
 
@@ -42,9 +49,12 @@ _SELECT = f"""
         u.email,
         u.password_hash,
         u.nombre_completo,
+        u.apellidos,
+        u.telefono,
         r.nombre AS rol,
         us.sucursal_id,
-        u.activo
+        u.activo,
+        u.ultimo_acceso
     FROM public.usuarios u
     JOIN public.roles r ON r.id = u.rol
     LEFT JOIN public.usuarios_sucursal us
@@ -95,17 +105,21 @@ async def create_usuario(
     nombre_completo: str,
     rol: str,
     creado_por: UUID,
+    apellidos: str | None = None,
+    telefono: str | None = None,
 ) -> UUID:
     row = await conn.fetchrow(
         """
         INSERT INTO public.usuarios
-            (email, password_hash, nombre_completo, rol, creado_por)
-        VALUES ($1, $2, $3, (SELECT id FROM public.roles WHERE nombre = $4), $5)
+            (email, password_hash, nombre_completo, apellidos, telefono, rol, creado_por)
+        VALUES ($1, $2, $3, $4, $5, (SELECT id FROM public.roles WHERE nombre = $6), $7)
         RETURNING id
         """,
         email,
         password_hash,
         nombre_completo,
+        apellidos,
+        telefono,
         rol,
         creado_por,
     )
@@ -120,26 +134,43 @@ async def update_usuario(
     rol: str,
     password_hash: str | None,
     modificado_por: UUID,
+    apellidos: str | None = None,
+    telefono: str | None = None,
+    activo: bool | None = None,
 ) -> bool:
     result = await conn.execute(
         """
         UPDATE public.usuarios
         SET email           = $1,
             nombre_completo = $2,
-            rol             = (SELECT id FROM public.roles WHERE nombre = $3),
-            password_hash   = COALESCE($4, password_hash),
+            apellidos       = $3,
+            telefono        = $4,
+            rol             = (SELECT id FROM public.roles WHERE nombre = $5),
+            password_hash   = COALESCE($6, password_hash),
+            activo          = COALESCE($7, activo),
             modificado      = NOW(),
-            modificado_por  = $5
-        WHERE id = $6 AND activo = TRUE
+            modificado_por  = $8
+        WHERE id = $9 AND activo = TRUE
         """,
         email,
         nombre_completo,
+        apellidos,
+        telefono,
         rol,
         password_hash,
+        activo,
         modificado_por,
         user_id,
     )
     return str(result) == "UPDATE 1"
+
+
+async def update_ultimo_acceso(conn: asyncpg.Connection, user_id: UUID) -> None:
+    """Registra el momento del login exitoso. Llamar desde auth_service.login."""
+    await conn.execute(
+        "UPDATE public.usuarios SET ultimo_acceso = NOW() WHERE id = $1",
+        user_id,
+    )
 
 
 async def update_usuario_branch(
