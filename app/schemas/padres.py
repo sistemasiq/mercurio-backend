@@ -44,6 +44,16 @@ class NinoActivoResponse(BaseModel):
     minutosTranscurridos: int  # noqa: N815
     minutosPagados: int  # noqa: N815
     pulsera: str | None
+    # Solo si la visita sigue activa: excedente estimado en este momento, con
+    # la misma fórmula que la cotización del checkout (ver chekouts.py).
+    cargoExtra: float = 0.0  # noqa: N815
+    # Solo si la visita ya terminó: lo que costó esta estancia (tiempo
+    # contratado + cualquier cargo extra ya cobrado) y los puntos de lealtad
+    # otorgados por el registro completo (el programa otorga por registro,
+    # no por niño, así que todos los hermanos de un mismo registro ven el
+    # mismo valor aquí).
+    importe: float | None = None
+    puntosGanados: int | None = None  # noqa: N815
 
     model_config = ConfigDict(from_attributes=True)
 
