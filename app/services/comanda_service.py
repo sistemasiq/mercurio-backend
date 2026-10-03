@@ -120,12 +120,17 @@ async def crear_comanda(
     conn: asyncpg.Connection,
     comanda_in: ComandaCreate,
     current_user: TokenData,
-    apertura_caja_id: str,
+    apertura_caja_id: str | None,
 ) -> Comanda:
     """Crea una comanda, descuenta el stock de los insumos de la receta de
     cada producto vendido (aborta todo si alguno no alcanza), registra el
     movimiento de venta en la caja del turno activo, la reexpande desde BD
     y notifica a los clientes conectados.
+
+    `apertura_caja_id=None` crea la comanda SIN movimiento de venta en caja: lo
+    usan las comandas automáticas de eventos, cuyo ingreso ya se cobró como
+    anticipo/liquidación en pagos_reservacion (registrarlo aquí lo contaría dos
+    veces y descuadraría el arqueo).
 
     metodo_pago_id va en None temporalmente: el módulo de métodos de pago para
     comandas todavía no está integrado (columna nullable a propósito mientras tanto).
@@ -143,15 +148,16 @@ async def crear_comanda(
             comanda.id,
             UUID(current_user.sub),
         )
-        await registrar_movimiento_caja(
-            conn,
-            apertura_caja_id=apertura_caja_id,
-            tipo_movimiento="O",
-            referencia_id=comanda.id,
-            metodo_pago_id=None,
-            monto=comanda.total_final,
-            creado_por=creado_por,
-        )
+        if apertura_caja_id is not None:
+            await registrar_movimiento_caja(
+                conn,
+                apertura_caja_id=apertura_caja_id,
+                tipo_movimiento="O",
+                referencia_id=comanda.id,
+                metodo_pago_id=None,
+                monto=comanda.total_final,
+                creado_por=creado_por,
+            )
 
     comanda.detalles = await expandir_detalles_comanda(conn, comanda.detalles)
     await manager.broadcast(
