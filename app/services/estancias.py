@@ -287,23 +287,24 @@ async def create_estancia(
                     if min_h <= horas_solicitadas <= max_h:
                         precio = p_val
                         break
-                    
+
                 if precio is None:
                     precio_mas_bajo = None
-                    min_horas_mas_bajo = float('inf')
-                    
+                    min_horas_mas_bajo = float("inf")
+
                     for config in precios:
                         min_h = float(config["min_horas"])
                         if min_h < min_horas_mas_bajo:
                             min_horas_mas_bajo = min_h
                             precio_mas_bajo = Decimal(str(config["precio"]))
-                    
+
                     if precio_mas_bajo is not None:
                         precio = precio_mas_bajo
                     else:
                         raise HTTPException(
-                            400, 
-                            "No se encontró ningún precio disponible en la configuración de estancia"
+                            400,
+                            "No se encontró ningún precio disponible en la "
+                            "configuración de estancia",
                         )
 
                 await insert_detalle_registro(
@@ -417,7 +418,26 @@ async def create_estancia(
 async def get_activos_estancia_by_sucursal_id(
     conn: asyncpg.Connection, sucursal_id: UUID
 ) -> list[dict[str, Any]]:
-    return await get_activos_by_sucursal_id(conn, sucursal_id)
+    """Agrega hora_entrada (timestamp real) y cargo_extra (excedente estimado
+    ahora mismo, con la misma fórmula que cotizar_checkout) a cada activo, sin
+    duplicar esa regla de negocio en SQL."""
+    # Import local para evitar un ciclo: chekouts no importa este módulo.
+    from app.services.chekouts import _calcular_cargo_extra_sync
+
+    now = datetime.now(UTC)
+    activos = await get_activos_by_sucursal_id(conn, sucursal_id)
+
+    resultado = []
+    for activo in activos:
+        _, cargo_extra = _calcular_cargo_extra_sync(activo["salidaEsperada"], activo["precio"], now)
+        resultado.append(
+            {
+                **activo,
+                "horaEntrada": activo["entrada"].isoformat(),
+                "cargoExtra": float(cargo_extra),
+            }
+        )
+    return resultado
 
 
 async def get_productos_estancia_by_id_sucursal(

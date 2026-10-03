@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -43,7 +43,20 @@ async def _get_hijos_visita(conn: asyncpg.Connection, registro_id: UUID) -> list
                 ELSE FLOOR(EXTRACT(EPOCH FROM (dr.salida - dr.entrada)) / 60)::int
             END AS "minutosTranscurridos",
             (dr.cantidad * 60)::int AS "minutosPagados",
-            p.pulsera_rfid AS "pulsera"
+            p.pulsera_rfid AS "pulsera",
+            dr.precio AS "precio",
+            dr.cantidad AS "cantidad",
+            dr.salida_esperada AS "salidaEsperadaRaw",
+            (
+                SELECT COALESCE(SUM(ce.total), 0)
+                FROM cargos_extra_estancia ce
+                WHERE ce.detalles_registro_id = dr.id
+            ) AS "cargoExtraCobrado",
+            (
+                SELECT COALESCE(SUM(mp.puntos), 0)
+                FROM movimientos_puntos mp
+                WHERE mp.registro_id = r.id AND mp.tipo = 'O'
+            ) AS "puntosGanadosRegistro"
         FROM detalles_registro dr
         JOIN registros r ON r.id = dr.registros_id
         JOIN ninos n ON n.id = dr.ninos_id
@@ -58,6 +71,40 @@ async def _get_hijos_visita(conn: asyncpg.Connection, registro_id: UUID) -> list
         registro_id,
     )
     return [dict(r) for r in rows]
+
+
+def _build_nino_activo(hijo: dict[str, Any], now: datetime) -> NinoActivoResponse:
+    """Agrega cargoExtra (visita activa) o importe/puntosGanados (visita
+    terminada) al DTO de un hijo, reusando la misma fórmula de excedente que
+    cotizar_checkout para no desincronizarse de ella (ver chekouts.py)."""
+    # Import local para evitar un ciclo: chekouts no importa este módulo.
+    from app.services.chekouts import _calcular_cargo_extra_sync
+
+    cargo_extra = 0.0
+    importe: float | None = None
+    puntos_ganados: int | None = None
+
+    if hijo["estadoVisita"] == "activo":
+        _, cargo_extra = _calcular_cargo_extra_sync(hijo["salidaEsperadaRaw"], hijo["precio"], now)
+    else:
+        importe = float(hijo["precio"]) * hijo["cantidad"] + float(hijo["cargoExtraCobrado"])
+        puntos_ganados = int(hijo["puntosGanadosRegistro"])
+
+    return NinoActivoResponse(
+        id=UUID(str(hijo["id"])),
+        nombreCompleto=hijo["nombreCompleto"],
+        edad=hijo["edad"],
+        estadoVisita=hijo["estadoVisita"],
+        horaEntrada=hijo["horaEntrada"],
+        horaSalidaEsperada=hijo["horaSalidaEsperada"],
+        horaSalida=hijo["horaSalida"],
+        minutosTranscurridos=hijo["minutosTranscurridos"],
+        minutosPagados=hijo["minutosPagados"],
+        pulsera=hijo["pulsera"],
+        cargoExtra=cargo_extra,
+        importe=importe,
+        puntosGanados=puntos_ganados,
+    )
 
 
 async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreDashboardResponse:
@@ -89,6 +136,7 @@ async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreD
         raise TokenAccesoInvalidoError
 
     hijos = await _get_hijos_visita(conn, registro_id)
+    now = datetime.now(UTC)
 
     expires_delta = timedelta(hours=2)
     access_token = create_access_token(
@@ -115,21 +163,7 @@ async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreD
                 nombre=sucursal["nombre"],
             ),
         ),
-        ninosActivos=[
-            NinoActivoResponse(
-                id=UUID(str(h["id"])),
-                nombreCompleto=h["nombreCompleto"],
-                edad=h["edad"],
-                estadoVisita=h["estadoVisita"],
-                horaEntrada=h["horaEntrada"],
-                horaSalidaEsperada=h["horaSalidaEsperada"],
-                horaSalida=h["horaSalida"],
-                minutosTranscurridos=h["minutosTranscurridos"],
-                minutosPagados=h["minutosPagados"],
-                pulsera=h["pulsera"],
-            )
-            for h in hijos
-        ],
+        ninosActivos=[_build_nino_activo(h, now) for h in hijos],
     )
 
 
@@ -147,20 +181,5 @@ async def get_ninos_activos(
         raise TokenAccesoInvalidoError
 
     hijos = await _get_hijos_visita(conn, registro_id)
-    return PadreNinosActivosResponse(
-        ninosActivos=[
-            NinoActivoResponse(
-                id=UUID(str(h["id"])),
-                nombreCompleto=h["nombreCompleto"],
-                edad=h["edad"],
-                estadoVisita=h["estadoVisita"],
-                horaEntrada=h["horaEntrada"],
-                horaSalidaEsperada=h["horaSalidaEsperada"],
-                horaSalida=h["horaSalida"],
-                minutosTranscurridos=h["minutosTranscurridos"],
-                minutosPagados=h["minutosPagados"],
-                pulsera=h["pulsera"],
-            )
-            for h in hijos
-        ]
-    )
+    now = datetime.now(UTC)
+    return PadreNinosActivosResponse(ninosActivos=[_build_nino_activo(h, now) for h in hijos])

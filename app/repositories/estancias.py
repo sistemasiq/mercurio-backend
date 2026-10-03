@@ -26,7 +26,10 @@ async def get_activos_by_sucursal_id(
             ) AS "minutosPagados",
             FLOOR(
                 EXTRACT(EPOCH FROM (NOW() - dr.entrada)) / 60
-            ) AS "minutosTranscurridos"
+            ) AS "minutosTranscurridos",
+            dr.entrada AS "entrada",
+            dr.salida_esperada AS "salidaEsperada",
+            dr.precio AS "precio"
         FROM detalles_registro dr
         JOIN registros r
             ON r.id = dr.registros_id
