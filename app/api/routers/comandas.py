@@ -25,9 +25,9 @@ from pydantic import BaseModel
 
 from app.api.deps import (
     apertura_operando_id,
-    get_current_user_ws,
     require_permission,
     require_role,
+    resolve_ws_auth,
 )
 from app.core.database import get_db
 from app.core.scope import sucursal_scope
@@ -184,16 +184,19 @@ async def modificar_detalles(
 @router.websocket("/ws")
 async def comandas_ws(
     websocket: WebSocket,
-    token: str = Query(...),
+    ticket: str | None = Query(None),
+    token: str | None = Query(None),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> None:
     """Canal en tiempo real de comandas: emite comanda_creada/comanda_actualizada
     a los clientes de la sucursal correspondiente (ver app/core/ws_manager.py).
 
-    El JWT viaja por query param porque el handshake WS nativo del navegador no
-    admite headers custom (no se puede reusar require_permission tal cual)."""
+    QA #32: el ticket efímero (?ticket=..., ver POST /auth/ws-ticket) reemplaza
+    al JWT crudo en la URL; ?token=... se sigue aceptando mientras
+    settings.WS_ACEPTA_JWT sea true. Va por query param porque el handshake WS
+    nativo del navegador no admite headers custom."""
     try:
-        current_user = await get_current_user_ws(token, conn)
+        current_user = await resolve_ws_auth(conn, ticket, token)
     except HTTPException:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
