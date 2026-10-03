@@ -80,6 +80,7 @@ class ReservacionesUpdate(BaseModel):
 
 class ReservacionesOut(ReservacionesBase):
     id: UUID
+    folio: str | None = None
     saldo_pendiente: Decimal
     comanda_enviada: bool
     activo: bool
@@ -93,6 +94,7 @@ class ReservacionesOut(ReservacionesBase):
 
 class EventoDelDiaOut(BaseModel):
     id: UUID
+    folio: str | None = None
     nombre_cliente: str
     apellidos_cliente: str | None
     telefono_cliente: str

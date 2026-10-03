@@ -58,12 +58,30 @@ async def obtener(conn: asyncpg.Connection, pago_id: UUID) -> PagosReservacionOu
     return PagosReservacionOut.model_validate(row)
 
 
+async def _resolver_tipo(
+    conn: asyncpg.Connection, reservacion_id: UUID, monto: Decimal, tipo_solicitado: str | None
+) -> str:
+    """Si este pago deja el saldo de la reservación en 0 (o menos, por un
+    sobrepago), siempre se marca como 'liquidacion' sin importar lo que se
+    haya pedido -- regla de negocio explícita del pendiente "Distinguir
+    anticipo de liquidación". En cualquier otro caso se respeta `tipo_solicitado`
+    (o 'pago' si no se mandó ninguno)."""
+    reservacion = await reservaciones_repository.obtener(conn, reservacion_id)
+    if reservacion is not None:
+        pagado_previo = await pagos_reservacion_repository.sumar_pagos(conn, reservacion_id)
+        saldo_tras_pago = reservacion["precio_total"] - (pagado_previo + monto)
+        if saldo_tras_pago <= 0:
+            return "liquidacion"
+    return tipo_solicitado or "pago"
+
+
 async def crear(
     conn: asyncpg.Connection,
     body: PagosReservacionCreate,
     usuario_id: UUID,
     apertura_caja_id: str,
 ) -> PagosReservacionOut:
+    tipo = await _resolver_tipo(conn, body.reservacion_id, body.monto, body.tipo)
     row = await pagos_reservacion_repository.crear(
         conn,
         reservacion_id=body.reservacion_id,
@@ -71,6 +89,7 @@ async def crear(
         monto=body.monto,
         fecha_pago=datetime.now(UTC),
         notas=body.notas,
+        tipo=tipo,
         # Sin esto la columna quedaba siempre en NULL y el historial no podía
         # decir quién cobró el evento, a diferencia de las ventas de mostrador.
         creado_por=usuario_id,
@@ -132,6 +151,7 @@ async def completar(
                     metodo_pago_id=item.metodo_pago_id,
                     monto=item.monto,
                     notas=item.notas,
+                    tipo=item.tipo,
                 ),
                 usuario_id,
                 apertura_caja_id,
