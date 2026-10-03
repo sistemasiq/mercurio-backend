@@ -32,3 +32,4 @@ uploads/llegadas/*
 uploads/productos/*
 !uploads/productos/.gitignore
 docs/superpowers/
+.env.docker

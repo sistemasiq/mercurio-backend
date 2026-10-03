@@ -1,0 +1,10 @@
+# Override: construye el frontend desde el repo hermano ../FrontEnd en lugar de
+# usar la imagen publicada en GHCR. Útil para probar cambios de ambos repos juntos.
+services:
+  frontend:
+    build:
+      context: ${FRONTEND_CONTEXT:-../FrontEnd}
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_APP_TITLE: Woow Kids
+    image: ghcr.io/sistemasiq/woowkids-frontend:local
