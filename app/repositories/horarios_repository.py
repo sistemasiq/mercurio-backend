@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import time
+from typing import Any, cast
 
 import asyncpg
 
@@ -22,11 +23,11 @@ def _parse_time(t: str | None) -> time | None:
 def _fmt_time(t: object) -> str:
     """Convierte datetime.time a 'HH:MM'."""
     if hasattr(t, "strftime"):
-        return t.strftime("%H:%M")  # type: ignore[union-attr]
+        return cast(str, t.strftime("%H:%M"))
     return str(t)[:5]
 
 
-def _row_to_dict(row: asyncpg.Record) -> dict:
+def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     d = dict(row)
     d["id"] = str(d["id"])
     d["hora_inicio"] = _fmt_time(d["hora_inicio"])
@@ -34,7 +35,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
     return d
 
 
-async def listar_horarios(conn: asyncpg.Connection) -> list[dict]:
+async def listar_horarios(conn: asyncpg.Connection) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT id, nombre, hora_inicio, hora_fin, activo, dias
@@ -45,7 +46,7 @@ async def listar_horarios(conn: asyncpg.Connection) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
-async def get_horario_por_id(conn: asyncpg.Connection, horario_id: str) -> dict | None:
+async def get_horario_por_id(conn: asyncpg.Connection, horario_id: str) -> dict[str, Any] | None:
     row = await conn.fetchrow(
         """
         SELECT id, nombre, hora_inicio, hora_fin, activo, dias
@@ -64,7 +65,7 @@ async def crear_horario(
     hora_fin: str,
     creado_por: str | None = None,
     dias: list[int] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     now = get_mexico_now()
     row = await conn.fetchrow(
         """
@@ -93,7 +94,7 @@ async def actualizar_horario(
     modificado_por: str | None = None,
     dias: list[int] | None = None,
     actualizar_dias: bool = False,
-) -> dict | None:
+) -> dict[str, Any] | None:
     current = await get_horario_por_id(conn, horario_id)
     if current is None:
         return None
@@ -143,4 +144,4 @@ async def eliminar_horario(
         now,
         uuid.UUID(modificado_por) if modificado_por else None,
     )
-    return result != "UPDATE 0"
+    return bool(result != "UPDATE 0")

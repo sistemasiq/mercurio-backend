@@ -8,7 +8,7 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 
-from app.core.database import get_db
+from app.core.database import get_db as get_db
 from app.core.roles import ROL_SISTEMA
 from app.core.security import decode_access_token
 from app.repositories.token_repository import is_token_revoked
@@ -32,7 +32,10 @@ _SERVICE_UNAVAILABLE = HTTPException(
     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
     detail={
         "code": "SERVICE_UNAVAILABLE",
-        "message": "No se pudo verificar la sesión porque la base de datos no respondió. Intenta de nuevo en unos segundos.",
+        "message": (
+            "No se pudo verificar la sesión porque la base de datos no respondió. "
+            "Intenta de nuevo en unos segundos."
+        ),
     },
 )
 

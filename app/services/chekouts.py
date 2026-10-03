@@ -102,7 +102,7 @@ async def create_chekout(
 
         if total_extra > 0:
             monto_pagado = sum(Decimal(str(pago.monto)) for pago in pagos)
-            if abs(monto_pagado - total_extra) > CENTAVO:
+            if abs(monto_pagado - Decimal(str(total_extra))) > CENTAVO:
                 # El detail va estructurado para que el frontend pueda
                 # reintentar con el monto correcto
                 raise HTTPException(

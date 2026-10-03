@@ -5,6 +5,8 @@ Endpoints FastAPI para el módulo de Cierre de Caja (/api/turnos-caja).
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import StreamingResponse
@@ -139,7 +141,7 @@ async def obtener_metodos_pago_activo(
     summary="Transiciona el turno a EN_CORTE (inicio de conteo físico)",
 )
 async def iniciar_conteo(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(require_permission("turnos_caja:conteo")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:
@@ -191,10 +193,10 @@ async def confirmar_cierre(
     summary="Valida el PIN del cajero contra la base de datos",
 )
 async def validar_pin_cajero(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     turno_id = body.get("turno_id", "")
     pin = body.get("pin", "")
     return await turnos_caja_service.validar_pin_cajero(conn, current_user.sub, turno_id, pin)
@@ -205,10 +207,10 @@ async def validar_pin_cajero(
     summary="Valida el PIN del administrador contra la base de datos",
 )
 async def validar_pin_admin(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     turno_id = body.get("turno_id", "")
     admin_email = body.get("admin_email", "")
     pin = body.get("pin", "")
@@ -221,7 +223,7 @@ async def validar_pin_admin(
     summary="Cancela el conteo en curso y regresa el turno a ABIERTA",
 )
 async def cancelar_conteo(
-    body: dict,
+    body: dict[str, Any],
     current_user: TokenData = Depends(require_permission("turnos_caja:cancelar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> TurnoActivoResponse:

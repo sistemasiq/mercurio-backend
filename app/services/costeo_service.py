@@ -49,9 +49,7 @@ async def registrar_entrada(
     await _recalcular_costo_insumo(conn, insumo_id)
 
 
-async def consumir(
-    conn: asyncpg.Connection, insumo_id: UUID, cantidad_base: Decimal
-) -> Decimal:
+async def consumir(conn: asyncpg.Connection, insumo_id: UUID, cantidad_base: Decimal) -> Decimal:
     """Agota capas FIFO por `cantidad_base` y devuelve el costo total consumido.
     Si las capas no cubren (drift entre stock_actual y las capas), valúa el
     faltante al costo promedio conocido y deja un warning."""

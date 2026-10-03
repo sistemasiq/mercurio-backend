@@ -148,7 +148,8 @@ async def esta_disponible_para_asignar(
 async def listar_todas(conn: asyncpg.Connection, sucursal_id: UUID) -> list[dict[str, Any]]:
     """Lista todas las pulseras de una sucursal (activas e inactivas), para administración."""
     rows = await conn.fetch(
-        f"SELECT {_COLUMNS} FROM public.pulseras AS p WHERE p.sucursal_id = $1 ORDER BY p.pulsera_rfid",
+        f"SELECT {_COLUMNS} FROM public.pulseras AS p "
+        "WHERE p.sucursal_id = $1 ORDER BY p.pulsera_rfid",
         sucursal_id,
     )
     return [dict(r) for r in rows]

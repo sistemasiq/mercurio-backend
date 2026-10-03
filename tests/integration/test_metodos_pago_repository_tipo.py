@@ -1,8 +1,10 @@
 """Verifica que obtener_ids_por_tipo resuelve la fila canónica del catálogo
 global de métodos_pago (migración 037: una sola fila por tipo)."""
+
 from uuid import UUID
 
 from app.repositories import metodos_pago_repository
+
 from tests.integration.conftest import EFECTIVO_ID, TARJETA_ID
 
 

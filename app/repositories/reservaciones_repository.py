@@ -1,6 +1,6 @@
 import json
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -223,13 +223,13 @@ async def get_reservacion_id_by_detalle_registro_id(
         """,
         detalle_registro_id,
     )
-    return result
+    return cast(UUID | None, result)
 
 
 async def update_producto_estancia_add_config(
     conn: asyncpg.Connection, producto_id: UUID, config_estancia: dict[str, Any]
 ) -> None:
-    result = await conn.fetchval(
+    await conn.fetchval(
         """
         UPDATE productos
         SET config_estancia = $1::jsonb
@@ -238,4 +238,3 @@ async def update_producto_estancia_add_config(
         json.dumps(config_estancia),
         producto_id,
     )
-    return result

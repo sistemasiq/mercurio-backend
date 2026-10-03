@@ -31,7 +31,7 @@ def _uuid_o_none(id_str: str) -> uuid.UUID | None:
 
 async def get_caja_por_codigo(
     conn: asyncpg.Connection, sucursal_id: str, codigo: str
-) -> dict | None:
+) -> dict[str, Any] | None:
     row = await conn.fetchrow(
         """
         SELECT id, sucursal_id, codigo, nombre, creado
@@ -50,7 +50,7 @@ async def crear_caja(
     codigo: str,
     nombre: str,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     caja_id = uuid.uuid4()
     now = get_mexico_now()
     # numero es NOT NULL con UNIQUE (numero, sucursal_id) WHERE activo (migración
@@ -81,7 +81,7 @@ async def crear_caja(
 
 async def listar_cajas_por_sucursal(
     conn: asyncpg.Connection, sucursal_id: str | None = None
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if sucursal_id and sucursal_id != "00000000-0000-0000-0000-000000000000":
         rows = await conn.fetch(
             """
@@ -104,7 +104,7 @@ async def listar_cajas_por_sucursal(
     return [dict(r) for r in rows]
 
 
-async def listar_turnos(conn: asyncpg.Connection) -> list[dict]:
+async def listar_turnos(conn: asyncpg.Connection) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT id, nombre, hora_inicio, hora_fin
@@ -116,7 +116,7 @@ async def listar_turnos(conn: asyncpg.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_primer_turno(conn: asyncpg.Connection) -> dict | None:
+async def get_primer_turno(conn: asyncpg.Connection) -> dict[str, Any] | None:
     turnos = await listar_turnos(conn)
     return turnos[0] if turnos else None
 
@@ -126,7 +126,7 @@ async def get_primer_turno(conn: asyncpg.Connection) -> dict | None:
 # ── Cajas: CRUD administrativo ───────────────────────────────────────────────
 
 
-def _row_to_caja_admin_dict(row: asyncpg.Record) -> dict:
+def _row_to_caja_admin_dict(row: asyncpg.Record) -> dict[str, Any]:
     d = {
         "id": str(row["id"]),
         "nombre": row["nombre"],
@@ -147,7 +147,7 @@ def _row_to_caja_admin_dict(row: asyncpg.Record) -> dict:
     return d
 
 
-async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list[dict]:
+async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT
@@ -166,7 +166,7 @@ async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list
     return [_row_to_caja_admin_dict(r) for r in rows]
 
 
-async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict | None:
+async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict[str, Any] | None:
     row = await conn.fetchrow(
         """
         SELECT
@@ -193,7 +193,7 @@ async def crear_caja_admin(
     numero: int,
     creado_por: str | None = None,
     impresora: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     now = get_mexico_now()
     codigo = f"CAJA {numero:02d}"
     row = await conn.fetchrow(
@@ -230,7 +230,7 @@ async def actualizar_caja_admin(
     modificado_por: str | None = None,
     impresora: str | None = None,
     actualizar_impresora: bool = False,
-) -> dict | None:
+) -> dict[str, Any] | None:
     now = get_mexico_now()
     row = await conn.fetchrow(
         """
@@ -286,7 +286,7 @@ async def eliminar_caja_admin(
         now,
         uuid.UUID(modificado_por) if modificado_por else None,
     )
-    return result != "UPDATE 0"
+    return bool(result != "UPDATE 0")
 
 
 # ── Apertura de Caja ──────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@ async def eliminar_caja_admin(
 
 async def get_apertura_activa_por_usuario(
     conn: asyncpg.Connection, usuario_id: str, sucursal_id: str | None = None
-) -> dict | None:
+) -> dict[str, Any] | None:
     # sucursal_id es opcional: los llamadores que verifican RN-APE-001/RN-CIE-001
     # (¿ya tiene turno activo en algún lado?) deben omitirlo, porque esas reglas
     # son por cajero, no por sucursal. Solo la pantalla de Apertura de Caja para
@@ -336,7 +336,9 @@ async def get_apertura_activa_por_usuario(
     return dict(row) if row else None
 
 
-async def get_apertura_activa_por_caja(conn: asyncpg.Connection, caja_id: str) -> dict | None:
+async def get_apertura_activa_por_caja(
+    conn: asyncpg.Connection, caja_id: str
+) -> dict[str, Any] | None:
     row = await conn.fetchrow(
         """
         SELECT
@@ -358,7 +360,7 @@ async def get_apertura_activa_por_caja(conn: asyncpg.Connection, caja_id: str) -
     return dict(row) if row else None
 
 
-async def get_apertura_por_id(conn: asyncpg.Connection, apertura_id: str) -> dict | None:
+async def get_apertura_por_id(conn: asyncpg.Connection, apertura_id: str) -> dict[str, Any] | None:
     apertura_uuid = _uuid_o_none(apertura_id)
     if apertura_uuid is None:
         return None
@@ -398,7 +400,7 @@ async def crear_apertura_caja(
     turno_id: str,
     fondo_inicial: Decimal,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     apertura_id = uuid.uuid4()
     now = get_mexico_now()
     user_uuid = uuid.UUID(cajero_id)
@@ -505,7 +507,7 @@ async def crear_retiro_parcial(
     monto: Decimal,
     observaciones: str | None = None,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     now = get_mexico_now()
     row = await conn.fetchrow(
         """
@@ -554,7 +556,7 @@ async def sumar_cambio_apertura(conn: asyncpg.Connection, apertura_caja_id: str)
 
 async def listar_retiros_por_apertura(
     conn: asyncpg.Connection, apertura_caja_id: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT id, apertura_caja_id, concepto, tipo_destinatario, monto, observaciones, creado
@@ -569,7 +571,7 @@ async def listar_retiros_por_apertura(
 
 async def listar_cambios_por_apertura(
     conn: asyncpg.Connection, apertura_caja_id: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT id, monto, creado
@@ -584,7 +586,7 @@ async def listar_cambios_por_apertura(
 
 async def listar_ingresos_por_apertura(
     conn: asyncpg.Connection, apertura_caja_id: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT id, monto, creado
@@ -608,7 +610,7 @@ async def registrar_movimiento_caja(
     metodo_pago_id: str | None,
     monto: Decimal,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     metodo_pago_id es temporalmente opcional: el módulo de ventas/comandas aún no integra
     métodos de pago, así que puede registrar movimientos con metodo_pago_id=NULL mientras
@@ -641,7 +643,7 @@ async def registrar_cambio_caja(
     referencia_id: str,
     monto: Decimal,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Registra el cambio físico entregado al cliente cuando pagó en efectivo
     de más. Mismo tratamiento contable que un retiro parcial (RP): se
     excluye de las sumas de ventas y se resta aparte en _calcular_balance,
@@ -665,7 +667,7 @@ async def registrar_ingreso_efectivo(
     referencia_id: str,
     monto: Decimal,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Registra una entrada de efectivo físico durante el turno que no
     corresponde a una venta (reposición de cambio, fondo adicional, etc.).
     Mismo tratamiento que el cambio (tipo 'C'): metodo_pago_id siempre None,
@@ -697,7 +699,7 @@ async def sumar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_id
 
 async def obtener_movimientos_por_metodo(
     conn: asyncpg.Connection, apertura_caja_id: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT
@@ -717,7 +719,7 @@ async def obtener_movimientos_por_metodo(
 
 async def obtener_metodos_con_movimientos(
     conn: asyncpg.Connection, apertura_caja_id: str
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT DISTINCT mp.id, mp.nombre
@@ -817,7 +819,7 @@ async def crear_cierre_caja(
     administrador_id: str,
     observaciones: str | None = None,
     creado_por: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     cierre_id = uuid.uuid4()
     now = get_mexico_now()
     row = await conn.fetchrow(
@@ -864,7 +866,7 @@ async def listar_historial_cierres(
     fecha_hasta: datetime | None = None,
     offset: int = 0,
     limit: int = 20,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     query = """
         SELECT
             cc.id,
@@ -1019,7 +1021,7 @@ async def resumen_historial_cierres(
     )
 
 
-async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> dict | None:
+async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> dict[str, Any] | None:
     cierre_uuid = _uuid_o_none(cierre_id)
     if cierre_uuid is None:
         return None

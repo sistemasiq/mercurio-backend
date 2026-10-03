@@ -1,4 +1,3 @@
-from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -22,6 +21,7 @@ async def descargar_imagen_producto(nombre_archivo: str) -> StreamingResponse:
 
     return StreamingResponse(body, media_type=content_type)
 
+
 @router.get("/registros/{registro_id}/llegadas")
 async def descargar_imagenes_llegada(
     registro_id: UUID,
@@ -30,6 +30,7 @@ async def descargar_imagenes_llegada(
 ) -> StreamingResponse:
     """Obtiene un ZIP con las fotos de llegada asociadas a un registro de estancia."""
     return await obtener_fotos_llegada_por_registro(conn, str(registro_id))
+
 
 @router.get("/{carpeta}/{nombre_archivo}")
 async def descargar_archivo_protegido(

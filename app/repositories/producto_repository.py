@@ -99,7 +99,7 @@ async def crear(
     sucursal_id: UUID,
     descripcion: str | None,
     imagen: str | None,
-    config_estancia: list[dict] | None = None,
+    config_estancia: list[dict[str, Any]] | None = None,
     usuario_id: UUID | None = None,
     codigo: str | None = None,
 ) -> Producto:
@@ -234,7 +234,9 @@ async def get_by_id(conn: asyncpg.Connection, producto_id: str) -> asyncpg.Recor
     return await conn.fetchrow("SELECT * FROM productos WHERE id = $1", producto_id)
 
 
-async def get_producto_estancia_by_branch_id(conn: asyncpg.Connection, sucursal_id: str):
+async def get_producto_estancia_by_branch_id(
+    conn: asyncpg.Connection, sucursal_id: str
+) -> asyncpg.Record | None:
     row = await conn.fetchrow(
         """
         SELECT id, config_estancia
