@@ -26,6 +26,18 @@ class PaymentItem(BaseModel):
     metodo_pago_id: UUID
     monto: Decimal = Field(..., gt=0)
     notas_pago: str = ""
+    # B9 B.1: últimos 4 dígitos de la tarjeta, opcionales (solo aplica a pagos
+    # con tarjeta; para efectivo/transferencia se deja en None).
+    ultimos4: str | None = Field(default=None)
+
+    @field_validator("ultimos4")
+    @staticmethod
+    def _validar_ultimos4(v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("ultimos4 debe contener exactamente 4 dígitos.")
+        return v
 
 
 class PaymentRequest(BaseModel):
@@ -41,6 +53,7 @@ class PaymentOut(BaseModel):
     metodo_pago_id: UUID
     monto: Decimal
     notas_pago: str | None = None
+    ultimos4: str | None = None
     sucursal_id: UUID
     creado: datetime
     creado_por: UUID | None = None
@@ -76,6 +89,9 @@ class PagoCompletoRequest(BaseModel):
     # sin esto, un valor más largo tronaba con un 500 crudo de Postgres en vez
     # de un 422 limpio (mismo criterio que AbrirTurnoPayload.terminal).
     nombre_cliente: str | None = Field(default=None, max_length=150)
+    # B9 B.2: mesa del pedido, opcional. max_length=20 coincide con
+    # comandas.mesa VARCHAR(20) en BD.
+    mesa: str | None = Field(default=None, max_length=20)
     puntos_a_redimir: int = Field(0, ge=0)
     cambio: Decimal = Field(Decimal("0"), ge=0)
 
@@ -156,6 +172,7 @@ class MetodoPagoDetalle(BaseModel):
     metodo_pago_nombre: str
     monto: float
     notas_pago: str | None = None
+    ultimos4: str | None = None
 
 
 class DetalleOrdenOut(BaseModel):
@@ -172,6 +189,12 @@ class DetalleOrdenOut(BaseModel):
     # Campos de compatibilidad: solo se llenan para ventas tipo comanda.
     comanda_id: str | None = None
     ticket_numero: str | None = None
+    # B9 B.3: puntos de lealtad otorgados por esta comanda (join a
+    # movimientos_puntos); null si no aplica (no hubo celular, o el origen no
+    # es comanda).
+    puntos_ganados: int | None = None
+    # B9 B.2: mesa del pedido, opcional (solo aplica a comandas).
+    mesa: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ from app.repositories.caja_repository import (
     actualizar_estado_apertura,
     calcular_efectivo_disponible,
     contar_historial_cierres,
+    contar_ventas_apertura,
     crear_apertura_caja,
     crear_cierre_caja,
     crear_retiro_parcial,
@@ -209,7 +210,9 @@ async def abrir_turno(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "code": "CAJA_NO_ENCONTRADA",
-                "message": "La caja seleccionada no existe. Solicita al administrador que la registre.",
+                "message": (
+                    "La caja seleccionada no existe. " "Solicita al administrador que la registre."
+                ),
             },
         )
 
@@ -269,6 +272,7 @@ async def obtener_turno_activo(
 
     apertura_id = str(activa["id"])
     total_ventas = await sumar_total_ventas_apertura(conn, apertura_id)
+    numero_ventas = await contar_ventas_apertura(conn, apertura_id)
     total_retiros = await sumar_retiros_por_apertura(conn, apertura_id)
     total_ingresos = await sumar_ingresos_por_apertura(conn, apertura_id)
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
@@ -310,6 +314,8 @@ async def obtener_turno_activo(
         fondo_inicial=Decimal(str(activa["fondo_inicial"])),
         fecha_apertura=str(activa["fecha_apertura"]),
         total_ventas=total_ventas,
+        numero_ventas=numero_ventas,
+        total_vendido=total_ventas,
         total_retiros=total_retiros,
         total_ingresos=total_ingresos,
         movimientos=movimientos,
@@ -674,7 +680,10 @@ async def obtener_apertura_operando_id(conn: asyncpg.Connection, user_id: str) -
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "TURNO_NO_ABIERTO",
-                "message": "Debes tener un turno de caja abierto (operando) para registrar ventas o pagos.",
+                "message": (
+                    "Debes tener un turno de caja abierto (operando) para "
+                    "registrar ventas o pagos."
+                ),
             },
         )
     return str(apertura["id"])

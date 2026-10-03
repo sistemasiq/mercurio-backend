@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import TypedDict
 from uuid import UUID
@@ -16,6 +16,8 @@ class SucursalRecord(TypedDict):
     estado: str | None
     codigo_postal: str | None
     zona_horaria: str
+    hora_apertura: time
+    hora_cierre: time
     telefono: str | None
     correo: str | None
     administrador_id: UUID | None
@@ -39,6 +41,8 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
         estado=row["estado"],
         codigo_postal=row["codigo_postal"],
         zona_horaria=row["zona_horaria"],
+        hora_apertura=row["hora_apertura"],
+        hora_cierre=row["hora_cierre"],
         telefono=row["telefono"],
         correo=row["correo"],
         administrador_id=row["administrador_id"],
@@ -64,7 +68,7 @@ def _row_to_record(row: asyncpg.Record) -> SucursalRecord:
 # migración), se toma como máximo una por sucursal (la más reciente).
 _SELECT = """
     SELECT s.id, s.nombre, s.direccion, s.ciudad, s.estado, s.codigo_postal,
-           s.zona_horaria, s.telefono, s.correo,
+           s.zona_horaria, s.hora_apertura, s.hora_cierre, s.telefono, s.correo,
            adm.id AS administrador_id, adm.nombre_completo AS administrador_name,
            s.clave, s.activo,
            s.creado, s.creado_por, uc.nombre_completo AS creador_name,
@@ -101,6 +105,25 @@ async def get_sucursal_nombre(conn: asyncpg.Connection, sucursal_id: UUID) -> st
         sucursal_id,
     )
     return row["nombre"] if row else None
+
+
+class HorarioOperacion(TypedDict):
+    hora_apertura: time
+    hora_cierre: time
+
+
+async def get_horario_operacion(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> HorarioOperacion | None:
+    """Horario de operación de la sucursal, para el cálculo de bloques de
+    disponibilidad (app/services/disponibilidad.py)."""
+    row = await conn.fetchrow(
+        "SELECT hora_apertura, hora_cierre FROM public.sucursales WHERE id = $1",
+        sucursal_id,
+    )
+    if row is None:
+        return None
+    return HorarioOperacion(hora_apertura=row["hora_apertura"], hora_cierre=row["hora_cierre"])
 
 
 async def nombre_exists(conn: asyncpg.Connection, nombre: str) -> bool:
@@ -140,13 +163,15 @@ async def create_sucursal(
     estado: str | None = None,
     codigo_postal: str | None = None,
     zona_horaria: str = "America/Mexico_City",
+    hora_apertura: time = time(9, 0),
+    hora_cierre: time = time(23, 0),
 ) -> UUID:
     row = await conn.fetchrow(
         """
         INSERT INTO public.sucursales
             (nombre, direccion, ciudad, estado, codigo_postal, zona_horaria,
-             telefono, correo, clave, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             hora_apertura, hora_cierre, telefono, correo, clave, creado_por)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id
         """,
         nombre,
@@ -155,6 +180,8 @@ async def create_sucursal(
         estado,
         codigo_postal,
         zona_horaria,
+        hora_apertura,
+        hora_cierre,
         telefono,
         correo,
         clave,
@@ -176,6 +203,8 @@ async def update_sucursal(
     estado: str | None = None,
     codigo_postal: str | None = None,
     zona_horaria: str = "America/Mexico_City",
+    hora_apertura: time = time(9, 0),
+    hora_cierre: time = time(23, 0),
 ) -> bool:
     result = await conn.execute(
         """
@@ -183,8 +212,9 @@ async def update_sucursal(
         SET nombre = $1, direccion = $2, telefono = $3, correo = $4,
             clave = $5,
             ciudad = $6, estado = $7, codigo_postal = $8, zona_horaria = $9,
-            modificado = NOW(), modificado_por = $10::uuid
-        WHERE id = $11::uuid
+            hora_apertura = $10, hora_cierre = $11,
+            modificado = NOW(), modificado_por = $12::uuid
+        WHERE id = $13::uuid
         """,
         nombre,  # $1
         direccion,  # $2
@@ -195,7 +225,9 @@ async def update_sucursal(
         estado,  # $7
         codigo_postal,  # $8
         zona_horaria,  # $9
-        modificado_por,  # $10
+        hora_apertura,  # $10
+        hora_cierre,  # $11
+        modificado_por,  # $12
         sucursal_id,
     )
     return str(result) == "UPDATE 1"

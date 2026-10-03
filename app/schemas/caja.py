@@ -99,6 +99,12 @@ class TurnoActivoResponse(BaseModel):
     total_ventas: Decimal = Decimal("0")
     total_retiros: Decimal = Decimal("0")
     total_ingresos: Decimal = Decimal("0")
+    # B9 B.4: "vendido en turno" para el cajero mientras el turno está
+    # abierto. Deliberadamente sin desglose por método ni efectivo esperado
+    # (el arqueo es a ciegas); total_vendido es el mismo monto que
+    # total_ventas, con el nombre que espera el front.
+    numero_ventas: int = 0
+    total_vendido: Decimal = Decimal("0")
     movimientos: list[MovimientoResumen] = []
     # QA #8: solo se llenan cuando estado == "BALANCE_REVELADO" (el admin ya
     # autenticó la revisión). El front deja de depender del sessionStorage
