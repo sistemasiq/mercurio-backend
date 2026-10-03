@@ -9,10 +9,10 @@ from app.schemas.pagos import PaymentItem
 
 _INSERT = """
     INSERT INTO pagos_ordenes
-        (comanda_id, metodo_pago_id, monto, notas_pago, sucursal_id, creado_por)
-    VALUES ($1, $2, $3, $4, $5, $6)
+        (comanda_id, metodo_pago_id, monto, notas_pago, ultimos4, sucursal_id, creado_por)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING
-        id, comanda_id, metodo_pago_id, monto, notas_pago,
+        id, comanda_id, metodo_pago_id, monto, notas_pago, ultimos4,
         sucursal_id, creado, creado_por
 """
 
@@ -182,6 +182,7 @@ async def crear_pagos(
             pago.metodo_pago_id,
             pago.monto,
             pago.notas_pago or "",
+            pago.ultimos4,
             sucursal_id,
             usuario_id,
         )
@@ -229,7 +230,8 @@ _SELECT_DETALLE_PAGOS = """
     SELECT
         mp.nombre  AS metodo_pago_nombre,
         po.monto,
-        po.notas_pago
+        po.notas_pago,
+        po.ultimos4
     FROM pagos_ordenes po
     JOIN metodos_pago mp ON mp.id = po.metodo_pago_id
     WHERE po.comanda_id = $1
@@ -268,6 +270,7 @@ async def detalle_por_comanda(
             "metodo_pago_nombre": dict(p)["metodo_pago_nombre"],
             "monto": float(dict(p)["monto"]),
             "notas_pago": dict(p)["notas_pago"],
+            "ultimos4": dict(p).get("ultimos4"),
         }
         for p in pagos_rows
     ]

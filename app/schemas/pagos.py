@@ -26,6 +26,18 @@ class PaymentItem(BaseModel):
     metodo_pago_id: UUID
     monto: Decimal = Field(..., gt=0)
     notas_pago: str = ""
+    # B9 B.1: últimos 4 dígitos de la tarjeta, opcionales (solo aplica a pagos
+    # con tarjeta; para efectivo/transferencia se deja en None).
+    ultimos4: str | None = Field(default=None)
+
+    @field_validator("ultimos4")
+    @staticmethod
+    def _validar_ultimos4(v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("ultimos4 debe contener exactamente 4 dígitos.")
+        return v
 
 
 class PaymentRequest(BaseModel):
@@ -41,6 +53,7 @@ class PaymentOut(BaseModel):
     metodo_pago_id: UUID
     monto: Decimal
     notas_pago: str | None = None
+    ultimos4: str | None = None
     sucursal_id: UUID
     creado: datetime
     creado_por: UUID | None = None
@@ -156,6 +169,7 @@ class MetodoPagoDetalle(BaseModel):
     metodo_pago_nombre: str
     monto: float
     notas_pago: str | None = None
+    ultimos4: str | None = None
 
 
 class DetalleOrdenOut(BaseModel):
