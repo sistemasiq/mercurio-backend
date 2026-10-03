@@ -6,11 +6,14 @@ Filtrado automático por la sucursal del usuario autenticado.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
 from app.repositories.caja_repository import (
     actualizar_caja_admin,
     crear_caja_admin,
@@ -33,6 +36,14 @@ _SIN_SUCURSAL = HTTPException(
     detail={"code": "SIN_SUCURSAL", "message": "El usuario no tiene sucursal asignada."},
 )
 
+_FORBIDDEN_SUCURSAL = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={
+        "code": "FORBIDDEN",
+        "message": "No puedes consultar las cajas de otra sucursal.",
+    },
+)
+
 _NUMERO_DUPLICADO = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail={
@@ -48,12 +59,26 @@ def _branch_id(current_user: TokenData) -> str:
     return str(current_user.branch_id)
 
 
+def _resolver_sucursal(current_user: TokenData, sucursal_id: UUID | None) -> str:
+    """D1.1: AdministradorSistema puede consultar cualquier sucursal vía el
+    parámetro opcional; el resto solo la suya (403 si pide otra). Sin el
+    parámetro, el comportamiento queda igual que hoy (la sucursal de la sesión)."""
+    if sucursal_id is None:
+        return _branch_id(current_user)
+    if current_user.role == ROL_SISTEMA:
+        return str(sucursal_id)
+    if str(current_user.branch_id) != str(sucursal_id):
+        raise _FORBIDDEN_SUCURSAL
+    return str(sucursal_id)
+
+
 @router.get("", response_model=list[CajaAdminResponse], summary="Lista las cajas de la sucursal")
 async def listar(
+    sucursal_id: UUID | None = Query(None),
     current_user: TokenData = Depends(require_permission("cajas:listar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[CajaAdminResponse]:
-    rows = await listar_cajas_admin(conn, sucursal_id=_branch_id(current_user))
+    rows = await listar_cajas_admin(conn, sucursal_id=_resolver_sucursal(current_user, sucursal_id))
     return [CajaAdminResponse(**r) for r in rows]
 
 
