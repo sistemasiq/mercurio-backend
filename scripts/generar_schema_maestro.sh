@@ -124,6 +124,10 @@ ultima="$(find sql/migrations -name '*.sql' | sort | tail -1 | xargs basename)"
     echo "-- ------------------------------------------------------ Datos de catálogo"
     sin_restrict <"$TMP/datos.sql"
 } >"$SALIDA"
+# Exactamente un salto de línea al final (pg_dump deja líneas en blanco extra y
+# el hook end-of-file-fixer las quitaría, desfasando el chequeo del CI).
+contenido="$(cat "$SALIDA")"
+printf '%s\n' "$contenido" >"$SALIDA"
 
 echo "==> Validando: cargando el maestro en una BD limpia"
 pg -d mercury -c 'CREATE DATABASE mercury_check' >/dev/null
