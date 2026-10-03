@@ -1,4 +1,3 @@
-import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -33,6 +32,7 @@ from app.repositories.tutores import get_tutor_by_phone, tutor_create
 from app.schemas.registros import OnboardingRequest
 from app.schemas.reservaciones import EventoDelDiaOut
 from app.services import lealtad_service
+from app.services.tramos_estancia import tramos_de_producto
 from app.services.validaciones_pago import validar_cambio
 
 
@@ -245,22 +245,10 @@ async def create_estancia(
             if producto_estancia is None:
                 raise HTTPException(400, "Producto inválido")
 
-            # Lectura y deserialización del Record
-            raw_config = producto_estancia["config_estancia"]
-
-            precios = []
-            if isinstance(raw_config, str):
-                try:
-                    precios = json.loads(raw_config)
-                except Exception:
-                    import ast
-
-                    try:
-                        precios = ast.literal_eval(raw_config)
-                    except Exception:
-                        precios = []
-            elif isinstance(raw_config, list):
-                precios = raw_config
+            # Tramos por hora; si el producto no tiene, se usa su precio_unitario.
+            precios = tramos_de_producto(
+                producto_estancia["config_estancia"], producto_estancia["precio_unitario"]
+            )
 
             for d in data.detalles:
                 nino_id = await nino_create(
@@ -322,7 +310,7 @@ async def create_estancia(
                     d.productoId,
                 )
 
-                # Si el precio del tramo ya es la tarifa plana del rango
+                # El precio del tramo es por hora (igual que el frontend y el checkout).
                 total += precio * d.cantidad
 
             # 4.5 canje de puntos de lealtad (opcional, sobre el subtotal ya calculado)

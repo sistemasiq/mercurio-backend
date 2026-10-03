@@ -239,7 +239,7 @@ async def get_producto_estancia_by_branch_id(
 ) -> asyncpg.Record | None:
     row = await conn.fetchrow(
         """
-        SELECT id, config_estancia
+        SELECT id, config_estancia, precio_unitario
         FROM productos
         WHERE sucursal_id = $1
           AND activo = TRUE
