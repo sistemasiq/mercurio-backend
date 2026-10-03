@@ -18,8 +18,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-IMAGEN="${PG_IMAGEN:-postgres:16-alpine}"
-CONTENEDOR="mercury-schema-gen-$$"
+# Versión fija: el CI regenera el maestro y debe salir idéntico al versionado.
+IMAGEN="${PG_IMAGEN:-postgres:16.14-alpine}"
+CONTENEDOR="woowkids-schema-gen-$$"
 SALIDA="sql/schema_maestro.sql"
 TMP="$(mktemp -d)"
 
@@ -99,7 +100,7 @@ echo "    Tablas con datos: $(echo "$tablas" | grep -c . || true)"
 ultima="$(find sql/migrations -name '*.sql' | sort | tail -1 | xargs basename)"
 {
     echo "-- ============================================================================="
-    echo "-- schema_maestro.sql — Crea la base de datos completa de Mercury en un paso."
+    echo "-- schema_maestro.sql — Crea la base de datos completa de Woow Kids en un paso."
     echo "--"
     echo "-- GENERADO por scripts/generar_schema_maestro.sh. NO editar a mano: agrega una"
     echo "-- migración en sql/migrations/ y vuelve a correr el script."
