@@ -26,6 +26,7 @@ from app.repositories.caja_repository import (
     actualizar_estado_apertura,
     calcular_efectivo_disponible,
     contar_historial_cierres,
+    contar_ventas_apertura,
     crear_apertura_caja,
     crear_cierre_caja,
     crear_retiro_parcial,
@@ -82,7 +83,10 @@ class TurnoNoEncontradoError(HTTPException):
     def __init__(self):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TURNO_NO_ENCONTRADO", "message": "No se encontró un turno activo para esta sesión."},
+            detail={
+                "code": "TURNO_NO_ENCONTRADO",
+                "message": "No se encontró un turno activo para esta sesión.",
+            },
         )
 
 
@@ -127,7 +131,9 @@ class SucursalNoAutorizadaError(HTTPException):
         )
 
 
-async def obtener_cajas(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[CajaResponse]:
+async def obtener_cajas(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[CajaResponse]:
     rows = await listar_cajas_por_sucursal(conn, sucursal_id)
     return [
         CajaResponse(
@@ -189,14 +195,22 @@ async def abrir_turno(
     if not payload.terminal:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "TERMINAL_REQUERIDA", "message": "Debes seleccionar una caja o terminal."},
+            detail={
+                "code": "TERMINAL_REQUERIDA",
+                "message": "Debes seleccionar una caja o terminal.",
+            },
         )
 
     caja = await get_caja_por_codigo(conn, sucursal, payload.terminal)
     if not caja:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "CAJA_NO_ENCONTRADA", "message": "La caja seleccionada no existe. Solicita al administrador que la registre."},
+            detail={
+                "code": "CAJA_NO_ENCONTRADA",
+                "message": (
+                    "La caja seleccionada no existe. " "Solicita al administrador que la registre."
+                ),
+            },
         )
 
     caja_id = str(caja["id"])
@@ -206,7 +220,10 @@ async def abrir_turno(
     if caja_activa:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "CAJA_OCUPADA", "message": "La caja física seleccionada ya cuenta con un turno activo."},
+            detail={
+                "code": "CAJA_OCUPADA",
+                "message": "La caja física seleccionada ya cuenta con un turno activo.",
+            },
         )
 
     if not payload.turno_id:
@@ -252,12 +269,15 @@ async def obtener_turno_activo(
 
     apertura_id = str(activa["id"])
     total_ventas = await sumar_total_ventas_apertura(conn, apertura_id)
+    numero_ventas = await contar_ventas_apertura(conn, apertura_id)
     total_retiros = await sumar_retiros_por_apertura(conn, apertura_id)
     total_ingresos = await sumar_ingresos_por_apertura(conn, apertura_id)
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
 
     movimientos = [
-        MovimientoResumen(metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"])))
+        MovimientoResumen(
+            metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"]))
+        )
         for r in movs_raw
     ]
 
@@ -291,6 +311,8 @@ async def obtener_turno_activo(
         fondo_inicial=Decimal(str(activa["fondo_inicial"])),
         fecha_apertura=str(activa["fecha_apertura"]),
         total_ventas=total_ventas,
+        numero_ventas=numero_ventas,
+        total_vendido=total_ventas,
         total_retiros=total_retiros,
         total_ingresos=total_ingresos,
         movimientos=movimientos,
@@ -299,7 +321,9 @@ async def obtener_turno_activo(
     )
 
 
-async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def iniciar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -313,7 +337,9 @@ async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) 
     return await obtener_turno_activo(conn, user_id)
 
 
-async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoPayload) -> TurnoActivoResponse:
+async def enviar_conteo(
+    conn: asyncpg.Connection, user_id: str, payload: ConteoPayload
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, payload.turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -451,7 +477,9 @@ async def _calcular_balance(
     return total_esperado_general, total_declarado_general, diferencia_neta_general, balance
 
 
-async def _verificar_credenciales_usuario(conn: asyncpg.Connection, email: str, password: str) -> asyncpg.Record:
+async def _verificar_credenciales_usuario(
+    conn: asyncpg.Connection, email: str, password: str
+) -> asyncpg.Record:
     """Busca el usuario por email y verifica su contraseña o PIN contra la BD.
     Lanza CredencialesAdminInvalidasError si no existe o las credenciales son incorrectas."""
     row = await conn.fetchrow(
@@ -481,7 +509,9 @@ async def autenticar_admin_revision(
     user_id: str,
     payload: RevisionAdminPayload,
 ) -> RevisionAdminResponse:
-    admin_row = await _verificar_credenciales_usuario(conn, payload.admin_email, payload.admin_password)
+    admin_row = await _verificar_credenciales_usuario(
+        conn, payload.admin_email, payload.admin_password
+    )
 
     # 3. Calcular montos esperados reales para el turno
     apertura = await get_apertura_por_id(conn, payload.turno_id)
@@ -604,7 +634,9 @@ async def validar_pin_admin(
         pin_ok = verify_password(pin, admin_row["password_hash"])
 
     if not pin_ok:
-        raise CredencialesAdminInvalidasError("El PIN ingresado para el Administrador es incorrecto.")
+        raise CredencialesAdminInvalidasError(
+            "El PIN ingresado para el Administrador es incorrecto."
+        )
 
     token = await _emitir_token_pin(conn, str(admin_row["id"]), turno_id, "admin")
     return {
@@ -614,7 +646,9 @@ async def validar_pin_admin(
     }
 
 
-async def cancelar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def cancelar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -643,7 +677,10 @@ async def obtener_apertura_operando_id(conn: asyncpg.Connection, user_id: str) -
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "TURNO_NO_ABIERTO",
-                "message": "Debes tener un turno de caja abierto (operando) para registrar ventas o pagos.",
+                "message": (
+                    "Debes tener un turno de caja abierto (operando) para "
+                    "registrar ventas o pagos."
+                ),
             },
         )
     return str(apertura["id"])
@@ -735,7 +772,9 @@ def advertencia_efectivo_insuficiente(disponible_antes: Decimal, cambio: Decimal
     solo que aquí no bloquea, avisa."""
     if cambio <= disponible_antes:
         return None
-    return "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    return (
+        "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    )
 
 
 async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[RetiroParcialResponse]:
@@ -853,7 +892,9 @@ async def obtener_metodos_pago_activo(
     return [MetodoPagoTurnoResponse(id=str(r["id"]), nombre=r["nombre"]) for r in rows]
 
 
-async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) -> HistorialArqueosResponse:
+async def listar_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> HistorialArqueosResponse:
     offset = (filtros.page - 1) * filtros.page_size
     items_raw = await listar_historial_cierres(
         conn,

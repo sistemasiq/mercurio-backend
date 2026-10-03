@@ -510,9 +510,11 @@ async def crear_retiro_parcial(
     row = await conn.fetchrow(
         """
         INSERT INTO public.retiros_parciales
-            (apertura_caja_id, concepto, tipo_destinatario, monto, observaciones, creado, creado_por)
+            (apertura_caja_id, concepto, tipo_destinatario, monto, observaciones,
+             creado, creado_por)
         VALUES ($1, $2::conceptos_retiro, $3::tipos_destinatario, $4, $5, $6, $7)
-        RETURNING id, apertura_caja_id, concepto, tipo_destinatario, monto, observaciones, creado
+        RETURNING id, apertura_caja_id, concepto, tipo_destinatario, monto, observaciones,
+                  creado
         """,
         uuid.UUID(apertura_caja_id),
         concepto,
@@ -616,9 +618,11 @@ async def registrar_movimiento_caja(
     row = await conn.fetchrow(
         """
         INSERT INTO public.movimientos_caja
-            (apertura_caja_id, tipo_movimiento, referencia_id, metodo_pago_id, monto, creado, creado_por)
+            (apertura_caja_id, tipo_movimiento, referencia_id, metodo_pago_id, monto,
+             creado, creado_por)
         VALUES ($1, $2::tipo_movimiento_caja, $3, $4, $5, $6, $7)
-        RETURNING id, apertura_caja_id, tipo_movimiento, referencia_id, metodo_pago_id, monto, creado
+        RETURNING id, apertura_caja_id, tipo_movimiento, referencia_id, metodo_pago_id,
+                  monto, creado
         """,
         uuid.UUID(apertura_caja_id),
         tipo_movimiento,
@@ -738,6 +742,23 @@ async def sumar_total_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id
         uuid.UUID(apertura_caja_id),
     )
     return Decimal(str(val))
+
+
+async def contar_ventas_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> int:
+    """Número de ventas (movimientos de cobro, no retiros/cambio/ingresos) del
+    turno. Pendiente B9 B.4: "vendido en turno" para el cajero -- solo el
+    total y el número de tickets, sin desglose por método ni efectivo
+    esperado (conteo a ciegas)."""
+    val = await conn.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM public.movimientos_caja
+        WHERE apertura_caja_id = $1
+          AND tipo_movimiento NOT IN ('RP', 'C', 'I')
+        """,
+        uuid.UUID(apertura_caja_id),
+    )
+    return int(val)
 
 
 async def calcular_efectivo_disponible(
