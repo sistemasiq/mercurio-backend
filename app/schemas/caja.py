@@ -61,6 +61,14 @@ class TurnoResponse(BaseModel):
 # ── Apertura de Caja ────────────────────────────────────────────────────────
 
 
+class FilaBalance(BaseModel):
+    metodo: str
+    label: str
+    declarado: Decimal
+    esperado: Decimal
+    diferencia: Decimal
+
+
 class AbrirTurnoPayload(BaseModel):
     fondo_inicial: Decimal = Field(..., ge=0)
     # max_length=20 coincide con cajas.codigo VARCHAR(20) en BD — sin esto, un valor
@@ -92,6 +100,11 @@ class TurnoActivoResponse(BaseModel):
     total_retiros: Decimal = Decimal("0")
     total_ingresos: Decimal = Decimal("0")
     movimientos: list[MovimientoResumen] = []
+    # QA #8: solo se llenan cuando estado == "BALANCE_REVELADO" (el admin ya
+    # autenticó la revisión). El front deja de depender del sessionStorage
+    # local para estos dos campos cuando vienen poblados.
+    admin_email: str | None = None
+    balance_por_metodo: list[FilaBalance] = []
 
 
 # ── Retiros Parciales ───────────────────────────────────────────────────────
@@ -179,14 +192,6 @@ class RevisionAdminPayload(BaseModel):
     pin_hash: str | None = None
 
 
-class FilaBalance(BaseModel):
-    metodo: str
-    label: str
-    declarado: Decimal
-    esperado: Decimal
-    diferencia: Decimal
-
-
 class RevisionAdminResponse(BaseModel):
     autorizado: bool
     admin_nombre: str
@@ -203,6 +208,11 @@ class ConfirmarCierrePayload(BaseModel):
     turno_id: str
     observaciones: str | None = None
     tipo_cierre: TipoCierreEnum = TipoCierreEnum.NORMAL
+    # QA #14: tokens de un solo uso emitidos por /validar-pin-cajero y
+    # /validar-pin-admin. Opcionales por retrocompatibilidad: si
+    # settings.exigir_pin_token es False, su ausencia no bloquea el cierre.
+    token_pin_cajero: str | None = None
+    token_pin_admin: str | None = None
 
 
 class ConfirmarCierreResponse(BaseModel):

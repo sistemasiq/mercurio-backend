@@ -7,13 +7,19 @@ Maneja las reglas de negocio (RN-APE, RN-CIE, RN-VAL), validaciones y segregaci�
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 import asyncpg
 from fastapi import HTTPException, status
 
+from app.core.config import settings
 from app.core.security import verify_password
+from app.core.utils import get_mexico_now
+from app.exceptions import PinTokenRequeridoError
+from app.repositories import pin_token_repository
 from app.repositories.caja_repository import (
     actualizar_admin_autorizacion,
     actualizar_conteo_apertura,
@@ -257,15 +263,22 @@ async def obtener_turno_activo(
 
     # apertura_caja.estado solo distingue ABIERTA/EN_CORTE/CERRADA — el sub-estado real
     # de EN_CORTE (¿el cajero ya envió su conteo y quedó congelado, o todavía lo está
-    # llenando?) se infiere de monto_declarado. Sin esto, recargar la página después de
-    # enviar el conteo mostraba otra vez el formulario vacío en vez del modal de espera
-    # del administrador, y un segundo "Enviar conteo" chocaba con el ya congelado.
+    # llenando, o ya autenticó un admin?) se infiere de monto_declarado/token_admin_jti.
+    # Sin esto, recargar la página después de enviar el conteo mostraba otra vez el
+    # formulario vacío en vez del modal de espera del administrador, y recargar tras
+    # BALANCE_REVELADO perdía el balance (quedaba solo en sessionStorage, QA #8).
+    admin_email: str | None = None
+    balance_por_metodo: list[FilaBalance] = []
     if activa["estado"] != "EN_CORTE":
         estado_ui = "OPERANDO"
     elif activa["monto_declarado"] is None:
         estado_ui = "EN_CONTEO"
-    else:
+    elif activa.get("token_admin_jti") is None:
         estado_ui = "ESPERANDO_REVISION"
+    else:
+        estado_ui = "BALANCE_REVELADO"
+        admin_email = activa.get("admin_email")
+        _, _, _, balance_por_metodo = await _calcular_balance(conn, activa, apertura_id)
 
     return TurnoActivoResponse(
         id=apertura_id,
@@ -281,6 +294,8 @@ async def obtener_turno_activo(
         total_retiros=total_retiros,
         total_ingresos=total_ingresos,
         movimientos=movimientos,
+        admin_email=admin_email,
+        balance_por_metodo=balance_por_metodo,
     )
 
 
@@ -501,6 +516,30 @@ async def autenticar_admin_revision(
     )
 
 
+async def _emitir_token_pin(
+    conn: asyncpg.Connection, usuario_id: str, turno_id: str, rol: str
+) -> str:
+    """QA #14: token de un solo uso con vigencia de 5 minutos, emitido al
+    validar el PIN del cajero o del administrador."""
+    token = secrets.token_urlsafe(32)
+    expira = get_mexico_now() + timedelta(minutes=5)
+    await pin_token_repository.crear_token(conn, token, usuario_id, turno_id, rol, expira)
+    return token
+
+
+async def _validar_y_consumir_token_pin(
+    conn: asyncpg.Connection, token: str, turno_id: str, rol: str
+) -> None:
+    fila = await pin_token_repository.obtener_token(conn, token, turno_id, rol)
+    if not fila:
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} no es válido para este turno.")
+    if fila["usado"]:
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} ya fue usado.")
+    if fila["expira"] < get_mexico_now():
+        raise PinTokenRequeridoError(f"El token de PIN de {rol} expiró, vuelve a validar el PIN.")
+    await pin_token_repository.marcar_usado(conn, token)
+
+
 async def validar_pin_cajero(
     conn: asyncpg.Connection,
     user_id: str,
@@ -529,7 +568,12 @@ async def validar_pin_cajero(
     if not pin_ok:
         raise CredencialesAdminInvalidasError("El PIN ingresado para el Cajero es incorrecto.")
 
-    return {"ok": True, "mensaje": "PIN del Cajero verificado correctamente."}
+    token = await _emitir_token_pin(conn, str(cajero_row["id"]), turno_id, "cajero")
+    return {
+        "ok": True,
+        "mensaje": "PIN del Cajero verificado correctamente.",
+        "token_pin": token,
+    }
 
 
 async def validar_pin_admin(
@@ -562,7 +606,12 @@ async def validar_pin_admin(
     if not pin_ok:
         raise CredencialesAdminInvalidasError("El PIN ingresado para el Administrador es incorrecto.")
 
-    return {"ok": True, "mensaje": "PIN del Administrador verificado correctamente."}
+    token = await _emitir_token_pin(conn, str(admin_row["id"]), turno_id, "admin")
+    return {
+        "ok": True,
+        "mensaje": "PIN del Administrador verificado correctamente.",
+        "token_pin": token,
+    }
 
 
 async def cancelar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
@@ -749,6 +798,17 @@ async def confirmar_cierre(
 
     if apertura["token_admin_jti"] is None:
         raise TransicionInvalidaError("Aún no se ha autorizado la revisión de un administrador.")
+
+    # QA #14: exige y consume los tokens de un solo uso de cajero y admin.
+    if settings.exigir_pin_token:
+        if not payload.token_pin_cajero or not payload.token_pin_admin:
+            raise PinTokenRequeridoError()
+        await _validar_y_consumir_token_pin(
+            conn, payload.token_pin_cajero, payload.turno_id, "cajero"
+        )
+        await _validar_y_consumir_token_pin(
+            conn, payload.token_pin_admin, payload.turno_id, "admin"
+        )
 
     admin_id = str(apertura["token_admin_jti"])
     total_esperado, total_declarado, diferencia_neta, balance = await _calcular_balance(

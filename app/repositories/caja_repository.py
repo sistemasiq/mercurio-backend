@@ -247,16 +247,19 @@ async def get_apertura_activa_por_usuario(
             a.estado,
             a.monto_declarado,
             a.conteo_json,
+            a.token_admin_jti,
             a.creado AS fecha_apertura,
             c.nombre AS caja_nombre,
             c.codigo AS terminal,
             c.sucursal_id,
             COALESCE(s.nombre, 'Sucursal Central') AS sucursal_nombre,
-            COALESCE(u.nombre_completo, u.email, 'Cajero') AS cajero_nombre
+            COALESCE(u.nombre_completo, u.email, 'Cajero') AS cajero_nombre,
+            admin.email AS admin_email
         FROM public.apertura_caja a
         INNER JOIN public.cajas c ON a.caja_id = c.id
         LEFT JOIN public.sucursales s ON c.sucursal_id = s.id
         LEFT JOIN public.usuarios u ON a.cajero_id = u.id
+        LEFT JOIN public.usuarios admin ON admin.id = a.token_admin_jti
         WHERE a.cajero_id = $1 AND a.estado IN ('ABIERTA', 'EN_CORTE')
           AND ($2::uuid IS NULL OR c.sucursal_id = $2::uuid)
         ORDER BY a.creado DESC

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     minio_bucket: str = "mercury"
     minio_secure: bool = False
 
+    # QA #14: exige token_pin de cajero y admin en POST /turnos-caja/confirmar.
+    # Retrocompatibilidad: en false, confirmar acepta la ausencia de tokens.
+    exigir_pin_token: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
