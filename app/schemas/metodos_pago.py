@@ -1,8 +1,9 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 # E = Efectivo | T = Tarjeta (crédito/débito/wallets) | C = Cupón | L = Lealtad
 # O = Otro (cualquier método que no encaje en los anteriores, ej. transferencias)
@@ -18,6 +19,10 @@ class MetodosPagoUpdate(BaseModel):
         | None
     ) = None
     descripcion: str | None = None
+    # Comisión informativa (p. ej. para conciliar terminal bancaria).
+    comision_porcentaje: Decimal | None = Field(None, ge=0)
+    # Si el cobro con este método debe pedir folio/referencia (PaymentModal).
+    requiere_referencia: bool | None = None
 
 
 class MetodosPagoActivacion(BaseModel):
@@ -29,6 +34,8 @@ class MetodosPagoOut(BaseModel):
     nombre: str
     descripcion: str | None
     tipo: TipoMetodoPago
+    comision_porcentaje: Decimal | None
+    requiere_referencia: bool
     # Resuelto contra sucursal_metodos_pago para la sucursal del usuario
     # autenticado -- no es una columna de metodos_pago.
     activo: bool
