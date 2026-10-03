@@ -132,6 +132,41 @@ _SELECT_HISTORIAL = f"""
 """
 
 
+_SELECT_IDEMPOTENCIA = """
+    SELECT clave, sucursal_id, usuario_id, hash_payload, comanda_id, creado
+    FROM public.pagos_idempotencia
+    WHERE clave = $1
+"""
+
+_INSERT_IDEMPOTENCIA = """
+    INSERT INTO public.pagos_idempotencia
+        (clave, sucursal_id, usuario_id, hash_payload, comanda_id)
+    VALUES ($1, $2, $3, $4, $5)
+"""
+
+
+async def obtener_idempotencia(
+    conn: asyncpg.Connection,
+    clave: str,
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(_SELECT_IDEMPOTENCIA, clave)
+    return dict(row) if row else None
+
+
+async def registrar_idempotencia(
+    conn: asyncpg.Connection,
+    clave: str,
+    sucursal_id: UUID,
+    usuario_id: UUID,
+    hash_payload: str,
+    comanda_id: UUID,
+) -> None:
+    """Se llama dentro de la misma transacción del cobro (QA #20)."""
+    await conn.execute(
+        _INSERT_IDEMPOTENCIA, clave, sucursal_id, usuario_id, hash_payload, comanda_id
+    )
+
+
 async def crear_pagos(
     conn: asyncpg.Connection,
     comanda_id: UUID,
@@ -392,9 +427,7 @@ def _armar_detalles(items_rows: list[asyncpg.Record]) -> list[dict[str, Any]]:
     ]
 
 
-async def _detalle_estancia(
-    conn: asyncpg.Connection, registro_id: UUID
-) -> dict[str, Any] | None:
+async def _detalle_estancia(conn: asyncpg.Connection, registro_id: UUID) -> dict[str, Any] | None:
     row = await conn.fetchrow(_SELECT_DETALLE_ESTANCIA, registro_id)
     if not row:
         return None

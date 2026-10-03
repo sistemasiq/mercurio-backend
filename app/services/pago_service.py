@@ -1,3 +1,5 @@
+import hashlib
+import json
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -5,9 +7,14 @@ from uuid import UUID
 
 import asyncpg
 
-from app.exceptions import DatosInvalidos
+from app.exceptions import DatosInvalidos, IdempotenciaConflictoError
 from app.models.comanda import Comanda
-from app.repositories import comanda_repository, metodos_pago_repository, pago_repository
+from app.repositories import (
+    comanda_repository,
+    folio_repository,
+    metodos_pago_repository,
+    pago_repository,
+)
 from app.repositories.caja_repository import registrar_cambio_caja, registrar_movimiento_caja
 from app.schemas.comanda import ComandaCreate, EstadoComanda
 from app.schemas.pagos import (
@@ -20,6 +27,13 @@ from app.schemas.pagos import (
 )
 from app.services import inventario_service, lealtad_service
 from app.services.validaciones_pago import validar_cambio
+
+
+def _hash_payload(body: PagoCompletoRequest) -> str:
+    """Hash estable del payload para detectar reintentos con la misma
+    Idempotency-Key pero datos distintos (QA #20)."""
+    payload_json = json.dumps(body.model_dump(mode="json"), sort_keys=True)
+    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
 
 
 async def procesar_pagos(
@@ -52,6 +66,7 @@ async def completar_pago(
     usuario_id: UUID,
     sucursal_id: UUID,
     apertura_caja_id: str,
+    idempotency_key: str | None = None,
 ) -> Comanda:
     """Crea la comanda, registra los pagos, el movimiento de caja de cada uno
     y, si hubo cambio, su propio movimiento
@@ -59,9 +74,31 @@ async def completar_pago(
     transacción. Si falla cualquiera de los dos, nada se persiste (rollback
     automático). Después del commit, expande los detalles de combos y
     notifica a cocina vía WebSocket.
+
+    Si viene `idempotency_key` (header Idempotency-Key, QA #20): si la clave
+    ya existe con el mismo hash de payload, devuelve la comanda original sin
+    volver a cobrar ni descontar inventario; si existe con un hash distinto,
+    lanza 409 IDEMPOTENCIA_CONFLICTO. Sin header, el comportamiento es idéntico
+    al previo.
     """
     from app.core.ws_manager import manager
     from app.services.comanda_service import expandir_detalles_comanda
+
+    hash_payload = _hash_payload(body) if idempotency_key else None
+
+    if idempotency_key:
+        existente = await pago_repository.obtener_idempotencia(conn, idempotency_key)
+        if existente:
+            if existente["hash_payload"] != hash_payload:
+                raise IdempotenciaConflictoError()
+            comanda_original = await comanda_repository.get_comanda_por_id(
+                conn, str(existente["comanda_id"])
+            )
+            if comanda_original is not None:
+                comanda_original.detalles = await expandir_detalles_comanda(
+                    conn, comanda_original.detalles
+                )
+                return comanda_original
 
     total_pagos: Decimal = sum((p.monto for p in body.pagos), Decimal(0))
     if total_pagos < body.total_final:
@@ -83,17 +120,25 @@ async def completar_pago(
         ids_efectivo,
     )
 
-    comanda_in = ComandaCreate(
-        ticket_numero=body.ticket_numero,
-        total_final=body.total_final,
-        estado_actual=EstadoComanda.PENDIENTE,
-        detalles_comanda=body.detalles_comanda,
-        notas_generales=body.notas_generales,
-        sucursal_id=sucursal_id,
-        nombre_cliente=body.nombre_cliente,
-    )
-
     async with conn.transaction():
+        # Folio de ticket secuencial por sucursal (QA #21): el backend asigna
+        # ticket_numero de forma atómica dentro de esta transacción.
+        # body.ticket_numero (lo que mande el front) queda solo como fallback
+        # si por algún motivo siguiente_folio no devuelve nada.
+        ticket_numero = await folio_repository.siguiente_folio(conn, sucursal_id) or (
+            body.ticket_numero
+        )
+
+        comanda_in = ComandaCreate(
+            ticket_numero=ticket_numero,
+            total_final=body.total_final,
+            estado_actual=EstadoComanda.PENDIENTE,
+            detalles_comanda=body.detalles_comanda,
+            notas_generales=body.notas_generales,
+            sucursal_id=sucursal_id,
+            nombre_cliente=body.nombre_cliente,
+        )
+
         comanda = await comanda_repository.crear_comanda_con_detalles(
             conn,
             comanda_in,
@@ -114,6 +159,15 @@ async def completar_pago(
             pagos=body.pagos,
             usuario_id=usuario_id,
         )
+        if idempotency_key and hash_payload:
+            await pago_repository.registrar_idempotencia(
+                conn,
+                clave=idempotency_key,
+                sucursal_id=sucursal_id,
+                usuario_id=usuario_id,
+                hash_payload=hash_payload,
+                comanda_id=UUID(comanda.id),
+            )
         for pago in body.pagos:
             await registrar_movimiento_caja(
                 conn,
