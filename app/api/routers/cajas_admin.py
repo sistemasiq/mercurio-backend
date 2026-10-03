@@ -35,7 +35,10 @@ _SIN_SUCURSAL = HTTPException(
 
 _NUMERO_DUPLICADO = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
-    detail={"code": "NUMERO_DUPLICADO", "message": "Ya existe una caja activa con ese número en esta sucursal."},
+    detail={
+        "code": "NUMERO_DUPLICADO",
+        "message": "Ya existe una caja activa con ese número en esta sucursal.",
+    },
 )
 
 
@@ -72,6 +75,7 @@ async def crear(
             nombre=payload.nombre,
             numero=payload.numero,
             creado_por=current_user.sub,
+            impresora=payload.impresora,
         )
     except Exception as exc:
         if "unique" in str(exc).lower():
@@ -105,6 +109,8 @@ async def editar(
             numero=payload.numero,
             activo=payload.activo,
             modificado_por=current_user.sub,
+            impresora=payload.impresora,
+            actualizar_impresora="impresora" in payload.model_fields_set,
         )
     except Exception as exc:
         if "unique" in str(exc).lower():

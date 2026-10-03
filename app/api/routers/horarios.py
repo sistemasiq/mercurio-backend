@@ -59,6 +59,7 @@ async def crear(
             hora_inicio=payload.hora_inicio,
             hora_fin=payload.hora_fin,
             creado_por=current_user.sub,
+            dias=payload.dias,
         )
     except Exception as exc:
         if "unique" in str(exc).lower() and "nombre" in str(exc).lower():
@@ -87,6 +88,8 @@ async def editar(
             hora_fin=payload.hora_fin,
             activo=payload.activo,
             modificado_por=current_user.sub,
+            dias=payload.dias,
+            actualizar_dias="dias" in payload.model_fields_set,
         )
     except Exception as exc:
         if "unique" in str(exc).lower() and "nombre" in str(exc).lower():
