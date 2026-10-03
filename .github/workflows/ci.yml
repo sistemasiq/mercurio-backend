@@ -50,10 +50,16 @@ jobs:
       # maestro y valida que reproduce el mismo esquema y datos.
       - run: ./scripts/generar_schema_maestro.sh
       # El maestro versionado debe estar al día con las migraciones. Las fechas
-      # de los datos de catálogo cambian en cada generación: se ignoran.
+      # y los UUID de los datos de catálogo (gen_random_uuid()) cambian en cada
+      # generación: se normalizan antes de comparar.
       - name: El schema maestro está actualizado
         run: |
-          norm() { sed -E "s/'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]+\+00'/'FECHA'/g" "$1"; }
+          norm() {
+            sed -E \
+              -e "s/'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]+\+00'/'FECHA'/g" \
+              -e "s/'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'/'UUID'/g" \
+              "$1"
+          }
           git show HEAD:sql/schema_maestro.sql > /tmp/versionado.sql
           if ! diff -q <(norm /tmp/versionado.sql) <(norm sql/schema_maestro.sql) >/dev/null; then
             echo "::error::sql/schema_maestro.sql está desactualizado. Corre ./scripts/generar_schema_maestro.sh y commitea el resultado."
