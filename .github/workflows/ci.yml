@@ -32,14 +32,11 @@ jobs:
             requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
 
-      # El repo arrastra errores previos de ruff y mypy en archivos que aún no se
-      # han saneado. Se reportan pero no bloquean; los tests sí bloquean.
-      # Quitar continue-on-error cuando el baseline quede en cero.
       - name: Ruff
-        continue-on-error: true
         run: ruff check . --output-format=github
+      - name: Ruff format
+        run: ruff format --check .
       - name: Mypy
-        continue-on-error: true
         run: mypy app
       - name: Pytest (unitarios)
         run: pytest tests/unit -q
