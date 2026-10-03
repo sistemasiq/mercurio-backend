@@ -5,11 +5,14 @@ CRUD administrativo de horarios/turnos de trabajo (/api/horarios).
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import require_permission
 from app.core.database import get_db
+from app.core.roles import ROL_SISTEMA
 from app.repositories.horarios_repository import (
     actualizar_horario,
     crear_horario,
@@ -31,12 +34,33 @@ _NOMBRE_DUPLICADO = HTTPException(
     detail={"code": "NOMBRE_DUPLICADO", "message": "Ya existe un horario con ese nombre."},
 )
 
+_FORBIDDEN_SUCURSAL = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={
+        "code": "FORBIDDEN",
+        "message": "No puedes consultar los horarios de otra sucursal.",
+    },
+)
+
+
+def _validar_sucursal(current_user: TokenData, sucursal_id: UUID | None) -> None:
+    """D1.1: los horarios son un catálogo global (tabla `turnos`, sin
+    `sucursal_id`), así que el parámetro no filtra datos, pero se valida el
+    permiso igual que en /cajas: AdministradorSistema puede pedir cualquier
+    sucursal; el resto solo la suya (403 si pide otra)."""
+    if sucursal_id is None or current_user.role == ROL_SISTEMA:
+        return
+    if str(current_user.branch_id) != str(sucursal_id):
+        raise _FORBIDDEN_SUCURSAL
+
 
 @router.get("", response_model=list[HorarioResponse], summary="Lista los horarios de trabajo")
 async def listar(
+    sucursal_id: UUID | None = Query(None),
     current_user: TokenData = Depends(require_permission("horarios:listar")),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> list[HorarioResponse]:
+    _validar_sucursal(current_user, sucursal_id)
     rows = await listar_horarios(conn)
     return [HorarioResponse(**r) for r in rows]
 
