@@ -3,6 +3,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Formato oficial del número de pulsera: WK- seguido de 7 dígitos (10 caracteres).
+# Mismo patrón que el CHECK chk_pulsera_rfid_formato (migración 047) y que el
+# frontend (RegistroPulserasPage, FORMATO_PULSERA).
+_RFID_PATTERN = r"^WK-[0-9]{7}$"
+
 
 class PulseraResponse(BaseModel):
     id: UUID
@@ -26,13 +31,13 @@ class InventarioPulserasOut(BaseModel):
 
 class PulseraCrear(BaseModel):
     sucursal_id: UUID
-    pulsera_rfid: str = Field(..., max_length=50)
+    pulsera_rfid: str = Field(..., max_length=10, pattern=_RFID_PATTERN)
     activo: bool = True
     numero_lote: str | None = Field(None, max_length=50)
 
 
 class PulseraUpdate(BaseModel):
-    pulsera_rfid: str | None = Field(None, max_length=50)
+    pulsera_rfid: str | None = Field(None, max_length=10, pattern=_RFID_PATTERN)
     activo: bool | None = None
 
 
@@ -42,8 +47,8 @@ class PulseraOut(BaseModel):
     pulsera_rfid: str
     activo: bool
     usada: bool
-    # Nombre del niño (detalles_registro) o del tutor (registros.pulseras_tutor_id)
-    # que tiene actualmente esta pulsera, si `usada` es true.
+    # Nombre del niño que tiene actualmente la pulsera (detalles_registro), si
+    # `usada` es true. El tutor ya no usa pulsera.
     asignada_a: str | None = None
     numero_lote: str | None = None
     creado: datetime | None

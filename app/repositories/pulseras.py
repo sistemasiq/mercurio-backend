@@ -21,27 +21,13 @@ _COLUMNS = """
             FROM public.detalles_registro dr
             WHERE dr.pulseras_id = p.id
         )
-        OR EXISTS (
-            SELECT 1
-            FROM public.registros r
-            WHERE r.pulseras_tutor_id = p.id
-        )
     ) AS usada,
-    COALESCE(
-        (
-            SELECT n.nombre_completo
-            FROM public.detalles_registro dr
-            JOIN public.ninos n ON n.id = dr.ninos_id
-            WHERE dr.pulseras_id = p.id
-            LIMIT 1
-        ),
-        (
-            SELECT t.nombre_completo
-            FROM public.registros r
-            JOIN public.tutores t ON t.id = r.tutores_id
-            WHERE r.pulseras_tutor_id = p.id
-            LIMIT 1
-        )
+    (
+        SELECT n.nombre_completo
+        FROM public.detalles_registro dr
+        JOIN public.ninos n ON n.id = dr.ninos_id
+        WHERE dr.pulseras_id = p.id
+        LIMIT 1
     ) AS asignada_a
 """
 
@@ -64,11 +50,6 @@ async def contar_activas_por_sucursal(conn: asyncpg.Connection, sucursal_id: UUI
               FROM public.detalles_registro dr
               WHERE dr.pulseras_id = p.id
           )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM public.registros r
-              WHERE r.pulseras_tutor_id = p.id
-          )
         """,
         sucursal_id,
     )
@@ -90,11 +71,6 @@ async def get_pulseras_disponibles_por_sucursal(
             SELECT 1
             FROM detalles_registro dr
             WHERE dr.pulseras_id = p.id
-        )
-        AND NOT EXISTS (
-            SELECT 1
-            FROM registros r
-            WHERE r.pulseras_tutor_id = p.id
         )
         ORDER BY p.pulsera_rfid
         """,
@@ -133,11 +109,6 @@ async def esta_disponible_para_asignar(
             SELECT 1
             FROM public.detalles_registro AS dr
             WHERE dr.pulseras_id = $1
-        )
-        OR EXISTS (
-            SELECT 1
-            FROM public.registros AS r
-            WHERE r.pulseras_tutor_id = $1
         )
         """,
         pulsera_id,

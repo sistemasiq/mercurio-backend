@@ -40,9 +40,8 @@ VALUES
    'Cajero Local', 3)
 ON CONFLICT (id) DO NOTHING;
 
--- El rol Administrador (2) y Cajero (3) exigen sucursal asignada; el
--- AdministradorSistema (1) va sin fila aquí a propósito, porque su acceso es
--- global.
+-- El rol Administrador (2) exige sucursal asignada; el AdministradorSistema (1)
+-- va sin fila aquí a propósito, porque su acceso es global.
 INSERT INTO public.usuarios_sucursal (usuario_id, sucursal_id)
 VALUES ('22222222-2222-2222-2222-222222222222',
         '11111111-1111-1111-1111-111111111111'),
