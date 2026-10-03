@@ -258,6 +258,17 @@ class HistorialArqueosResponse(BaseModel):
     page_size: int
 
 
+class ResumenHistorialArqueosOut(BaseModel):
+    """KPIs agregados de TODO el periodo filtrado (no solo la página
+    cargada por el front). B7 pendiente #2."""
+
+    total_arqueos: int
+    total_declarado: Decimal
+    total_esperado: Decimal
+    diferencia_neta: Decimal
+    arqueos_con_diferencia: int
+
+
 class DesgloseEfectivoDetalle(BaseModel):
     billetes: list[dict] = []
     monedas: list[dict] = []

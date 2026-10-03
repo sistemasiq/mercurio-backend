@@ -25,9 +25,13 @@ def _uuid_o_none(id_str: str) -> uuid.UUID | None:
     except (ValueError, AttributeError, TypeError):
         return None
 
+
 # ── Catálogos: Cajas y Turnos ─────────────────────────────────────────────────
 
-async def get_caja_por_codigo(conn: asyncpg.Connection, sucursal_id: str, codigo: str) -> dict | None:
+
+async def get_caja_por_codigo(
+    conn: asyncpg.Connection, sucursal_id: str, codigo: str
+) -> dict | None:
     row = await conn.fetchrow(
         """
         SELECT id, sucursal_id, codigo, nombre, creado
@@ -75,7 +79,9 @@ async def crear_caja(
     return dict(row)
 
 
-async def listar_cajas_por_sucursal(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[dict]:
+async def listar_cajas_por_sucursal(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[dict]:
     if sucursal_id and sucursal_id != "00000000-0000-0000-0000-000000000000":
         rows = await conn.fetch(
             """
@@ -119,6 +125,7 @@ async def get_primer_turno(conn: asyncpg.Connection) -> dict | None:
 
 # ── Cajas: CRUD administrativo ───────────────────────────────────────────────
 
+
 async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list[dict]:
     rows = await conn.fetch(
         """
@@ -129,7 +136,10 @@ async def listar_cajas_admin(conn: asyncpg.Connection, sucursal_id: str) -> list
         """,
         uuid.UUID(sucursal_id),
     )
-    return [{"id": str(r["id"]), "nombre": r["nombre"], "numero": r["numero"], "activo": r["activo"]} for r in rows]
+    return [
+        {"id": str(r["id"]), "nombre": r["nombre"], "numero": r["numero"], "activo": r["activo"]}
+        for r in rows
+    ]
 
 
 async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict | None:
@@ -143,7 +153,13 @@ async def get_caja_admin_por_id(conn: asyncpg.Connection, caja_id: str) -> dict 
     )
     if row is None:
         return None
-    return {"id": str(row["id"]), "sucursal_id": str(row["sucursal_id"]), "nombre": row["nombre"], "numero": row["numero"], "activo": row["activo"]}
+    return {
+        "id": str(row["id"]),
+        "sucursal_id": str(row["sucursal_id"]),
+        "nombre": row["nombre"],
+        "numero": row["numero"],
+        "activo": row["activo"],
+    }
 
 
 async def crear_caja_admin(
@@ -168,7 +184,12 @@ async def crear_caja_admin(
         now,
         uuid.UUID(creado_por) if creado_por else None,
     )
-    return {"id": str(row["id"]), "nombre": row["nombre"], "numero": row["numero"], "activo": row["activo"]}
+    return {
+        "id": str(row["id"]),
+        "nombre": row["nombre"],
+        "numero": row["numero"],
+        "activo": row["activo"],
+    }
 
 
 async def actualizar_caja_admin(
@@ -202,7 +223,12 @@ async def actualizar_caja_admin(
     )
     if row is None:
         return None
-    return {"id": str(row["id"]), "nombre": row["nombre"], "numero": int(row["numero"]), "activo": row["activo"]}
+    return {
+        "id": str(row["id"]),
+        "nombre": row["nombre"],
+        "numero": int(row["numero"]),
+        "activo": row["activo"],
+    }
 
 
 async def eliminar_caja_admin(
@@ -226,6 +252,7 @@ async def eliminar_caja_admin(
 
 
 # ── Apertura de Caja ──────────────────────────────────────────────────────────
+
 
 async def get_apertura_activa_por_usuario(
     conn: asyncpg.Connection, usuario_id: str, sucursal_id: str | None = None
@@ -356,7 +383,9 @@ async def crear_apertura_caja(
     return res
 
 
-async def actualizar_estado_apertura(conn: asyncpg.Connection, apertura_id: str, nuevo_estado: str) -> None:
+async def actualizar_estado_apertura(
+    conn: asyncpg.Connection, apertura_id: str, nuevo_estado: str
+) -> None:
     now = get_mexico_now()
     await conn.execute(
         """
@@ -405,7 +434,9 @@ async def resetear_conteo_apertura(conn: asyncpg.Connection, apertura_id: str) -
     )
 
 
-async def actualizar_admin_autorizacion(conn: asyncpg.Connection, apertura_id: str, admin_id: str) -> None:
+async def actualizar_admin_autorizacion(
+    conn: asyncpg.Connection, apertura_id: str, admin_id: str
+) -> None:
     """Registra qué administrador autorizó la revisión de esta apertura.
 
     Reutiliza la columna existente `token_admin_jti` (uuid, sin uso previo) para guardar
@@ -426,6 +457,7 @@ async def actualizar_admin_autorizacion(conn: asyncpg.Connection, apertura_id: s
 
 
 # ── Retiros Parciales ─────────────────────────────────────────────────────────
+
 
 async def crear_retiro_parcial(
     conn: asyncpg.Connection,
@@ -480,7 +512,9 @@ async def sumar_cambio_apertura(conn: asyncpg.Connection, apertura_caja_id: str)
     return Decimal(str(val))
 
 
-async def listar_retiros_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+async def listar_retiros_por_apertura(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT id, apertura_caja_id, concepto, tipo_destinatario, monto, observaciones, creado
@@ -493,7 +527,9 @@ async def listar_retiros_por_apertura(conn: asyncpg.Connection, apertura_caja_id
     return [dict(r) for r in rows]
 
 
-async def listar_cambios_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+async def listar_cambios_por_apertura(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT id, monto, creado
@@ -506,7 +542,9 @@ async def listar_cambios_por_apertura(conn: asyncpg.Connection, apertura_caja_id
     return [dict(r) for r in rows]
 
 
-async def listar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+async def listar_ingresos_por_apertura(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT id, monto, creado
@@ -520,6 +558,7 @@ async def listar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_i
 
 
 # ── Movimientos de Caja ───────────────────────────────────────────────────────
+
 
 async def registrar_movimiento_caja(
     conn: asyncpg.Connection,
@@ -614,7 +653,9 @@ async def sumar_ingresos_por_apertura(conn: asyncpg.Connection, apertura_caja_id
     return Decimal(str(val))
 
 
-async def obtener_movimientos_por_metodo(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+async def obtener_movimientos_por_metodo(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT
@@ -632,7 +673,9 @@ async def obtener_movimientos_por_metodo(conn: asyncpg.Connection, apertura_caja
     return [dict(r) for r in rows]
 
 
-async def obtener_metodos_con_movimientos(conn: asyncpg.Connection, apertura_caja_id: str) -> list[dict]:
+async def obtener_metodos_con_movimientos(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> list[dict]:
     rows = await conn.fetch(
         """
         SELECT DISTINCT mp.id, mp.nombre
@@ -678,7 +721,9 @@ async def calcular_efectivo_disponible(
     )
 
 
-async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, apertura_caja_id: str) -> Decimal:
+async def sumar_ventas_efectivo_apertura(
+    conn: asyncpg.Connection, apertura_caja_id: str
+) -> Decimal:
     """Solo cuenta como 'efectivo físico' lo que de verdad afecta el cajón:
     movimientos cuyo método tiene tipo='E' (identidad fija del catálogo
     global, migración 037 -- no el nombre, que es editable), o sin método
@@ -701,6 +746,7 @@ async def sumar_ventas_efectivo_apertura(conn: asyncpg.Connection, apertura_caja
 
 
 # ── Cierre de Caja ────────────────────────────────────────────────────────────
+
 
 async def crear_cierre_caja(
     conn: asyncpg.Connection,
@@ -806,7 +852,9 @@ async def listar_historial_cierres(
         params.append(fecha_hasta)
         param_idx += 1
 
-    query += f" ORDER BY cc.fecha_autorizacion_admin DESC OFFSET ${param_idx} LIMIT ${param_idx + 1}"
+    query += (
+        f" ORDER BY cc.fecha_autorizacion_admin DESC OFFSET ${param_idx} LIMIT ${param_idx + 1}"
+    )
     params.extend([offset, limit])
 
     rows = await conn.fetch(query, *params)
@@ -852,6 +900,64 @@ async def contar_historial_cierres(
 
     val = await conn.fetchval(query, *params)
     return int(val or 0)
+
+
+async def resumen_historial_cierres(
+    conn: asyncpg.Connection,
+    sucursal_id: str | None = None,
+    cajero_id: str | None = None,
+    fecha_desde: datetime | None = None,
+    fecha_hasta: datetime | None = None,
+) -> dict[str, Any]:
+    """KPIs del periodo COMPLETO que cumple los filtros (no solo la página
+    que pagina `listar_historial_cierres`). B7 pendiente #2."""
+    query = """
+        SELECT
+            COUNT(*)                                                    AS total_arqueos,
+            COALESCE(SUM(cc.monto_cierre), 0)                           AS total_declarado,
+            COALESCE(SUM(cc.monto_sistema), 0)                          AS total_esperado,
+            COALESCE(SUM(cc.monto_cierre - cc.monto_sistema), 0)        AS diferencia_neta,
+            COUNT(*) FILTER (WHERE cc.monto_cierre <> cc.monto_sistema) AS arqueos_con_diferencia
+        FROM public.cierre_caja cc
+        INNER JOIN public.apertura_caja a ON cc.apertura_caja_id = a.id
+        INNER JOIN public.cajas c ON a.caja_id = c.id
+        WHERE 1=1
+    """
+    params: list[Any] = []
+    param_idx = 1
+
+    if sucursal_id:
+        query += f" AND c.sucursal_id = ${param_idx}"
+        params.append(uuid.UUID(sucursal_id))
+        param_idx += 1
+
+    if cajero_id:
+        query += f" AND a.cajero_id = ${param_idx}"
+        params.append(uuid.UUID(cajero_id))
+        param_idx += 1
+
+    if fecha_desde:
+        query += f" AND cc.fecha_autorizacion_admin >= ${param_idx}"
+        params.append(fecha_desde)
+        param_idx += 1
+
+    if fecha_hasta:
+        query += f" AND cc.fecha_autorizacion_admin <= ${param_idx}"
+        params.append(fecha_hasta)
+        param_idx += 1
+
+    row = await conn.fetchrow(query, *params)
+    return (
+        dict(row)
+        if row
+        else {
+            "total_arqueos": 0,
+            "total_declarado": 0,
+            "total_esperado": 0,
+            "diferencia_neta": 0,
+            "arqueos_con_diferencia": 0,
+        }
+    )
 
 
 async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> dict | None:

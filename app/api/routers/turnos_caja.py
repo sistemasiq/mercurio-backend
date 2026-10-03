@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncpg
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
@@ -23,6 +24,7 @@ from app.schemas.caja import (
     IngresoEfectivoCreate,
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
+    ResumenHistorialArqueosOut,
     RetiroParcialCreate,
     RetiroParcialResponse,
     RevisionAdminPayload,
@@ -32,8 +34,24 @@ from app.schemas.caja import (
 )
 from app.services import turnos_caja_service
 from app.services.pdf_service import generar_pdf_arqueo
+from app.utils.csv_export import csv_streaming_response
 
 router = APIRouter(prefix="/api/turnos-caja", tags=["Turnos de Caja"])
+
+_ARQUEOS_CSV_CAMPOS = [
+    "id",
+    "cajero_nombre",
+    "terminal",
+    "sucursal_nombre",
+    "fecha_apertura",
+    "fecha_cierre",
+    "fondo_inicial",
+    "total_declarado",
+    "total_esperado",
+    "diferencia_neta",
+    "tipo_cierre",
+    "admin_nombre",
+]
 
 
 @router.get(
@@ -283,6 +301,61 @@ async def listar_historial(
         page_size=page_size,
     )
     return await turnos_caja_service.listar_historial(conn, filtros)
+
+
+@router.get(
+    "/historial/resumen",
+    response_model=ResumenHistorialArqueosOut,
+    summary="KPIs agregados del historial de arqueos (todo el periodo filtrado, no solo la página)",
+)
+async def resumen_historial(
+    sucursal_id: str | None = Query(None),
+    cajero_id: str | None = Query(None),
+    fecha_desde: str | None = Query(None),
+    fecha_hasta: str | None = Query(None),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> ResumenHistorialArqueosOut:
+    if current_user.role == "AdministradorSistema":
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+
+    filtros = FiltrosHistorial(
+        sucursal_id=sucursal_efectiva,
+        cajero_id=cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+    return await turnos_caja_service.resumen_historial(conn, filtros)
+
+
+@router.get(
+    "/historial/export",
+    summary="Exporta el historial de arqueos a CSV (mismos filtros que /historial, sin paginar)",
+)
+async def exportar_historial(
+    sucursal_id: str | None = Query(None),
+    cajero_id: str | None = Query(None),
+    fecha_desde: str | None = Query(None),
+    fecha_hasta: str | None = Query(None),
+    current_user: TokenData = Depends(require_permission("turnos_caja:historial")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> StreamingResponse:
+    if current_user.role == "AdministradorSistema":
+        sucursal_efectiva = sucursal_id
+    else:
+        sucursal_efectiva = str(current_user.branch_id) if current_user.branch_id else None
+
+    filtros = FiltrosHistorial(
+        sucursal_id=sucursal_efectiva,
+        cajero_id=cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+    items = await turnos_caja_service.listar_historial_completo(conn, filtros)
+    filas = (i.model_dump() for i in items)
+    return csv_streaming_response(_ARQUEOS_CSV_CAMPOS, filas, "historial_arqueos.csv")
 
 
 def _sucursal_restringida(current_user: TokenData) -> str | None:
