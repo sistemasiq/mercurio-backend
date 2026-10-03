@@ -1,0 +1,11 @@
+.venv
+venv
+env
+__pycache__
+*.pyc
+.git
+.env
+tests
+docs
+*.md
+uploads

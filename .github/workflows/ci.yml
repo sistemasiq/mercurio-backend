@@ -1,0 +1,81 @@
+name: CI
+
+# Corre en cada push y en cada PR: calidad, tests, migraciones contra una BD
+# real y build de la imagen. Lo reutiliza release.yml antes de publicar.
+on:
+  push:
+    # main lo cubre release.yml, que llama a este mismo workflow.
+    branches-ignore: [main]
+    tags-ignore: ["**"]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  calidad:
+    name: Lint, tipos y tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check . --output-format=github
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Mypy
+        run: mypy app
+      - name: Pytest (unitarios)
+        run: pytest tests/unit -q
+
+  migraciones:
+    name: Migraciones y schema maestro
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Aplica TODAS las migraciones sobre un PostgreSQL vacío, regenera el
+      # maestro y valida que reproduce el mismo esquema y datos.
+      - run: ./scripts/generar_schema_maestro.sh
+      # El maestro versionado debe estar al día con las migraciones. Las fechas
+      # y los UUID de los datos de catálogo (gen_random_uuid()) cambian en cada
+      # generación: se normalizan antes de comparar.
+      - name: El schema maestro está actualizado
+        run: |
+          norm() {
+            sed -E \
+              -e "s/'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]+\+00'/'FECHA'/g" \
+              -e "s/'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'/'UUID'/g" \
+              "$1"
+          }
+          git show HEAD:sql/schema_maestro.sql > /tmp/versionado.sql
+          if ! diff -q <(norm /tmp/versionado.sql) <(norm sql/schema_maestro.sql) >/dev/null; then
+            echo "::error::sql/schema_maestro.sql está desactualizado. Corre ./scripts/generar_schema_maestro.sh y commitea el resultado."
+            diff <(norm /tmp/versionado.sql) <(norm sql/schema_maestro.sql) | head -40
+            exit 1
+          fi
+
+  imagen:
+    name: Build de la imagen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

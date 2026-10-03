@@ -1,0 +1,434 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+from uuid import UUID, uuid4
+
+import asyncpg
+from fastapi import HTTPException, UploadFile
+
+from app.core.object_storage import PREFIJOS, upload_bytes, validar_y_leer
+from app.core.ws_manager import manager
+from app.repositories import metodos_pago_repository
+from app.repositories.caja_repository import registrar_cambio_caja, registrar_movimiento_caja
+from app.repositories.detalles_registro import insert_detalle_registro
+from app.repositories.estancias import get_activos_by_sucursal_id
+from app.repositories.fotos import TipoFoto, foto_create
+from app.repositories.ninos import nino_create
+from app.repositories.pagos_comanda import pago_create
+from app.repositories.producto_repository import get_producto_estancia_by_branch_id
+from app.repositories.productos import (
+    get_precio_pulsera_by_reserva_id,
+    get_productos_estancia_by_sucursal_id,
+)
+from app.repositories.pulseras import esta_disponible_para_asignar
+from app.repositories.registros import (
+    EstadoRegistro,
+    change_registro_estado,
+    registro_create,
+    registro_update_total,
+)
+from app.repositories.reservaciones_repository import obtener_evento_mas_cercano
+from app.repositories.tutores import get_tutor_by_phone, tutor_create
+from app.schemas.registros import OnboardingRequest
+from app.schemas.reservaciones import EventoDelDiaOut
+from app.services import lealtad_service
+from app.services.tramos_estancia import tramos_de_producto
+from app.services.validaciones_pago import validar_cambio
+
+
+async def _validar_pulseras_disponibles(
+    conn: asyncpg.Connection, sucursal_id: UUID, detalles: list[Any]
+) -> None:
+    """Valida que cada pulsera sea activa, de la sucursal y de un solo uso."""
+    pulseras_validadas: set[UUID] = set()
+
+    for detalle in detalles:
+        pulsera_id = detalle.pulseraId
+        if pulsera_id in pulseras_validadas:
+            raise HTTPException(
+                409, "Una pulsera no puede asignarse a más de un niño en el mismo registro"
+            )
+
+        if not await esta_disponible_para_asignar(conn, pulsera_id, sucursal_id):
+            raise HTTPException(409, "La pulsera seleccionada ya fue usada o no está disponible")
+
+        pulseras_validadas.add(pulsera_id)
+
+
+async def create_estancia(
+    conn: asyncpg.Connection,
+    data: OnboardingRequest,
+    foto_ine: UploadFile,
+    foto_llegadas: list[UploadFile],
+    usuario_id: UUID,
+    apertura_caja_id: str,
+) -> dict[str, Any]:
+    ids_efectivo = await metodos_pago_repository.obtener_ids_por_tipo(conn, "E")
+    cambio = data.cambio.quantize(Decimal("0.01"))
+    validar_cambio(
+        [(p.metodoPagoId, Decimal(str(p.monto))) for p in (data.pagos or [])],
+        cambio,
+        ids_efectivo,
+    )
+
+    async with conn.transaction():
+        await _validar_pulseras_disponibles(conn, data.sucursalId, data.detalles)
+
+        if data.reservacionId is not None:
+            evento_dict = await obtener_evento_mas_cercano(conn, data.sucursalId)
+            if evento_dict is None:
+                raise HTTPException(404, "Evento no encontrado")
+
+            # Mapeo de diccionario a modelo Pydantic
+            evento = EventoDelDiaOut.model_validate(evento_dict)
+
+            tutor = await get_tutor_by_phone(conn, evento.telefono_cliente, data.sucursalId)
+
+            if tutor:
+                tutor_id = tutor["id"]
+            else:
+                if evento.apellidos_cliente:
+                    nombre = f"{evento.nombre_cliente} {evento.apellidos_cliente}"
+                    print(nombre)
+                else:
+                    nombre = evento.nombre_cliente
+
+                tutor_id = await tutor_create(
+                    conn, data.sucursalId, nombre, evento.telefono_cliente, usuario_id
+                )
+
+            registro_id = uuid4()
+
+            # --- GUARDAR FOTOS FÍSICAMENTE ---
+            nombre_archivo = f"{registro_id}.jpg"
+
+            data_ine = await validar_y_leer(foto_ine)
+            data_llegadas = [await validar_y_leer(foto) for foto in foto_llegadas]
+
+            ruta_bd_ine = f"{PREFIJOS['identificaciones']}/{nombre_archivo}"
+
+            await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
+
+            # 2. registro (Un solo INSERT limpio)
+            await registro_create(
+                conn,
+                registro_id,
+                data.sucursalId,
+                tutor_id,
+                usuario_id,
+                data.nombreSegundoTutor,
+                evento.id,
+            )
+
+            # 3. fotos
+            await foto_create(conn, registro_id, TipoFoto.INE, ruta_bd_ine, usuario_id)
+            for data_llegada in data_llegadas:
+                foto_id = uuid4()
+                ruta_llegada = f"uploads/llegadas/{foto_id}.jpg"
+                await upload_bytes(ruta_llegada, data_llegada, "image/jpeg")
+                await foto_create(
+                    conn, registro_id, TipoFoto.LLEGADA, ruta_llegada, usuario_id, foto_id
+                )
+
+            total = Decimal(0)
+
+            fecha_base = evento.fecha_evento
+
+            entrada = datetime.combine(fecha_base, evento.hora_inicio)
+            salida_esperada = datetime.combine(fecha_base, evento.hora_fin)
+
+            # Calcular cantidad de horas segun el evento
+            cantidad_horas = int((salida_esperada - entrada).total_seconds() / 3600)
+
+            # 4. detalles
+            precio = await get_precio_pulsera_by_reserva_id(conn, data.reservacionId)
+            if precio is None:
+                raise HTTPException(400, "No hay precio de pulsera configurado para la reservación")
+
+            for d in data.detalles:
+                nino_id = await nino_create(
+                    conn,
+                    data.sucursalId,
+                    d.nino.nombreCompleto,
+                    d.nino.edad,
+                    d.nino.notas,
+                    usuario_id,
+                )
+
+                await insert_detalle_registro(
+                    conn,
+                    data.sucursalId,
+                    registro_id,
+                    nino_id,
+                    d.pulseraId,
+                    data.parentesco,
+                    entrada,
+                    salida_esperada,
+                    usuario_id,
+                    cantidad_horas,
+                    precio,
+                    d.productoId,
+                )
+
+                total += precio * cantidad_horas
+
+            # 5. actualizar total
+            await registro_update_total(conn, usuario_id, registro_id, total)
+
+            await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
+
+            resultado = {
+                "registroId": registro_id,
+                "total": total,
+                "pagado": 0,
+                "estado": "A",
+            }
+
+        else:
+            # Normalizado a solo dígitos para que coincida con el celular de
+            # 10 dígitos que usan comandas/reservaciones (CELULAR_PATTERN) --
+            # sin esto, un tutor capturado como "555 123 4567" fragmentaría
+            # sus puntos en una llave distinta a la que usa caja/POS para el
+            # mismo cliente. No se toca get_tutor_by_phone/tutor_create
+            # (comparan el teléfono tal cual, comportamiento preexistente
+            # fuera del alcance de lealtad).
+            celular_lealtad = "".join(ch for ch in data.tutor.telefono if ch.isdigit())
+            if len(celular_lealtad) != 10:
+                celular_lealtad = ""
+
+            # 1. tutor
+            tutor = await get_tutor_by_phone(conn, data.tutor.telefono, data.sucursalId)
+
+            if tutor:
+                tutor_id = tutor["id"]
+            else:
+                tutor_id = await tutor_create(
+                    conn,
+                    data.sucursalId,
+                    data.tutor.nombreCompleto,
+                    data.tutor.telefono,
+                    usuario_id,
+                )
+
+            registro_id = uuid4()
+
+            # --- GUARDAR FOTOS FÍSICAMENTE ---
+            nombre_archivo = f"{registro_id}.jpg"
+
+            data_ine = await validar_y_leer(foto_ine)
+            data_llegadas = [await validar_y_leer(foto) for foto in foto_llegadas]
+
+            ruta_bd_ine = f"{PREFIJOS['identificaciones']}/{nombre_archivo}"
+
+            await upload_bytes(ruta_bd_ine, data_ine, "image/jpeg")
+
+            # 2. registro (Un solo INSERT limpio)
+            await registro_create(
+                conn, registro_id, data.sucursalId, tutor_id, usuario_id, data.nombreSegundoTutor
+            )
+
+            total = Decimal(0)
+
+            # 3. fotos
+            await foto_create(conn, registro_id, TipoFoto.INE, ruta_bd_ine, usuario_id)
+            for data_llegada in data_llegadas:
+                foto_id = uuid4()
+                ruta_llegada = f"uploads/llegadas/{foto_id}.jpg"
+                await upload_bytes(ruta_llegada, data_llegada, "image/jpeg")
+                await foto_create(
+                    conn, registro_id, TipoFoto.LLEGADA, ruta_llegada, usuario_id, foto_id
+                )
+
+            # 4. detalles
+            producto_estancia = await get_producto_estancia_by_branch_id(conn, str(data.sucursalId))
+
+            if producto_estancia is None:
+                raise HTTPException(400, "Producto inválido")
+
+            # Tramos por hora; si el producto no tiene, se usa su precio_unitario.
+            precios = tramos_de_producto(
+                producto_estancia["config_estancia"], producto_estancia["precio_unitario"]
+            )
+
+            for d in data.detalles:
+                nino_id = await nino_create(
+                    conn,
+                    data.sucursalId,
+                    d.nino.nombreCompleto,
+                    d.nino.edad,
+                    d.nino.notas,
+                    usuario_id,
+                )
+
+                entrada = datetime.now(UTC)
+                salida_esperada = entrada + timedelta(hours=d.cantidad)
+
+                # Buscar el precio correspondiente en los tramos
+                precio = None
+                horas_solicitadas = float(d.cantidad)
+
+                for config in precios:
+                    min_h = float(config["min_horas"])
+                    max_h = float(config["max_horas"])
+                    p_val = Decimal(str(config["precio"]))
+
+                    if min_h <= horas_solicitadas <= max_h:
+                        precio = p_val
+                        break
+
+                if precio is None:
+                    precio_mas_bajo = None
+                    min_horas_mas_bajo = float("inf")
+
+                    for config in precios:
+                        min_h = float(config["min_horas"])
+                        if min_h < min_horas_mas_bajo:
+                            min_horas_mas_bajo = min_h
+                            precio_mas_bajo = Decimal(str(config["precio"]))
+
+                    if precio_mas_bajo is not None:
+                        precio = precio_mas_bajo
+                    else:
+                        raise HTTPException(
+                            400,
+                            "No se encontró ningún precio disponible en la "
+                            "configuración de estancia",
+                        )
+
+                await insert_detalle_registro(
+                    conn,
+                    data.sucursalId,
+                    registro_id,
+                    nino_id,
+                    d.pulseraId,
+                    data.parentesco,
+                    entrada,
+                    salida_esperada,
+                    usuario_id,
+                    d.cantidad,
+                    precio,
+                    d.productoId,
+                )
+
+                # El precio del tramo es por hora (igual que el frontend y el checkout).
+                total += precio * d.cantidad
+
+            # 4.5 canje de puntos de lealtad (opcional, sobre el subtotal ya calculado)
+            if data.puntosARedimir > 0:
+                if not celular_lealtad:
+                    raise HTTPException(
+                        400, "El teléfono del tutor debe tener 10 dígitos para canjear puntos."
+                    )
+                descuento_puntos = await lealtad_service.redimir_puntos(
+                    conn,
+                    data.sucursalId,
+                    celular_lealtad,
+                    data.puntosARedimir,
+                    None,
+                    usuario_id,
+                    registro_id=registro_id,
+                )
+                total = max(total - descuento_puntos, Decimal(0))
+
+            # 5. pagos
+            total_pagado = 0.0
+            for p in data.pagos or []:
+                await pago_create(
+                    conn, data.sucursalId, registro_id, p.metodoPagoId, p.monto, usuario_id
+                )
+                await registrar_movimiento_caja(
+                    conn,
+                    apertura_caja_id=apertura_caja_id,
+                    tipo_movimiento="E",
+                    referencia_id=str(registro_id),
+                    metodo_pago_id=str(p.metodoPagoId),
+                    monto=Decimal(str(p.monto)),
+                    creado_por=str(usuario_id),
+                )
+                total_pagado += p.monto
+
+            if cambio > 0:
+                await registrar_cambio_caja(
+                    conn,
+                    apertura_caja_id=apertura_caja_id,
+                    referencia_id=str(registro_id),
+                    monto=cambio,
+                    creado_por=str(usuario_id),
+                )
+
+            # 5.5 otorgamiento de puntos de lealtad sobre el total de la venta
+            # (ya neto de cualquier canje aplicado arriba). NO sobre
+            # total_pagado: ese puede incluir el cambio que se le devolvió al
+            # cliente. Mismo criterio que pago_service, que otorga sobre
+            # body.total_final.
+            if celular_lealtad and total > 0:
+                await lealtad_service.otorgar_puntos(
+                    conn,
+                    data.sucursalId,
+                    celular_lealtad,
+                    total,
+                    usuario_id,
+                    registro_id=registro_id,
+                )
+
+            # 6. actualizar total
+            await registro_update_total(conn, usuario_id, registro_id, total)
+
+            # 7. activar si ya pagó todo
+            if total_pagado >= total:
+                await change_registro_estado(conn, EstadoRegistro.ACTIVO, usuario_id, registro_id)
+            else:
+                raise HTTPException(
+                    400, "No se pudo activar el registro porque no se pagó el total"
+                )
+
+            resultado = {
+                "registroId": registro_id,
+                "total": total,
+                "pagado": total_pagado,
+                "estado": "A" if total_pagado >= total else "P",
+            }
+
+    # Se notifica ya fuera de la transacción, para no avisar a los clientes
+    # de datos que todavía podrían revertirse por un rollback.
+    await manager.broadcast(
+        str(data.sucursalId),
+        {
+            "type": "estancia_creada",
+            "sucursalId": str(data.sucursalId),
+            "registroId": str(registro_id),
+        },
+    )
+
+    return resultado
+
+
+async def get_activos_estancia_by_sucursal_id(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    """Agrega hora_entrada (timestamp real) y cargo_extra (excedente estimado
+    ahora mismo, con la misma fórmula que cotizar_checkout) a cada activo, sin
+    duplicar esa regla de negocio en SQL."""
+    # Import local para evitar un ciclo: chekouts no importa este módulo.
+    from app.services.chekouts import _calcular_cargo_extra_sync
+
+    now = datetime.now(UTC)
+    activos = await get_activos_by_sucursal_id(conn, sucursal_id)
+
+    resultado = []
+    for activo in activos:
+        _, cargo_extra = _calcular_cargo_extra_sync(activo["salidaEsperada"], activo["precio"], now)
+        resultado.append(
+            {
+                **activo,
+                "horaEntrada": activo["entrada"].isoformat(),
+                "cargoExtra": float(cargo_extra),
+            }
+        )
+    return resultado
+
+
+async def get_productos_estancia_by_id_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID
+) -> list[dict[str, Any]]:
+    return await get_productos_estancia_by_sucursal_id(conn, sucursal_id)

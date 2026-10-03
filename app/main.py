@@ -1,0 +1,121 @@
+import asyncio
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
+
+from app.api.routers import (
+    auth,
+    branches,
+    cajas_admin,
+    comandas,
+    compras,
+    documentos,
+    estancias,
+    extras,
+    horarios,
+    insumos,
+    lealtad,
+    metodos_pago,
+    movimientos_inventario,
+    padres,
+    pagos,
+    pagos_reservacion,
+    paquete_tipos_evento,
+    paquetes,
+    permissions,
+    presentaciones_insumo,
+    producto_insumos,
+    productos,
+    proveedores,
+    pulseras,
+    reservacion_extras,
+    reservacion_productos,
+    reservaciones,
+    tipos_evento,
+    turnos_caja,
+    unidades_medida,
+    users,
+)
+from app.core.config import settings
+from app.core.database import close_pool, create_pool, get_pool
+from app.core.object_storage import ensure_bucket
+from app.services.comanda_evento_scheduler import loop_comandas_eventos
+from app.services.reservaciones_vencidas_scheduler import loop_reservaciones_vencidas
+
+logger = logging.getLogger("mercury.debug")
+logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    await create_pool()
+    async with get_pool().acquire() as conn:
+        from app.services.permission_service import load_cache
+
+        await load_cache(conn)
+    await ensure_bucket()
+    scheduler_task = asyncio.create_task(loop_comandas_eventos())
+    # Libera las fechas de los eventos que no se liquidaron a tiempo. Va como
+    # loop propio y no dentro del anterior porque tienen cadencias muy distintas:
+    # aquél revisa cada 5 minutos, éste una vez por hora.
+    vencidas_task = asyncio.create_task(loop_reservaciones_vencidas())
+    yield
+    scheduler_task.cancel()
+    vencidas_task.cancel()
+    await close_pool()
+
+
+app = FastAPI(title="Mercury API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    # Logging de body deshabilitado (ver historial): request.body() consumía
+    # el stream y no había necesidad de loguear el payload en INFO.
+    response = await call_next(request)
+    return response
+
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(branches.router)
+app.include_router(permissions.router)
+app.include_router(comandas.router)
+app.include_router(productos.router)
+app.include_router(extras.router)
+app.include_router(metodos_pago.router)
+app.include_router(pagos.router)
+app.include_router(pagos_reservacion.router)
+app.include_router(paquetes.router)
+app.include_router(paquete_tipos_evento.router)
+app.include_router(reservaciones.router)
+app.include_router(reservacion_extras.router)
+app.include_router(reservacion_productos.router)
+app.include_router(tipos_evento.router)
+app.include_router(estancias.router)
+app.include_router(pulseras.router)
+app.include_router(documentos.router)
+app.include_router(turnos_caja.router)
+app.include_router(horarios.router)
+app.include_router(cajas_admin.router)
+app.include_router(unidades_medida.router)
+app.include_router(proveedores.router)
+app.include_router(insumos.router)
+app.include_router(presentaciones_insumo.router)
+app.include_router(producto_insumos.router)
+app.include_router(movimientos_inventario.router)
+app.include_router(padres.router)
+app.include_router(compras.router)
+app.include_router(lealtad.router)

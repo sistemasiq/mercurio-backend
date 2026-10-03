@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+from datetime import date
+from uuid import UUID
+
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
+
+from app.api.deps import require_permission
+from app.core.database import get_db
+from app.schemas.auth import TokenData
+from app.schemas.branch import (
+    BranchCreateRequest,
+    BranchResponse,
+    BranchUpdateRequest,
+    IndicadoresSucursalResponse,
+)
+from app.services.branch_service import (
+    AdministradorInvalidoError,
+    BranchNotFoundError,
+    InsufficientPermissionsError,
+    NombreAlreadyExistsError,
+    TelefonoInvalidoError,
+    create_branch,
+    deactivate_branch,
+    get_branch,
+    get_indicadores,
+    list_branches,
+    reactivate_branch,
+    update_branch,
+)
+from app.utils.csv_export import csv_streaming_response
+
+router = APIRouter(prefix="/api/sucursales", tags=["Sucursales"])
+
+_INDICADORES_CSV_CAMPOS = ["ventas", "ninos_atendidos", "eventos", "cajas_abiertas"]
+
+_NOT_FOUND = HTTPException(
+    status_code=status.HTTP_404_NOT_FOUND,
+    detail={"code": "BRANCH_NOT_FOUND", "message": "Sucursal no encontrada."},
+)
+_FORBIDDEN = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail={"code": "FORBIDDEN", "message": "No tienes permiso para esta acción."},
+)
+_CONFLICT = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail={"code": "NOMBRE_ALREADY_EXISTS", "message": "Ya existe una sucursal con ese nombre."},
+)
+_ADMINISTRADOR_INVALIDO = HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "ADMINISTRADOR_INVALIDO",
+        "message": "El usuario indicado no existe, está inactivo o no tiene rol Administrador.",
+    },
+)
+_TELEFONO_INVALIDO = HTTPException(
+    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+    detail={
+        "code": "TELEFONO_INVALIDO",
+        "message": "El teléfono excede la longitud máxima permitida (20 caracteres).",
+    },
+)
+
+
+@router.get("", response_model=list[BranchResponse])
+async def get_branches(
+    current_user: TokenData = Depends(require_permission("sucursales:listar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> list[BranchResponse]:
+    return await list_branches(conn, current_user)
+
+
+@router.post("", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
+async def post_branch(
+    body: BranchCreateRequest,
+    current_user: TokenData = Depends(require_permission("sucursales:crear")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> BranchResponse:
+    try:
+        return await create_branch(conn, body, current_user)
+    except NombreAlreadyExistsError:
+        raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
+    except TelefonoInvalidoError:
+        raise _TELEFONO_INVALIDO from None
+
+
+@router.get("/{sucursal_id}", response_model=BranchResponse)
+async def get_branch_endpoint(
+    sucursal_id: UUID,
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> BranchResponse:
+    try:
+        return await get_branch(conn, sucursal_id, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except InsufficientPermissionsError:
+        raise _FORBIDDEN from None
+
+
+@router.put("/{sucursal_id}", response_model=BranchResponse)
+async def put_branch(
+    sucursal_id: UUID,
+    body: BranchUpdateRequest,
+    current_user: TokenData = Depends(require_permission("sucursales:editar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> BranchResponse:
+    try:
+        return await update_branch(conn, sucursal_id, body, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except NombreAlreadyExistsError:
+        raise _CONFLICT from None
+    except AdministradorInvalidoError:
+        raise _ADMINISTRADOR_INVALIDO from None
+    except TelefonoInvalidoError:
+        raise _TELEFONO_INVALIDO from None
+
+
+@router.patch("/{sucursal_id}/deactivate", status_code=status.HTTP_200_OK)
+async def deactivate_branch_endpoint(
+    sucursal_id: UUID,
+    current_user: TokenData = Depends(require_permission("sucursales:eliminar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Response:
+    try:
+        await deactivate_branch(conn, sucursal_id, current_user)
+        return Response(status_code=status.HTTP_200_OK)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+
+
+@router.patch("/{sucursal_id}/reactivate", status_code=status.HTTP_200_OK)
+async def reactivate_branch_endpoint(
+    sucursal_id: UUID,
+    current_user: TokenData = Depends(require_permission("sucursales:editar")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Response:
+    try:
+        await reactivate_branch(conn, sucursal_id, current_user)
+        return Response(status_code=status.HTTP_200_OK)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+
+
+@router.get("/{sucursal_id}/indicadores", response_model=IndicadoresSucursalResponse)
+async def get_indicadores_endpoint(
+    sucursal_id: UUID,
+    desde: date = Query(...),
+    hasta: date = Query(...),
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> IndicadoresSucursalResponse:
+    try:
+        return await get_indicadores(conn, sucursal_id, desde, hasta, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except InsufficientPermissionsError:
+        raise _FORBIDDEN from None
+
+
+@router.get(
+    "/{sucursal_id}/indicadores/export",
+    summary="Exporta los indicadores del periodo a CSV",
+)
+async def exportar_indicadores_endpoint(
+    sucursal_id: UUID,
+    desde: date = Query(...),
+    hasta: date = Query(...),
+    current_user: TokenData = Depends(require_permission("sucursales:ver")),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> StreamingResponse:
+    """Mismos indicadores de `/indicadores` (B5/C2), como descarga CSV (patrón B7)."""
+    try:
+        indicadores = await get_indicadores(conn, sucursal_id, desde, hasta, current_user)
+    except BranchNotFoundError:
+        raise _NOT_FOUND from None
+    except InsufficientPermissionsError:
+        raise _FORBIDDEN from None
+    filas = iter([indicadores.model_dump()])
+    return csv_streaming_response(_INDICADORES_CSV_CAMPOS, filas, "indicadores_sucursal.csv")

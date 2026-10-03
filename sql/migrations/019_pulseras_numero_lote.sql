@@ -1,0 +1,2 @@
+ALTER TABLE public.pulseras
+  ADD COLUMN IF NOT EXISTS numero_lote VARCHAR(50) NULL;
