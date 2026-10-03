@@ -3,7 +3,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -123,10 +123,13 @@ async def completar_pago(
     async with conn.transaction():
         # Folio de ticket secuencial por sucursal (QA #21): el backend asigna
         # ticket_numero de forma atómica dentro de esta transacción.
-        # body.ticket_numero (lo que mande el front) queda solo como fallback
-        # si por algún motivo siguiente_folio no devuelve nada.
-        ticket_numero = await folio_repository.siguiente_folio(conn, sucursal_id) or (
-            body.ticket_numero
+        # body.ticket_numero (lo que mande el front, si manda algo) queda solo
+        # como fallback si por algún motivo siguiente_folio no devuelve nada;
+        # como último recurso, un folio temporal para no bloquear el cobro.
+        ticket_numero = (
+            await folio_repository.siguiente_folio(conn, sucursal_id)
+            or body.ticket_numero
+            or f"T{uuid4().hex[:7].upper()}"
         )
 
         comanda_in = ComandaCreate(

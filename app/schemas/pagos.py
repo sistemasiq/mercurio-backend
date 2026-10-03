@@ -61,10 +61,12 @@ class PagoCompletoRequest(BaseModel):
     persiste.
     """
 
-    # max_length=10 coincide con comandas.ticket_numero VARCHAR(10) en BD —
-    # sin esto, un valor más largo tronaba con un 500 crudo de Postgres en vez
-    # de un 422 limpio (mismo criterio que nombre_cliente, abajo).
-    ticket_numero: str = Field(..., max_length=10)
+    # QA #21: el backend asigna el folio secuencial (folio_repository) dentro de
+    # la transacción del cobro. Este campo queda opcional y solo se usa como
+    # fallback si por algún motivo no hay folio disponible — el front ya no
+    # necesita generar un ticket_numero (ver CajaComponent.vue). max_length=10
+    # coincide con comandas.ticket_numero VARCHAR(10) en BD.
+    ticket_numero: str | None = Field(default=None, max_length=10)
     total_final: Decimal = Field(..., gt=0)
     detalles_comanda: list[DetalleCreate]
     notas_generales: str | None = None
