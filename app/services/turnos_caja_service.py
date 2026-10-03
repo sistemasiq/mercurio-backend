@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import asyncpg
 from fastapi import HTTPException, status
@@ -45,6 +46,7 @@ from app.repositories.caja_repository import (
     registrar_ingreso_efectivo,
     registrar_movimiento_caja,
     resetear_conteo_apertura,
+    resumen_historial_cierres,
     sumar_cambio_apertura,
     sumar_ingresos_por_apertura,
     sumar_retiros_por_apertura,
@@ -69,6 +71,7 @@ from app.schemas.caja import (
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
     MovimientoResumen,
+    ResumenHistorialArqueosOut,
     RetiroParcialCreate,
     RetiroParcialResponse,
     RevisionAdminPayload,
@@ -82,7 +85,10 @@ class TurnoNoEncontradoError(HTTPException):
     def __init__(self):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "TURNO_NO_ENCONTRADO", "message": "No se encontró un turno activo para esta sesión."},
+            detail={
+                "code": "TURNO_NO_ENCONTRADO",
+                "message": "No se encontró un turno activo para esta sesión.",
+            },
         )
 
 
@@ -127,7 +133,9 @@ class SucursalNoAutorizadaError(HTTPException):
         )
 
 
-async def obtener_cajas(conn: asyncpg.Connection, sucursal_id: str | None = None) -> list[CajaResponse]:
+async def obtener_cajas(
+    conn: asyncpg.Connection, sucursal_id: str | None = None
+) -> list[CajaResponse]:
     rows = await listar_cajas_por_sucursal(conn, sucursal_id)
     return [
         CajaResponse(
@@ -189,14 +197,20 @@ async def abrir_turno(
     if not payload.terminal:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "TERMINAL_REQUERIDA", "message": "Debes seleccionar una caja o terminal."},
+            detail={
+                "code": "TERMINAL_REQUERIDA",
+                "message": "Debes seleccionar una caja o terminal.",
+            },
         )
 
     caja = await get_caja_por_codigo(conn, sucursal, payload.terminal)
     if not caja:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "CAJA_NO_ENCONTRADA", "message": "La caja seleccionada no existe. Solicita al administrador que la registre."},
+            detail={
+                "code": "CAJA_NO_ENCONTRADA",
+                "message": "La caja seleccionada no existe. Solicita al administrador que la registre.",
+            },
         )
 
     caja_id = str(caja["id"])
@@ -206,7 +220,10 @@ async def abrir_turno(
     if caja_activa:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "CAJA_OCUPADA", "message": "La caja física seleccionada ya cuenta con un turno activo."},
+            detail={
+                "code": "CAJA_OCUPADA",
+                "message": "La caja física seleccionada ya cuenta con un turno activo.",
+            },
         )
 
     if not payload.turno_id:
@@ -257,7 +274,9 @@ async def obtener_turno_activo(
     movs_raw = await obtener_movimientos_por_metodo(conn, apertura_id)
 
     movimientos = [
-        MovimientoResumen(metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"])))
+        MovimientoResumen(
+            metodo=r["metodo_nombre"].lower(), total_ventas=Decimal(str(r["total_ventas"]))
+        )
         for r in movs_raw
     ]
 
@@ -299,7 +318,9 @@ async def obtener_turno_activo(
     )
 
 
-async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def iniciar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -313,7 +334,9 @@ async def iniciar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) 
     return await obtener_turno_activo(conn, user_id)
 
 
-async def enviar_conteo(conn: asyncpg.Connection, user_id: str, payload: ConteoPayload) -> TurnoActivoResponse:
+async def enviar_conteo(
+    conn: asyncpg.Connection, user_id: str, payload: ConteoPayload
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, payload.turno_id)
     if not apertura or str(apertura["cajero_id"]) != user_id:
         raise TurnoNoEncontradoError()
@@ -451,7 +474,9 @@ async def _calcular_balance(
     return total_esperado_general, total_declarado_general, diferencia_neta_general, balance
 
 
-async def _verificar_credenciales_usuario(conn: asyncpg.Connection, email: str, password: str) -> asyncpg.Record:
+async def _verificar_credenciales_usuario(
+    conn: asyncpg.Connection, email: str, password: str
+) -> asyncpg.Record:
     """Busca el usuario por email y verifica su contraseña o PIN contra la BD.
     Lanza CredencialesAdminInvalidasError si no existe o las credenciales son incorrectas."""
     row = await conn.fetchrow(
@@ -481,7 +506,9 @@ async def autenticar_admin_revision(
     user_id: str,
     payload: RevisionAdminPayload,
 ) -> RevisionAdminResponse:
-    admin_row = await _verificar_credenciales_usuario(conn, payload.admin_email, payload.admin_password)
+    admin_row = await _verificar_credenciales_usuario(
+        conn, payload.admin_email, payload.admin_password
+    )
 
     # 3. Calcular montos esperados reales para el turno
     apertura = await get_apertura_por_id(conn, payload.turno_id)
@@ -604,7 +631,9 @@ async def validar_pin_admin(
         pin_ok = verify_password(pin, admin_row["password_hash"])
 
     if not pin_ok:
-        raise CredencialesAdminInvalidasError("El PIN ingresado para el Administrador es incorrecto.")
+        raise CredencialesAdminInvalidasError(
+            "El PIN ingresado para el Administrador es incorrecto."
+        )
 
     token = await _emitir_token_pin(conn, str(admin_row["id"]), turno_id, "admin")
     return {
@@ -614,7 +643,9 @@ async def validar_pin_admin(
     }
 
 
-async def cancelar_conteo(conn: asyncpg.Connection, user_id: str, turno_id: str) -> TurnoActivoResponse:
+async def cancelar_conteo(
+    conn: asyncpg.Connection, user_id: str, turno_id: str
+) -> TurnoActivoResponse:
     apertura = await get_apertura_por_id(conn, turno_id)
     if not apertura:
         raise TurnoNoEncontradoError()
@@ -735,7 +766,9 @@ def advertencia_efectivo_insuficiente(disponible_antes: Decimal, cambio: Decimal
     solo que aquí no bloquea, avisa."""
     if cambio <= disponible_antes:
         return None
-    return "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    return (
+        "No hay efectivo disponible en caja para devolver cambio. Solicita un ingreso de efectivo."
+    )
 
 
 async def listar_retiros(conn: asyncpg.Connection, turno_id: str) -> list[RetiroParcialResponse]:
@@ -853,22 +886,15 @@ async def obtener_metodos_pago_activo(
     return [MetodoPagoTurnoResponse(id=str(r["id"]), nombre=r["nombre"]) for r in rows]
 
 
-async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) -> HistorialArqueosResponse:
-    offset = (filtros.page - 1) * filtros.page_size
-    items_raw = await listar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-        offset=offset,
-        limit=filtros.page_size,
-    )
-    total = await contar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-    )
+def _parse_fecha_filtro(valor: str | None) -> datetime | None:
+    """`fecha_desde`/`fecha_hasta` llegan como 'YYYY-MM-DD' desde el front."""
+    if not valor:
+        return None
+    return datetime.fromisoformat(valor)
 
-    items = [
+
+def _arqueos_desde_filas(rows: list[dict[str, Any]]) -> list[ArqueoResumen]:
+    return [
         ArqueoResumen(
             id=str(r["id"]),
             cajero_nombre=r["cajero_nombre"] or "—",
@@ -885,8 +911,34 @@ async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) 
             admin_nombre=r["admin_nombre"],
             tipo_cierre=r["tipo_cierre"],
         )
-        for r in items_raw
+        for r in rows
     ]
+
+
+async def listar_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> HistorialArqueosResponse:
+    offset = (filtros.page - 1) * filtros.page_size
+    fecha_desde = _parse_fecha_filtro(filtros.fecha_desde)
+    fecha_hasta = _parse_fecha_filtro(filtros.fecha_hasta)
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        offset=offset,
+        limit=filtros.page_size,
+    )
+    total = await contar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+
+    items = _arqueos_desde_filas(items_raw)
 
     return HistorialArqueosResponse(
         items=items,
@@ -894,6 +946,44 @@ async def listar_historial(conn: asyncpg.Connection, filtros: FiltrosHistorial) 
         page=filtros.page,
         page_size=filtros.page_size,
     )
+
+
+async def resumen_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> ResumenHistorialArqueosOut:
+    """KPIs del periodo filtrado completo, no solo la página cargada
+    (B7 pendiente #2)."""
+    data = await resumen_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+    )
+    return ResumenHistorialArqueosOut(
+        total_arqueos=int(data["total_arqueos"]),
+        total_declarado=Decimal(str(data["total_declarado"])),
+        total_esperado=Decimal(str(data["total_esperado"])),
+        diferencia_neta=Decimal(str(data["diferencia_neta"])),
+        arqueos_con_diferencia=int(data["arqueos_con_diferencia"]),
+    )
+
+
+async def listar_historial_completo(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> list[ArqueoResumen]:
+    """Todos los arqueos que cumplen los filtros, sin paginar (para
+    exportar a CSV: B7 pendiente #4)."""
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+        offset=0,
+        limit=1_000_000,
+    )
+    return _arqueos_desde_filas(items_raw)
 
 
 async def obtener_detalle(

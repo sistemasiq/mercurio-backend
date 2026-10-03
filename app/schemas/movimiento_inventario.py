@@ -29,6 +29,17 @@ class CogsRenglonOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ResumenCogsOut(BaseModel):
+    """KPIs agregados del reporte de costo de ventas (B7 pendiente #3)."""
+
+    ventas_totales: Decimal
+    costo_ventas: Decimal
+    margen: Decimal
+    merma: Decimal
+
+    model_config = {"from_attributes": True}
+
+
 class MovimientoInventarioOut(BaseModel):
     id: UUID
     sucursal_id: UUID
