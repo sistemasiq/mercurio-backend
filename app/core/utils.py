@@ -1,6 +1,6 @@
 from datetime import datetime
 
-import pytz  # type: ignore[import-untyped]
+import pytz
 
 
 def get_mexico_now() -> datetime:

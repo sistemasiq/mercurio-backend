@@ -24,6 +24,7 @@ repos:
           - passlib[bcrypt]
           - asyncpg
           - boto3-stubs[s3]
+          - types-pytz
         args: [--config-file=pyproject.toml]
         files: ^app/
 
