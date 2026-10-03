@@ -54,6 +54,7 @@ from app.repositories.caja_repository import (
     sumar_total_ventas_apertura,
     sumar_ventas_efectivo_apertura,
 )
+from app.repositories.user_repository import get_usuario_by_id
 from app.schemas.caja import (
     AbrirTurnoPayload,
     ArqueoResumen,
@@ -186,6 +187,26 @@ async def abrir_turno(
                 },
             )
         return await obtener_turno_activo(conn, user_id, sucursal)
+
+    # C1: el cajero que abre el turno debe validar su PIN (o su contraseña,
+    # mientras no tenga PIN configurado), igual que ya se exige en el cierre.
+    if not payload.pin:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "PIN_REQUERIDO",
+                "message": "Debes ingresar tu PIN de caja para abrir el turno.",
+            },
+        )
+    cajero_row = await get_usuario_by_id(conn, uuid.UUID(str(user_id)))
+    if not cajero_row:
+        raise CredencialesAdminInvalidasError("Usuario no encontrado.")
+    cajero_pin_hash = cajero_row["pin_hash"]
+    pin_ok = verify_password(payload.pin, cajero_pin_hash) if cajero_pin_hash else False
+    if not pin_ok:
+        pin_ok = verify_password(payload.pin, cajero_row["password_hash"])
+    if not pin_ok:
+        raise CredencialesAdminInvalidasError("El PIN ingresado es incorrecto.")
 
     if not sucursal:
         raise HTTPException(
