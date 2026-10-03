@@ -17,11 +17,20 @@ class SucursalInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LealtadPadreInfo(BaseModel):
+    """WP B4, pendiente 5: saldo de puntos de lealtad del tutor, mostrado en
+    la tarjeta "Tus puntos Woow" del dashboard del portal de padres."""
+
+    saldo: int
+    por_vencer: int = 0
+
+
 class TutorInfo(BaseModel):
     id: UUID
     nombreCompleto: str  # noqa: N815
     telefono: str
     sucursal: SucursalInfo
+    lealtad: LealtadPadreInfo | None = None
 
 
 class NinoActivoResponse(BaseModel):
