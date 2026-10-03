@@ -6,14 +6,16 @@ import asyncpg
 
 _SELECT = """
     SELECT id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-           precio_base, precio_hora_pulsera, activo, creado, creado_por,
+           precio_base, precio_hora_pulsera, duracion_horas, destacado,
+           anticipo_porcentaje, activo, creado, creado_por,
            modificado, modificado_por
     FROM paquetes
 """
 
 _RETURNING = """
     id, sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-    precio_base, precio_hora_pulsera, activo, creado, creado_por,
+    precio_base, precio_hora_pulsera, duracion_horas, destacado,
+    anticipo_porcentaje, activo, creado, creado_por,
     modificado, modificado_por
 """
 
@@ -24,7 +26,8 @@ _RETURNING = """
 # número de contrataciones. Queda NULL si el paquete nunca se ha contratado.
 _SELECT_CON_CONTRATACIONES = """
     SELECT p.id, p.sucursal_id, p.nombre, p.descripcion, p.min_invitados, p.max_invitados,
-           p.precio_base, p.precio_hora_pulsera, p.activo,
+           p.precio_base, p.precio_hora_pulsera, p.duracion_horas, p.destacado,
+           p.anticipo_porcentaje, p.activo,
            p.creado, p.creado_por, p.modificado, p.modificado_por,
            COUNT(r.id) AS contrataciones,
            MAX(r.creado) AS ultima_contratacion
@@ -69,13 +72,17 @@ async def crear(
     max_invitados: int,
     precio_base: Decimal,
     precio_hora_pulsera: Decimal,
+    duracion_horas: Decimal | None = None,
+    destacado: bool = False,
+    anticipo_porcentaje: Decimal | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO paquetes
             (sucursal_id, nombre, descripcion, min_invitados, max_invitados,
-             precio_base, precio_hora_pulsera)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+             precio_base, precio_hora_pulsera, duracion_horas, destacado,
+             anticipo_porcentaje)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING {_RETURNING}
         """,
         sucursal_id,
@@ -85,6 +92,9 @@ async def crear(
         max_invitados,
         precio_base,
         precio_hora_pulsera,
+        duracion_horas,
+        destacado,
+        anticipo_porcentaje,
     )
     return dict(row)
 
@@ -159,6 +169,25 @@ async def obtener_items_de_paquete(conn: asyncpg.Connection, paquete_id: UUID) -
         ORDER BY p.nombre ASC
     """
     rows = await conn.fetch(sql, paquete_id)
+    return [dict(r) for r in rows]
+
+
+async def listar_tipos_evento_de_paquete(
+    conn: asyncpg.Connection, paquete_id: UUID
+) -> list[dict[str, Any]]:
+    """Tipos de evento asociados al paquete vía paquete_tipos_evento, con su
+    nombre resuelto, para exponerlos en el detalle/listado como
+    `tipos_evento: [{id, nombre}]`."""
+    rows = await conn.fetch(
+        """
+        SELECT te.id, te.nombre
+        FROM public.paquete_tipos_evento pte
+        JOIN public.tipos_evento te ON te.id = pte.tipo_evento_id
+        WHERE pte.paquete_id = $1
+        ORDER BY te.nombre ASC
+        """,
+        paquete_id,
+    )
     return [dict(r) for r in rows]
 
 
