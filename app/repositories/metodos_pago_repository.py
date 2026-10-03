@@ -4,7 +4,8 @@ from uuid import UUID
 import asyncpg
 
 _SELECT_CON_SUCURSAL = """
-    SELECT mp.id, mp.nombre, mp.descripcion, mp.tipo, mp.creado, mp.creado_por,
+    SELECT mp.id, mp.nombre, mp.descripcion, mp.tipo, mp.comision_porcentaje,
+           mp.requiere_referencia, mp.creado, mp.creado_por,
            mp.modificado, mp.modificado_por,
            COALESCE(smp.activo, TRUE) AS activo
     FROM metodos_pago mp
@@ -16,7 +17,8 @@ _SELECT_CON_SUCURSAL = """
 # `activo`; se le muestra el catálogo con activo=TRUE de forma neutral, ya
 # que gestiona nombre/descripción, no activación (eso es por sucursal).
 _SELECT_SIN_SUCURSAL = """
-    SELECT mp.id, mp.nombre, mp.descripcion, mp.tipo, mp.creado, mp.creado_por,
+    SELECT mp.id, mp.nombre, mp.descripcion, mp.tipo, mp.comision_porcentaje,
+           mp.requiere_referencia, mp.creado, mp.creado_por,
            mp.modificado, mp.modificado_por, TRUE AS activo
     FROM metodos_pago mp
 """

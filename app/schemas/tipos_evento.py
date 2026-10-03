@@ -32,5 +32,7 @@ class TiposEventoOut(TiposEventoBase):
     creado_por: UUID | None
     modificado: datetime | None
     modificado_por: UUID | None
+    # Solo lo puebla el listado; en crear/actualizar/obtener queda en 0.
+    paquetes_count: int = 0
 
     model_config = {"from_attributes": True}

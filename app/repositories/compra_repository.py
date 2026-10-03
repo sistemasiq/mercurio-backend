@@ -16,7 +16,8 @@ from app.schemas.compra import CompraEditar, DetalleCompraItem
 
 _COLUMNS = """
     c.id, c.sucursal_id, c.proveedor_id, c.estado, c.fecha_pedido, c.fecha_recepcion,
-    c.total, c.notas, c.activo, c.creado, c.creado_por, c.modificado, c.modificado_por,
+    c.total, c.iva, c.folio, c.notas, c.activo, c.creado, c.creado_por,
+    c.modificado, c.modificado_por,
     p.nombre AS proveedor_nombre
 """
 
@@ -45,13 +46,16 @@ async def crear_con_detalles(
     notas: str | None,
     detalles: list[DetalleCompraItem],
     creado_por: UUID,
+    iva: Decimal = Decimal("0"),
 ) -> UUID:
     total = sum((d.cantidad * d.costo_unitario for d in detalles), Decimal("0"))
     async with conn.transaction():
+        folio = await siguiente_folio(conn, sucursal_id)
         compra_id: UUID = await conn.fetchval(
             """
-            INSERT INTO public.compras (sucursal_id, proveedor_id, notas, total, creado_por)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO public.compras
+                (sucursal_id, proveedor_id, notas, total, creado_por, iva, folio)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
             sucursal_id,
@@ -59,6 +63,8 @@ async def crear_con_detalles(
             notas,
             total,
             creado_por,
+            iva,
+            folio,
         )
         for detalle in detalles:
             await conn.execute(
@@ -76,6 +82,23 @@ async def crear_con_detalles(
                 detalle.costo_unitario,
             )
     return compra_id
+
+
+async def siguiente_folio(conn: asyncpg.Connection, sucursal_id: UUID) -> str:
+    """Folio de orden de compra secuencial por sucursal (OC-0001, OC-0002, ...).
+    El UPSERT bloquea la fila de la sucursal, así que dos compras simultáneas
+    nunca reciben el mismo número. Debe correr dentro de la transacción del alta."""
+    row = await conn.fetchrow(
+        """
+        INSERT INTO public.folios_compra_sucursal (sucursal_id, ultimo)
+        VALUES ($1, 1)
+        ON CONFLICT (sucursal_id)
+        DO UPDATE SET ultimo = public.folios_compra_sucursal.ultimo + 1
+        RETURNING serie, ultimo
+        """,
+        sucursal_id,
+    )
+    return f"{row['serie']}-{row['ultimo']:04d}"
 
 
 async def obtener(conn: asyncpg.Connection, compra_id: UUID) -> dict[str, Any] | None:
@@ -138,13 +161,15 @@ async def reemplazar_detalles(
         await conn.execute(
             """
             UPDATE public.compras
-            SET proveedor_id = $2, notas = $3, total = $4, modificado = NOW()
+            SET proveedor_id = $2, notas = $3, total = $4,
+                iva = COALESCE($5, iva), modificado = NOW()
             WHERE id = $1
             """,
             compra_id,
             body.proveedor_id,
             body.notas,
             total,
+            body.iva,
         )
 
 

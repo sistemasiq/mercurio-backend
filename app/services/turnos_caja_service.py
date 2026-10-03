@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import asyncpg
 from fastapi import HTTPException, status
@@ -46,6 +47,7 @@ from app.repositories.caja_repository import (
     registrar_ingreso_efectivo,
     registrar_movimiento_caja,
     resetear_conteo_apertura,
+    resumen_historial_cierres,
     sumar_cambio_apertura,
     sumar_ingresos_por_apertura,
     sumar_retiros_por_apertura,
@@ -70,6 +72,7 @@ from app.schemas.caja import (
     IngresoEfectivoResponse,
     MetodoPagoTurnoResponse,
     MovimientoResumen,
+    ResumenHistorialArqueosOut,
     RetiroParcialCreate,
     RetiroParcialResponse,
     RevisionAdminPayload,
@@ -892,24 +895,15 @@ async def obtener_metodos_pago_activo(
     return [MetodoPagoTurnoResponse(id=str(r["id"]), nombre=r["nombre"]) for r in rows]
 
 
-async def listar_historial(
-    conn: asyncpg.Connection, filtros: FiltrosHistorial
-) -> HistorialArqueosResponse:
-    offset = (filtros.page - 1) * filtros.page_size
-    items_raw = await listar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-        offset=offset,
-        limit=filtros.page_size,
-    )
-    total = await contar_historial_cierres(
-        conn,
-        sucursal_id=filtros.sucursal_id,
-        cajero_id=filtros.cajero_id,
-    )
+def _parse_fecha_filtro(valor: str | None) -> datetime | None:
+    """`fecha_desde`/`fecha_hasta` llegan como 'YYYY-MM-DD' desde el front."""
+    if not valor:
+        return None
+    return datetime.fromisoformat(valor)
 
-    items = [
+
+def _arqueos_desde_filas(rows: list[dict[str, Any]]) -> list[ArqueoResumen]:
+    return [
         ArqueoResumen(
             id=str(r["id"]),
             cajero_nombre=r["cajero_nombre"] or "—",
@@ -926,8 +920,34 @@ async def listar_historial(
             admin_nombre=r["admin_nombre"],
             tipo_cierre=r["tipo_cierre"],
         )
-        for r in items_raw
+        for r in rows
     ]
+
+
+async def listar_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> HistorialArqueosResponse:
+    offset = (filtros.page - 1) * filtros.page_size
+    fecha_desde = _parse_fecha_filtro(filtros.fecha_desde)
+    fecha_hasta = _parse_fecha_filtro(filtros.fecha_hasta)
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        offset=offset,
+        limit=filtros.page_size,
+    )
+    total = await contar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+    )
+
+    items = _arqueos_desde_filas(items_raw)
 
     return HistorialArqueosResponse(
         items=items,
@@ -935,6 +955,44 @@ async def listar_historial(
         page=filtros.page,
         page_size=filtros.page_size,
     )
+
+
+async def resumen_historial(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> ResumenHistorialArqueosOut:
+    """KPIs del periodo filtrado completo, no solo la página cargada
+    (B7 pendiente #2)."""
+    data = await resumen_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+    )
+    return ResumenHistorialArqueosOut(
+        total_arqueos=int(data["total_arqueos"]),
+        total_declarado=Decimal(str(data["total_declarado"])),
+        total_esperado=Decimal(str(data["total_esperado"])),
+        diferencia_neta=Decimal(str(data["diferencia_neta"])),
+        arqueos_con_diferencia=int(data["arqueos_con_diferencia"]),
+    )
+
+
+async def listar_historial_completo(
+    conn: asyncpg.Connection, filtros: FiltrosHistorial
+) -> list[ArqueoResumen]:
+    """Todos los arqueos que cumplen los filtros, sin paginar (para
+    exportar a CSV: B7 pendiente #4)."""
+    items_raw = await listar_historial_cierres(
+        conn,
+        sucursal_id=filtros.sucursal_id,
+        cajero_id=filtros.cajero_id,
+        fecha_desde=_parse_fecha_filtro(filtros.fecha_desde),
+        fecha_hasta=_parse_fecha_filtro(filtros.fecha_hasta),
+        offset=0,
+        limit=1_000_000,
+    )
+    return _arqueos_desde_filas(items_raw)
 
 
 async def obtener_detalle(

@@ -56,3 +56,14 @@ async def eliminar_paquete(
     _: TokenData = Depends(require_permission("paquetes:eliminar")),
 ) -> None:
     await svc.eliminar(conn, paquete_id)
+
+
+@router.post(
+    "/{paquete_id}/duplicar", response_model=PaquetesOut, status_code=status.HTTP_201_CREATED
+)
+async def duplicar_paquete(
+    paquete_id: UUID,
+    conn: asyncpg.Connection = Depends(get_db),
+    current_user: TokenData = Depends(require_permission("paquetes:crear")),
+) -> PaquetesOut:
+    return await svc.duplicar(conn, paquete_id, UUID(current_user.sub))

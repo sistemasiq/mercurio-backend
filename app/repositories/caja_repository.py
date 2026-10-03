@@ -961,6 +961,64 @@ async def contar_historial_cierres(
     return int(val or 0)
 
 
+async def resumen_historial_cierres(
+    conn: asyncpg.Connection,
+    sucursal_id: str | None = None,
+    cajero_id: str | None = None,
+    fecha_desde: datetime | None = None,
+    fecha_hasta: datetime | None = None,
+) -> dict[str, Any]:
+    """KPIs del periodo COMPLETO que cumple los filtros (no solo la página
+    que pagina `listar_historial_cierres`). B7 pendiente #2."""
+    query = """
+        SELECT
+            COUNT(*)                                                    AS total_arqueos,
+            COALESCE(SUM(cc.monto_cierre), 0)                           AS total_declarado,
+            COALESCE(SUM(cc.monto_sistema), 0)                          AS total_esperado,
+            COALESCE(SUM(cc.monto_cierre - cc.monto_sistema), 0)        AS diferencia_neta,
+            COUNT(*) FILTER (WHERE cc.monto_cierre <> cc.monto_sistema) AS arqueos_con_diferencia
+        FROM public.cierre_caja cc
+        INNER JOIN public.apertura_caja a ON cc.apertura_caja_id = a.id
+        INNER JOIN public.cajas c ON a.caja_id = c.id
+        WHERE 1=1
+    """
+    params: list[Any] = []
+    param_idx = 1
+
+    if sucursal_id:
+        query += f" AND c.sucursal_id = ${param_idx}"
+        params.append(uuid.UUID(sucursal_id))
+        param_idx += 1
+
+    if cajero_id:
+        query += f" AND a.cajero_id = ${param_idx}"
+        params.append(uuid.UUID(cajero_id))
+        param_idx += 1
+
+    if fecha_desde:
+        query += f" AND cc.fecha_autorizacion_admin >= ${param_idx}"
+        params.append(fecha_desde)
+        param_idx += 1
+
+    if fecha_hasta:
+        query += f" AND cc.fecha_autorizacion_admin <= ${param_idx}"
+        params.append(fecha_hasta)
+        param_idx += 1
+
+    row = await conn.fetchrow(query, *params)
+    return (
+        dict(row)
+        if row
+        else {
+            "total_arqueos": 0,
+            "total_declarado": 0,
+            "total_esperado": 0,
+            "diferencia_neta": 0,
+            "arqueos_con_diferencia": 0,
+        }
+    )
+
+
 async def obtener_detalle_cierre(conn: asyncpg.Connection, cierre_id: str) -> dict | None:
     cierre_uuid = _uuid_o_none(cierre_id)
     if cierre_uuid is None:

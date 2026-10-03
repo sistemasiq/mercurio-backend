@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 CELULAR_PATTERN = r"^\d{10}$"
 
@@ -14,6 +14,7 @@ class ConfiguracionLealtadBase(BaseModel):
     otorga_puntos_comandas: bool = True
     otorga_puntos_reservaciones: bool = True
     otorga_puntos_checkin: bool = True
+    minimo_canje: int = Field(0, ge=0)
 
 
 class ConfiguracionLealtadOut(ConfiguracionLealtadBase):
@@ -30,6 +31,13 @@ class SaldoPuntosOut(BaseModel):
     sucursal_id: UUID
     celular: str
     saldo: int
+    por_vencer: int = 0
+
+
+class TopClienteLealtadOut(BaseModel):
+    celular: str
+    nombre: str | None
+    puntos_otorgados: int
 
 
 class ReporteLealtadOut(BaseModel):
@@ -39,6 +47,26 @@ class ReporteLealtadOut(BaseModel):
     total_caducado: int
     saldo_vigente: int
     clientes_con_saldo: int
+    top_clientes: list[TopClienteLealtadOut] = Field(default_factory=list)
+
+
+class AjustePuntosRequest(BaseModel):
+    celular: str = Field(..., pattern=CELULAR_PATTERN)
+    puntos: int = Field(..., description="Positivo para otorgar, negativo para descontar.")
+    motivo: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("puntos")
+    @classmethod
+    def puntos_no_cero(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("Los puntos del ajuste no pueden ser cero.")
+        return v
+
+
+class ClienteLealtadOut(BaseModel):
+    celular: str
+    nombre: str | None
+    saldo: int
 
 
 class MovimientoPuntoOut(BaseModel):

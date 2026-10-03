@@ -16,7 +16,16 @@ from app.models.producto import Producto
 
 _COLUMNS = """
     id, nombre, precio_unitario, tipo, sucursal_id, activo, es_combo,
-    descripcion, imagen, config_estancia, creado, creado_por, modificado, modificado_por
+    descripcion, imagen, codigo, config_estancia, creado, creado_por, modificado, modificado_por
+"""
+
+# Costo de la receta: suma de cantidad * costo_unitario vigente de cada insumo.
+# Un insumo sin costo registrado cuenta como 0; un producto sin receta da NULL.
+_COSTO_RECETA = """
+    (SELECT SUM(pi.cantidad * COALESCE(i.costo_unitario, 0))
+     FROM public.producto_insumos pi
+     JOIN public.insumos i ON i.id = pi.insumo_id
+     WHERE pi.producto_id = productos.id) AS costo_receta
 """
 
 
@@ -31,6 +40,12 @@ def _row_to_producto(row: asyncpg.Record) -> Producto:
         es_combo=row.get("es_combo", False),
         descripcion=row.get("descripcion"),
         imagen=row.get("imagen"),
+        codigo=row.get("codigo"),
+        costo_receta=(
+            Decimal(str(row["costo_receta"]))
+            if "costo_receta" in row.keys() and row["costo_receta"] is not None
+            else None
+        ),
         config_estancia=row.get("config_estancia"),
         creado=row.get("creado"),
         creado_por=row.get("creado_por"),
@@ -60,11 +75,14 @@ async def listar_todos(conn: asyncpg.Connection, sucursal_id: UUID | None = None
     """Lista productos (activos e inactivos) para la pantalla de administración."""
     if sucursal_id:
         rows = await conn.fetch(
-            f"SELECT {_COLUMNS} FROM public.productos WHERE sucursal_id = $1 ORDER BY nombre ASC",
+            f"SELECT {_COLUMNS}, {_COSTO_RECETA} FROM public.productos "
+            "WHERE sucursal_id = $1 ORDER BY nombre ASC",
             sucursal_id,
         )
     else:
-        rows = await conn.fetch(f"SELECT {_COLUMNS} FROM public.productos ORDER BY nombre ASC")
+        rows = await conn.fetch(
+            f"SELECT {_COLUMNS}, {_COSTO_RECETA} FROM public.productos ORDER BY nombre ASC"
+        )
     return [_row_to_producto(r) for r in rows]
 
 
@@ -83,6 +101,7 @@ async def crear(
     imagen: str | None,
     config_estancia: list[dict] | None = None,
     usuario_id: UUID | None = None,
+    codigo: str | None = None,
 ) -> Producto:
     es_combo = True if tipo == "C" else False
 
@@ -90,8 +109,9 @@ async def crear(
         row = await conn.fetchrow(
             f"""
             INSERT INTO public.productos
-                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, config_estancia, creado_por)
-            VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8)
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo,
+                 config_estancia, creado_por, codigo)
+            VALUES ($1, 0, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {_COLUMNS}
             """,
             nombre,
@@ -102,13 +122,15 @@ async def crear(
             es_combo,
             config_estancia,
             usuario_id,
+            codigo,
         )
     else:
         row = await conn.fetchrow(
             f"""
             INSERT INTO public.productos
-                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo, creado_por)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (nombre, precio_unitario, tipo, sucursal_id, descripcion, imagen, es_combo,
+                 creado_por, codigo)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {_COLUMNS}
             """,
             nombre,
@@ -119,6 +141,7 @@ async def crear(
             imagen,
             es_combo,
             usuario_id,
+            codigo,
         )
     return _row_to_producto(row)
 

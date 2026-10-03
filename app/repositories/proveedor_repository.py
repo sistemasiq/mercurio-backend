@@ -13,7 +13,7 @@ import asyncpg
 
 _COLUMNS = """
     id, sucursal_id, nombre, contacto_nombre, telefono, email, notas,
-    activo, creado, creado_por, modificado, modificado_por
+    rfc, dias_entrega, activo, creado, creado_por, modificado, modificado_por
 """
 
 
@@ -46,12 +46,15 @@ async def crear(
     email: str | None,
     notas: str | None,
     creado_por: UUID,
+    rfc: str | None = None,
+    dias_entrega: int | None = None,
 ) -> dict[str, Any]:
     row = await conn.fetchrow(
         f"""
         INSERT INTO public.proveedores
-            (sucursal_id, nombre, contacto_nombre, telefono, email, notas, creado_por)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (sucursal_id, nombre, contacto_nombre, telefono, email, notas, creado_por,
+             rfc, dias_entrega)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING {_COLUMNS}
         """,
         sucursal_id,
@@ -61,6 +64,8 @@ async def crear(
         email,
         notas,
         creado_por,
+        rfc,
+        dias_entrega,
     )
     return dict(row)
 

@@ -244,6 +244,8 @@ async def obtener_historial(
     estado: str = "todos",
     fecha_inicio: str | None = None,
     fecha_fin: str | None = None,
+    caja_id: UUID | None = None,
+    metodo_pago_id: UUID | None = None,
 ) -> list[HistorialOut]:
     desde = _calcular_desde(filtro)
     hasta = None
@@ -251,7 +253,9 @@ async def obtener_historial(
         desde = datetime.fromisoformat(fecha_inicio)
     if fecha_fin:
         hasta = datetime.fromisoformat(fecha_fin).replace(hour=23, minute=59, second=59)
-    rows = await pago_repository.historial(conn, sucursal_id, desde, estado, hasta)
+    rows = await pago_repository.historial(
+        conn, sucursal_id, desde, estado, hasta, caja_id, metodo_pago_id
+    )
     return [HistorialOut.model_validate(r) for r in rows]
 
 
