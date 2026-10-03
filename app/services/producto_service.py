@@ -23,6 +23,7 @@ from app.repositories import combo_repository, producto_repository
 from app.schemas.auth import TokenData
 from app.schemas.producto import ProductoCrear, ProductoOut, ProductoUpdate
 from app.schemas.registros import ProductoEstanciaResponse
+from app.services.tramos_estancia import tramos_de_producto
 
 
 async def _guardar_imagen(producto_id: UUID, imagen: UploadFile) -> str:
@@ -254,15 +255,13 @@ async def obtener_config_estancia_por_sucursal(
             detail="No se encontró un producto de estancia activo para esta sucursal",
         )
 
-    data = dict(row)
-
-    if isinstance(data.get("config_estancia"), str):
-        try:
-            data["config_estancia"] = json.loads(data["config_estancia"])
-        except Exception:
-            data["config_estancia"] = []
-
-    return ProductoEstanciaResponse.model_validate(data)
+    # Mismos tramos que usa el check-in: el frontend calcula el precio con ellos.
+    return ProductoEstanciaResponse.model_validate(
+        {
+            "id": row["id"],
+            "config_estancia": tramos_de_producto(row["config_estancia"], row["precio_unitario"]),
+        }
+    )
 
 
 async def obtener_hijos_combo(conn: asyncpg.Connection, combo_id: UUID) -> list[dict[str, object]]:
