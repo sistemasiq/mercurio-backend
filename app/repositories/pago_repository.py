@@ -121,6 +121,16 @@ _SELECT_HISTORIAL = f"""
     WHERE v.sucursal_id = $1
       AND v.creado >= $2::timestamptz
       AND ($3::timestamptz IS NULL OR v.creado <= $3::timestamptz)
+      AND (
+          $5::uuid IS NULL
+          OR EXISTS (
+              SELECT 1
+              FROM public.movimientos_caja mc
+              JOIN public.apertura_caja ac ON ac.id = mc.apertura_caja_id
+              WHERE mc.referencia_id = v.referencia_id
+                AND ac.caja_id = $5::uuid
+          )
+      )
     GROUP BY
         v.referencia_id, v.tipo_origen, v.titulo, v.estado_actual, v.sucursal_id
     HAVING (
@@ -128,6 +138,7 @@ _SELECT_HISTORIAL = f"""
         OR ($4 = 'pagado' AND NOT bool_or(v.es_cancelado))
         OR ($4 = 'cancelado' AND bool_or(v.es_cancelado))
     )
+    AND ($6::uuid IS NULL OR bool_or(v.metodo_pago_id = $6::uuid))
     ORDER BY MAX(v.creado) DESC
 """
 
@@ -195,8 +206,12 @@ async def historial(
     desde: datetime,
     estado: str = "todos",
     hasta: datetime | None = None,
+    caja_id: UUID | None = None,
+    metodo_pago_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
-    rows = await conn.fetch(_SELECT_HISTORIAL, sucursal_id, desde, hasta, estado)
+    rows = await conn.fetch(
+        _SELECT_HISTORIAL, sucursal_id, desde, hasta, estado, caja_id, metodo_pago_id
+    )
     resultados: list[dict[str, Any]] = []
     for r in rows:
         d = dict(r)
