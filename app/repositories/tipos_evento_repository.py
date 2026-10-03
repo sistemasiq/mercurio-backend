@@ -9,15 +9,33 @@ _SELECT = """
     FROM tipos_evento
 """
 
+# Igual que _SELECT pero agregando cuántos paquetes activos tiene asociados
+# cada tipo de evento (vía paquete_tipos_evento), para la columna
+# "paquetes_count" del listado.
+_SELECT_CON_PAQUETES_COUNT = """
+    SELECT te.id, te.sucursal_id, te.nombre, te.descripcion, te.activo, te.creado,
+           te.creado_por, te.modificado, te.modificado_por,
+           COUNT(p.id) AS paquetes_count
+    FROM tipos_evento te
+    LEFT JOIN paquete_tipos_evento pte ON pte.tipo_evento_id = te.id
+    LEFT JOIN paquetes p ON p.id = pte.paquete_id AND p.activo = TRUE
+"""
+
+_GROUP_ORDER = " GROUP BY te.id ORDER BY te.nombre ASC"
+
 
 async def listar(conn: asyncpg.Connection, sucursal_id: UUID | None = None) -> list[dict[str, Any]]:
     if sucursal_id:
         rows = await conn.fetch(
-            _SELECT + " WHERE activo = TRUE AND (sucursal_id = $1 OR sucursal_id IS NULL)",
+            _SELECT_CON_PAQUETES_COUNT
+            + " WHERE te.activo = TRUE AND (te.sucursal_id = $1 OR te.sucursal_id IS NULL)"
+            + _GROUP_ORDER,
             sucursal_id,
         )
     else:
-        rows = await conn.fetch(_SELECT + " WHERE activo = TRUE")
+        rows = await conn.fetch(
+            _SELECT_CON_PAQUETES_COUNT + " WHERE te.activo = TRUE" + _GROUP_ORDER
+        )
     return [dict(r) for r in rows]
 
 

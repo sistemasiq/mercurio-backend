@@ -40,6 +40,8 @@ async def crear(
         email=body.email,
         notas=body.notas,
         creado_por=UUID(current_user.sub),
+        rfc=body.rfc,
+        dias_entrega=body.dias_entrega,
     )
     return ProveedorOut.model_validate(row)
 

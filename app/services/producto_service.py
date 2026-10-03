@@ -41,6 +41,12 @@ async def listar_activos(
     return await producto_repository.get_productos_activos(conn, sucursal_id)
 
 
+def _mensaje_duplicado(exc: asyncpg.UniqueViolationError) -> str:
+    """El UNIQUE puede venir del nombre o del código (idx_productos_sucursal_codigo)."""
+    if "codigo" in (exc.constraint_name or ""):
+        return "Ya existe un producto con ese código en esta sucursal."
+    return "Ya existe un producto con ese nombre en esta sucursal."
+
 async def listar_todos(
     conn: asyncpg.Connection, sucursal_id: UUID | None = None
 ) -> list[ProductoOut]:
@@ -102,11 +108,12 @@ async def crear(
             descripcion=body.descripcion,
             imagen=body.imagen,
             usuario_id=usuario_id,
-            config_estancia=config_estancia_data
+            config_estancia=config_estancia_data,
+            codigo=body.codigo,
         )
 
     except asyncpg.UniqueViolationError as exc:
-        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
+        raise Conflicto(_mensaje_duplicado(exc)) from exc
     row_dict = asdict(row)
 
     if imagen is not None:
@@ -195,7 +202,7 @@ async def actualizar(
     try:
         row = await producto_repository.actualizar(conn, producto_id, updates)
     except asyncpg.UniqueViolationError as exc:
-        raise Conflicto("Ya existe un producto con ese nombre en esta sucursal.") from exc
+        raise Conflicto(_mensaje_duplicado(exc)) from exc
 
     if not row:
         raise NoEncontrado("Producto")
