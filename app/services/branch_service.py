@@ -60,6 +60,8 @@ def _to_response(record: SucursalRecord) -> BranchResponse:
         estado=record["estado"],
         codigo_postal=record["codigo_postal"],
         zona_horaria=record["zona_horaria"],
+        hora_apertura=record["hora_apertura"],
+        hora_cierre=record["hora_cierre"],
         telefono=record["telefono"],
         correo=record["correo"],
         administrador_id=record["administrador_id"],
@@ -122,6 +124,8 @@ async def create_branch(
                 estado=data.estado,
                 codigo_postal=data.codigo_postal,
                 zona_horaria=data.zona_horaria,
+                hora_apertura=data.hora_apertura,
+                hora_cierre=data.hora_cierre,
             )
         except asyncpg.StringDataRightTruncationError as exc:
             raise TelefonoInvalidoError from exc
@@ -167,6 +171,8 @@ async def update_branch(
                 estado=data.estado,
                 codigo_postal=data.codigo_postal,
                 zona_horaria=data.zona_horaria,
+                hora_apertura=data.hora_apertura,
+                hora_cierre=data.hora_cierre,
             )
         except asyncpg.StringDataRightTruncationError as exc:
             raise TelefonoInvalidoError from exc
