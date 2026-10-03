@@ -30,6 +30,10 @@ class UserOut(BaseModel):
     branch_id: UUID | None
     branch_name: str | None = None
     permissions: list[str] = []
+    # C1: para que Inicio pueda avisar "Configura tu PIN de caja" sin requerir
+    # usuarios:ver (que el Cajero no tiene). Default False: login/refresh no lo
+    # recalculan; /auth/me sí, que es a donde Inicio pregunta.
+    tiene_pin: bool = False
 
 
 class LoginResponse(BaseModel):

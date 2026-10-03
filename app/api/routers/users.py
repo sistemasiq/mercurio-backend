@@ -5,16 +5,24 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.deps import require_permission
+from app.api.deps import get_current_user, require_permission
 from app.core.database import get_db
 from app.schemas.auth import TokenData
-from app.schemas.user import UserCreateRequest, UserResponse, UserUpdateRequest
+from app.schemas.user import (
+    CambiarMiPinRequest,
+    CambiarMiPinResponse,
+    UserCreateRequest,
+    UserResponse,
+    UserUpdateRequest,
+)
 from app.services.user_service import (
     BranchRequiredError,
+    CredencialActualInvalidaError,
     EmailAlreadyExistsError,
     InsufficientPermissionsError,
     RolInvalidoError,
     UserNotFoundError,
+    cambiar_mi_pin,
     create_user,
     delete_user,
     get_user,
@@ -119,6 +127,27 @@ async def put_user(
     ) as exc:
         _handle_write_errors(exc)
         raise  # unreachable, satisfies mypy
+
+
+@router.put("/me/pin", response_model=CambiarMiPinResponse)
+async def put_mi_pin(
+    body: CambiarMiPinRequest,
+    current_user: TokenData = Depends(get_current_user),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> CambiarMiPinResponse:
+    """Cualquier usuario autenticado cambia su propio PIN de caja."""
+    try:
+        return await cambiar_mi_pin(conn, UUID(current_user.sub), body)
+    except UserNotFoundError:
+        raise _NOT_FOUND from None
+    except CredencialActualInvalidaError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "CREDENCIAL_ACTUAL_INVALIDA",
+                "message": "El PIN actual (o tu contraseña) no es correcto.",
+            },
+        ) from None
 
 
 @router.delete("/{usuario_id}")

@@ -129,6 +129,7 @@ async def me_endpoint(
         branch_id=current_user.branch_id,
         branch_name=branch_name,
         permissions=get_permissions(rol),
+        tiene_pin=bool(usuario["pin_hash"]),
     )
 
 

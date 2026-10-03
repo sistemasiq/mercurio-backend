@@ -5,7 +5,7 @@ from uuid import UUID
 import asyncpg
 
 from app.core.roles import ROL_ADMINISTRADOR, ROL_SISTEMA, ROLES_SIN_SUCURSAL_FIJA
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.repositories.permission_repository import get_rol_by_nombre
 from app.repositories.user_repository import (
     UsuarioRecord,
@@ -20,7 +20,13 @@ from app.repositories.user_repository import (
     update_usuario_branch,
 )
 from app.schemas.auth import TokenData
-from app.schemas.user import UserCreateRequest, UserResponse, UserUpdateRequest
+from app.schemas.user import (
+    CambiarMiPinRequest,
+    CambiarMiPinResponse,
+    UserCreateRequest,
+    UserResponse,
+    UserUpdateRequest,
+)
 
 
 class EmailAlreadyExistsError(Exception):
@@ -41,6 +47,10 @@ class UserNotFoundError(Exception):
 
 class RolInvalidoError(Exception):
     pass
+
+
+class CredencialActualInvalidaError(Exception):
+    """El PIN actual (o la contraseña, si el usuario aún no tiene PIN) no coincide."""
 
 
 def _role_requires_branch(role: str) -> bool:
@@ -66,6 +76,7 @@ def _to_response(record: UsuarioRecord) -> UserResponse:
         branch_id=record["sucursal_id"],
         is_active=record["activo"],
         ultimo_acceso=record["ultimo_acceso"],
+        tiene_pin=bool(record["pin_hash"]),
     )
 
 
@@ -121,6 +132,7 @@ async def create_user(
     branch_id = data.branch_id if data.role != ROL_ADMINISTRADOR else None
 
     creator_id = UUID(current_user.sub)
+    pin_hash = hash_password(data.pin) if data.pin else None
     async with conn.transaction():
         user_id = await create_usuario(
             conn,
@@ -131,6 +143,7 @@ async def create_user(
             creado_por=creator_id,
             apellidos=data.apellidos,
             telefono=data.telefono,
+            pin_hash=pin_hash,
         )
         if branch_id is not None:
             await assign_usuario_to_branch(conn, user_id, branch_id, creator_id)
@@ -172,6 +185,7 @@ async def update_user(
 
     editor_id = UUID(current_user.sub)
     password_hash = hash_password(data.password) if data.password else None
+    pin_hash = hash_password(data.pin) if data.pin else None
     # Un Administrador se reasigna a sucursales desde branch_service (puede
     # tener varias); este endpoint nunca debe tocar usuarios_sucursal para
     # ese rol, para no desactivar asignaciones hechas por ese otro camino.
@@ -190,6 +204,7 @@ async def update_user(
             apellidos=data.apellidos,
             telefono=data.telefono,
             activo=data.is_active,
+            pin_hash=pin_hash,
         )
         if not updated:
             raise UserNotFoundError
@@ -212,3 +227,42 @@ async def delete_user(conn: asyncpg.Connection, user_id: UUID, current_user: Tok
     deleted = await delete_usuario(conn, user_id, UUID(current_user.sub))
     if not deleted:
         raise UserNotFoundError
+
+
+async def cambiar_mi_pin(
+    conn: asyncpg.Connection,
+    user_id: UUID,
+    data: CambiarMiPinRequest,
+) -> CambiarMiPinResponse:
+    """PUT /usuarios/me/pin — cualquier usuario autenticado cambia su propio PIN.
+
+    `actual` se valida contra pin_hash si el usuario ya tiene PIN; si no,
+    se acepta la contraseña (mismo criterio que abrir/cerrar turno)."""
+    target = await get_usuario_by_id(conn, user_id)
+    if target is None:
+        raise UserNotFoundError
+
+    target_pin_hash = target["pin_hash"]
+    actual_ok = verify_password(data.actual, target_pin_hash) if target_pin_hash else False
+    if not actual_ok:
+        actual_ok = verify_password(data.actual, target["password_hash"])
+    if not actual_ok:
+        raise CredencialActualInvalidaError
+
+    nuevo_pin_hash = hash_password(data.pin_nuevo)
+    actualizado = await update_usuario(
+        conn,
+        user_id=user_id,
+        email=target["email"],
+        nombre_completo=target["nombre_completo"],
+        rol=target["rol"],
+        password_hash=None,
+        modificado_por=user_id,
+        apellidos=target["apellidos"],
+        telefono=target["telefono"],
+        activo=None,
+        pin_hash=nuevo_pin_hash,
+    )
+    if not actualizado:
+        raise UserNotFoundError
+    return CambiarMiPinResponse(ok=True, tiene_pin=True)

@@ -13,6 +13,7 @@ class UsuarioRecord(TypedDict):
     id: UUID
     email: str
     password_hash: str
+    pin_hash: str | None
     nombre_completo: str
     apellidos: str | None
     telefono: str | None
@@ -27,6 +28,7 @@ def _row_to_record(row: asyncpg.Record) -> UsuarioRecord:
         id=row["id"],
         email=row["email"],
         password_hash=row["password_hash"],
+        pin_hash=row["pin_hash"],
         nombre_completo=row["nombre_completo"],
         apellidos=row["apellidos"],
         telefono=row["telefono"],
@@ -48,6 +50,7 @@ _SELECT = f"""
         u.id,
         u.email,
         u.password_hash,
+        u.pin_hash,
         u.nombre_completo,
         u.apellidos,
         u.telefono,
@@ -107,12 +110,13 @@ async def create_usuario(
     creado_por: UUID,
     apellidos: str | None = None,
     telefono: str | None = None,
+    pin_hash: str | None = None,
 ) -> UUID:
     row = await conn.fetchrow(
         """
         INSERT INTO public.usuarios
-            (email, password_hash, nombre_completo, apellidos, telefono, rol, creado_por)
-        VALUES ($1, $2, $3, $4, $5, (SELECT id FROM public.roles WHERE nombre = $6), $7)
+            (email, password_hash, nombre_completo, apellidos, telefono, rol, creado_por, pin_hash)
+        VALUES ($1, $2, $3, $4, $5, (SELECT id FROM public.roles WHERE nombre = $6), $7, $8)
         RETURNING id
         """,
         email,
@@ -122,6 +126,7 @@ async def create_usuario(
         telefono,
         rol,
         creado_por,
+        pin_hash,
     )
     return UUID(str(row["id"]))
 
@@ -137,6 +142,7 @@ async def update_usuario(
     apellidos: str | None = None,
     telefono: str | None = None,
     activo: bool | None = None,
+    pin_hash: str | None = None,
 ) -> bool:
     result = await conn.execute(
         """
@@ -149,7 +155,8 @@ async def update_usuario(
             password_hash   = COALESCE($6, password_hash),
             activo          = COALESCE($7, activo),
             modificado      = NOW(),
-            modificado_por  = $8
+            modificado_por  = $8,
+            pin_hash        = COALESCE($10, pin_hash)
         WHERE id = $9 AND activo = TRUE
         """,
         email,
@@ -161,6 +168,7 @@ async def update_usuario(
         activo,
         modificado_por,
         user_id,
+        pin_hash,
     )
     return str(result) == "UPDATE 1"
 
