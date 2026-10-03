@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     refresh_token_remember_me_days: int = 30
 
+    # QA #32 — seguridad de sesión (WP B8). Todo detrás de flags, default
+    # retrocompatible con los clientes viejos (body-only, sin cookie).
+    cookie_secure: bool = True
+    refresh_en_body: bool = True
+    ws_acepta_jwt: bool = True
+    ws_ticket_ttl_seconds: int = 30
+
     database_url: str
 
     cors_origins: list[str] = ["http://localhost:5173"]

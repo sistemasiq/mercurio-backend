@@ -45,3 +45,10 @@ class PadreDashboardResponse(BaseModel):
     expires_in: int
     tutor: TutorInfo
     ninosActivos: list[NinoActivoResponse]  # noqa: N815
+
+
+class PadreNinosActivosResponse(BaseModel):
+    """QA #31 — respuesta del polling autenticado con el token de `/padres/auth`
+    (Authorization: Bearer), sin volver a mandar el código."""
+
+    ninosActivos: list[NinoActivoResponse]  # noqa: N815

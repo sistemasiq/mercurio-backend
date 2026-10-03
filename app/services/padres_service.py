@@ -12,19 +12,18 @@ from app.repositories.tutores import get_tutor_by_id
 from app.schemas.padres import (
     NinoActivoResponse,
     PadreDashboardResponse,
+    PadreNinosActivosResponse,
     SucursalInfo,
     TutorInfo,
 )
 from app.services.permission_service import get_permissions
 
 
-class TokenAccesoInvalido(Exception):
+class TokenAccesoInvalidoError(Exception):
     pass
 
 
-async def _get_hijos_visita(
-    conn: asyncpg.Connection, registro_id: UUID
-) -> list[dict[str, Any]]:
+async def _get_hijos_visita(conn: asyncpg.Connection, registro_id: UUID) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
         SELECT
@@ -61,13 +60,11 @@ async def _get_hijos_visita(
     return [dict(r) for r in rows]
 
 
-async def get_padre_dashboard(
-    conn: asyncpg.Connection, raw_code: str
-) -> PadreDashboardResponse:
+async def get_padre_dashboard(conn: asyncpg.Connection, raw_code: str) -> PadreDashboardResponse:
     try:
         registro_id = UUID(raw_code)
     except ValueError:
-        raise TokenAccesoInvalido
+        raise TokenAccesoInvalidoError from None
 
     registro = await conn.fetchrow(
         """
@@ -81,15 +78,15 @@ async def get_padre_dashboard(
         registro_id,
     )
     if registro is None:
-        raise TokenAccesoInvalido
+        raise TokenAccesoInvalidoError
 
     tutor = await get_tutor_by_id(conn, registro["tutorId"])
     if tutor is None:
-        raise TokenAccesoInvalido
+        raise TokenAccesoInvalidoError
 
     sucursal = await get_sucursal_by_id(conn, registro["sucursalId"])
     if sucursal is None:
-        raise TokenAccesoInvalido
+        raise TokenAccesoInvalidoError
 
     hijos = await _get_hijos_visita(conn, registro_id)
 
@@ -133,4 +130,37 @@ async def get_padre_dashboard(
             )
             for h in hijos
         ],
+    )
+
+
+async def get_ninos_activos(
+    conn: asyncpg.Connection, registro_id: UUID
+) -> PadreNinosActivosResponse:
+    """QA #31 — polling autenticado con el token de sesión del padre (no vuelve
+    a canjear el código). Si el registro ya no está activo (p. ej. se cerró o
+    se revocó), el token deja de servir: el front recibe 400 y cierra sesión."""
+    registro = await conn.fetchrow(
+        "SELECT 1 FROM registros WHERE id = $1 AND activo = TRUE AND estado = 'A'",
+        registro_id,
+    )
+    if registro is None:
+        raise TokenAccesoInvalidoError
+
+    hijos = await _get_hijos_visita(conn, registro_id)
+    return PadreNinosActivosResponse(
+        ninosActivos=[
+            NinoActivoResponse(
+                id=UUID(str(h["id"])),
+                nombreCompleto=h["nombreCompleto"],
+                edad=h["edad"],
+                estadoVisita=h["estadoVisita"],
+                horaEntrada=h["horaEntrada"],
+                horaSalidaEsperada=h["horaSalidaEsperada"],
+                horaSalida=h["horaSalida"],
+                minutosTranscurridos=h["minutosTranscurridos"],
+                minutosPagados=h["minutosPagados"],
+                pulsera=h["pulsera"],
+            )
+            for h in hijos
+        ]
     )

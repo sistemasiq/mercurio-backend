@@ -40,3 +40,15 @@ def generate_refresh_token() -> tuple[str, str]:
 
 def hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def generate_ws_ticket() -> tuple[str, str]:
+    """Ticket efímero de un solo uso para autenticar WebSockets (QA #32).
+    Devuelve (ticket_crudo, hash_sha256); solo el hash se guarda en BD."""
+    raw = secrets.token_urlsafe(32)
+    ticket_hash = hashlib.sha256(raw.encode()).hexdigest()
+    return raw, ticket_hash
+
+
+def hash_ws_ticket(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
